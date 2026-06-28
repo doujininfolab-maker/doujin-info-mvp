@@ -8,6 +8,7 @@ type RawNormalizedProduct = RawProductDetail & {
   sellerId?: string;
   sellerName?: string;
   sellerType?: "circle" | "maker" | "label" | "author" | "publisher";
+  sellerUrl?: string;
   priceCurrent?: number;
   priceOriginal?: number;
   discountRate?: number;
@@ -29,6 +30,8 @@ type RawNormalizedProduct = RawProductDetail & {
   tags?: string[];
   genreIds?: string[];
   tagIds?: string[];
+  isOnSale?: boolean;
+  isNew?: boolean;
 };
 
 export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Product {
@@ -48,7 +51,10 @@ export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Pr
   const priceCurrent = value.priceCurrent;
   const priceOriginal = value.priceOriginal;
   const discountRate = value.discountRate;
-  const isDiscounted = Boolean(discountRate && discountRate > 0 && priceOriginal && priceCurrent && priceOriginal > priceCurrent);
+  const isDiscounted = Boolean(
+    value.isOnSale ||
+      (discountRate && discountRate > 0 && priceOriginal && priceCurrent && priceOriginal > priceCurrent),
+  );
   const genres = value.genres ?? [];
   const tags = value.tags ?? [];
   const genreIds = value.genreIds ?? [];
@@ -56,6 +62,7 @@ export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Pr
   const sourceUrl = value.sourceUrl ?? "";
 
   return {
+    id: productId,
     productId,
     sourceProductId,
     platform: target.platform,
@@ -69,12 +76,15 @@ export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Pr
           sellerId: value.sellerId,
           sellerName: value.sellerName,
           sellerType: value.sellerType ?? (target.platform === "dlsite" ? "circle" : "maker"),
+          sellerUrl: value.sellerUrl,
         }
       : undefined,
     priceCurrent,
     priceOriginal,
     discountRate,
     isDiscounted,
+    isOnSale: isDiscounted,
+    isNew: Boolean(value.isNew),
     currency: "JPY",
     salesCount: value.salesCount,
     wishlistCount: value.wishlistCount,
@@ -99,6 +109,7 @@ export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Pr
     isActive: true,
     fetchStatus: "success",
     lastFetchedAt: timestamp,
+    fetchedAt: timestamp,
     createdAt: timestamp,
     updatedAt: timestamp,
   };

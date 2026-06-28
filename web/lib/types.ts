@@ -26,6 +26,7 @@ export type Seller = {
   sellerId?: string;
   sellerName?: string;
   sellerType?: SellerType;
+  sellerUrl?: string;
 };
 
 export type RankingSummary = {
@@ -36,6 +37,7 @@ export type RankingSummary = {
 };
 
 export type Product = {
+  id?: string;
   productId: string;
   sourceProductId: string;
 
@@ -56,6 +58,8 @@ export type Product = {
   priceOriginal?: number;
   discountRate?: number;
   isDiscounted?: boolean;
+  isOnSale?: boolean;
+  isNew?: boolean;
   currency: "JPY";
 
   salesCount?: number;
@@ -92,12 +96,14 @@ export type Product = {
   fetchStatus: FetchStatus;
 
   lastFetchedAt?: FirestoreTimestampLike | string;
+  fetchedAt?: FirestoreTimestampLike | string;
   createdAt?: FirestoreTimestampLike | string;
   updatedAt?: FirestoreTimestampLike | string;
 };
 
 export type ProductDailyMetric = {
   date: string;
+  dateIso?: string;
 
   platform: Platform;
   audience: Audience;
@@ -134,6 +140,13 @@ export type RankingSnapshot = {
   fetchedAt: FirestoreTimestampLike | string;
 
   itemCount: number;
+  items?: {
+    productId: string;
+    sourceProductId: string;
+    rank: number;
+    title?: string;
+    sourceUrl?: string;
+  }[];
   status: "success" | "failed" | "blocked" | "partial";
 };
 

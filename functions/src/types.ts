@@ -22,6 +22,7 @@ export type Seller = {
   sellerId?: string;
   sellerName?: string;
   sellerType?: SellerType;
+  sellerUrl?: string;
 };
 
 export type RankingSummary = {
@@ -32,6 +33,7 @@ export type RankingSummary = {
 };
 
 export type Product = {
+  id?: string;
   productId: string;
   sourceProductId: string;
 
@@ -52,6 +54,8 @@ export type Product = {
   priceOriginal?: number;
   discountRate?: number;
   isDiscounted?: boolean;
+  isOnSale?: boolean;
+  isNew?: boolean;
   currency: "JPY";
 
   salesCount?: number;
@@ -88,12 +92,14 @@ export type Product = {
   fetchStatus: FetchStatus;
 
   lastFetchedAt?: Timestamp;
+  fetchedAt?: Timestamp;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 };
 
 export type ProductDailyMetric = {
   date: string;
+  dateIso?: string;
 
   platform: Platform;
   audience: Audience;
@@ -130,6 +136,13 @@ export type RankingSnapshot = {
   fetchedAt: Timestamp;
 
   itemCount: number;
+  items?: {
+    productId: string;
+    sourceProductId: string;
+    rank: number;
+    title?: string;
+    sourceUrl?: string;
+  }[];
   status: "success" | "failed" | "blocked" | "partial";
 };
 
@@ -194,6 +207,9 @@ export type BatchRun = {
   runId: string;
   jobName: string;
 
+  source?: Platform | string;
+  target?: string;
+
   platform?: Platform;
   audience?: Audience;
   category?: Category;
@@ -202,11 +218,18 @@ export type BatchRun = {
 
   startedAt: Timestamp;
   finishedAt?: Timestamp;
+  durationMs?: number;
 
   fetchedProductCount?: number;
   updatedProductCount?: number;
   failedProductCount?: number;
   skippedProductCount?: number;
+
+  fetchedCount?: number;
+  savedCount?: number;
+  skippedCount?: number;
+  errorCount?: number;
+  errors?: string[];
 
   rankingSnapshotIds?: string[];
   errorMessages: string[];

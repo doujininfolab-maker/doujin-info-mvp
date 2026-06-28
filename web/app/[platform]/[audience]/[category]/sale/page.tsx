@@ -1,43 +1,34 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProductGrid } from "@/components/ProductGrid";
+import { SectionHeader } from "@/components/SectionHeader";
 import { SegmentNav } from "@/components/SegmentNav";
 import { getSegment } from "@/lib/siteSegments";
 import { getSaleProducts } from "@/lib/firebase/products";
+import { fillProducts } from "@/lib/mockProducts";
 
 export const dynamic = "force-dynamic";
 
-type PageProps = {
-  params: Promise<{ platform: string; audience: string; category: string }>;
-};
+type PageProps = { params: Promise<{ platform: string; audience: string; category: string }> };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { platform, audience, category } = await params;
   const segment = getSegment(platform, audience, category);
-  return segment ? { title: `${segment.label} セール` } : {};
+  return { title: segment ? `${segment.label}のセール作品` : "セール作品" };
 }
 
 export default async function SalePage({ params }: PageProps) {
   const { platform, audience, category } = await params;
   const segment = getSegment(platform, audience, category);
   if (!segment || !segment.enabled) notFound();
-
-  const products = await getSaleProducts({
-    platform: segment.platform,
-    audience: segment.audience,
-    category: segment.category,
-    limitCount: 50,
-  });
-
+  const products = await getSaleProducts({ platform: segment.platform, audience: segment.audience, category: segment.category, limitCount: 30 });
   return (
-    <div className="stack">
-      <section className="pageHero">
-        <p className="eyebrow">Sale</p>
-        <h1>{segment.label} セール</h1>
-        <p>isDiscounted=trueの商品をdiscountRate降順で表示します。</p>
-      </section>
+    <div className="listPage">
       <SegmentNav segment={segment} />
-      <ProductGrid products={products} />
+      <section className="contentSection">
+        <SectionHeader title="セール・値引き中" description="割引中の作品" icon="◆" />
+        <ProductGrid products={fillProducts(products, 12)} variant="grid" />
+      </section>
     </div>
   );
 }

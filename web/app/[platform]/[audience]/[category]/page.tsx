@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { ProductGrid } from "@/components/ProductGrid";
-import { SectionHeader } from "@/components/SectionHeader";
-import { SegmentNav } from "@/components/SegmentNav";
+import { HomeDashboard } from "@/components/HomeDashboard";
 import { getSegment } from "@/lib/siteSegments";
-import { getPopularProducts, getNewProducts, getSaleProducts} from "@/lib/firebase/products";
+import { getLatestRankingProducts, getNewProducts, getSaleProducts } from "@/lib/firebase/products";
 
 export const dynamic = "force-dynamic";
 
@@ -40,35 +38,10 @@ export default async function SegmentTopPage({ params }: PageProps) {
   };
 
   const [rankingProducts, newProducts, saleProducts] = await Promise.all([
-    getPopularProducts({ ...filter, limitCount: 12 }),
-    getNewProducts({ ...filter, limitCount: 12 }),
-    getSaleProducts({ ...filter, limitCount: 12 }),
+    getLatestRankingProducts({ ...filter, limitCount: 10, rankingType: "daily" }),
+    getNewProducts({ ...filter, limitCount: 10 }),
+    getSaleProducts({ ...filter, limitCount: 10 }),
   ]);
 
-  return (
-    <div className="stack">
-      <section className="pageHero">
-        <p className="eyebrow">{segment.platform} / {segment.audience} / {segment.category}</p>
-        <h1>{segment.label}</h1>
-        <p>{segment.description}</p>
-      </section>
-
-      <SegmentNav segment={segment} />
-
-      <section>
-        <SectionHeader title="人気ランキング" href={`${segment.path}/ranking`} />
-        <ProductGrid products={rankingProducts} showRank />
-      </section>
-
-      <section>
-        <SectionHeader title="新着" href={`${segment.path}/new`} />
-        <ProductGrid products={newProducts} />
-      </section>
-
-      <section>
-        <SectionHeader title="セール中" href={`${segment.path}/sale`} />
-        <ProductGrid products={saleProducts} />
-      </section>
-    </div>
-  );
+  return <HomeDashboard segment={segment} rankingProducts={rankingProducts} newProducts={newProducts} saleProducts={saleProducts} />;
 }

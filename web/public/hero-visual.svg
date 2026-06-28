@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 560" role="img" aria-labelledby="title desc">
+  <title id="title">女性向け同人情報サイトのヒーローイラスト</title>
+  <desc id="desc">淡いピンクと紫の背景に、本を持つキャラクター風の抽象イラスト。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff7fb"/>
+      <stop offset="0.52" stop-color="#ffe1ef"/>
+      <stop offset="1" stop-color="#eee8ff"/>
+    </linearGradient>
+    <linearGradient id="hair" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2d2459"/>
+      <stop offset="0.48" stop-color="#6f4bd8"/>
+      <stop offset="1" stop-color="#f08abf"/>
+    </linearGradient>
+    <linearGradient id="dress" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f7ddec"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#6f4bd8" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <rect width="760" height="560" rx="42" fill="url(#bg)"/>
+  <circle cx="170" cy="118" r="88" fill="#fff" opacity="0.55" filter="url(#soft)"/>
+  <circle cx="610" cy="110" r="112" fill="#ffffff" opacity="0.48" filter="url(#soft)"/>
+  <circle cx="635" cy="405" r="132" fill="#d8caff" opacity="0.38" filter="url(#soft)"/>
+  <path d="M112 92c18-32 58-22 60 9 12-28 52-25 61 5 16 55-71 92-71 92S86 139 112 92z" fill="#ff6dad" opacity="0.18"/>
+  <path d="M548 58c10-18 32-12 33 5 7-15 29-14 34 3 9 31-39 51-39 51s-43-32-28-59z" fill="#f04493" opacity="0.28"/>
+  <path d="M619 215c9-16 30-11 31 5 6-14 27-13 32 3 8 29-36 48-36 48s-41-30-27-56z" fill="#fff" opacity="0.58"/>
+  <g filter="url(#shadow)">
+    <path d="M409 122c-79-4-144 54-153 133-5 41 8 87 35 121 23 29 27 62 5 104 49 15 108 4 151-27 41-30 87-34 143-8-4-44-18-79-39-107 20-40 20-89-4-132-27-49-75-81-138-84z" fill="url(#hair)" opacity="0.95"/>
+    <path d="M322 248c-10 34-4 79 20 108 29 35 80 43 119 18 38-24 53-72 37-116-15-44-52-73-94-73-38 0-70 24-82 63z" fill="#ffdce9"/>
+    <path d="M355 184c-60 40-78 96-63 155 20-59 60-90 115-101 50-10 84 0 122 27-14-54-58-92-113-98-22-3-43 2-61 17z" fill="#2d2459" opacity="0.95"/>
+    <path d="M372 284c9-10 23-10 32 0" stroke="#6f4bd8" stroke-width="8" stroke-linecap="round" fill="none"/>
+    <path d="M462 284c9-10 23-10 32 0" stroke="#6f4bd8" stroke-width="8" stroke-linecap="round" fill="none"/>
+    <circle cx="382" cy="307" r="12" fill="#f08abf" opacity="0.42"/>
+    <circle cx="487" cy="307" r="12" fill="#f08abf" opacity="0.42"/>
+    <path d="M421 333c15 12 35 12 50-1" stroke="#cf5c96" stroke-width="7" stroke-linecap="round" fill="none"/>
+    <path d="M300 424c32-45 73-68 121-68 53 0 96 27 128 76 11 17 0 40-21 40H323c-22 0-35-30-23-48z" fill="url(#dress)"/>
+    <path d="M350 372c42 35 97 35 143 1" stroke="#ffffff" stroke-width="26" stroke-linecap="round" opacity="0.84"/>
+    <path d="M383 342h76v88h-76z" fill="#ffdce9"/>
+    <path d="M331 338l144 44-29 94-144-44z" fill="#5b3fba"/>
+    <path d="M351 356l101 31-17 55-101-31z" fill="#281c52" opacity="0.46"/>
+    <path d="M318 380c-28 14-53 34-70 58" stroke="#ffdce9" stroke-width="31" stroke-linecap="round"/>
+    <path d="M512 376c27 17 47 38 63 63" stroke="#ffdce9" stroke-width="31" stroke-linecap="round"/>
+    <path d="M319 438c42 6 86 19 130 38" stroke="#ffdce9" stroke-width="25" stroke-linecap="round"/>
+  </g>
+  <g fill="#f04493" opacity="0.28">
+    <circle cx="116" cy="354" r="8"/>
+    <circle cx="168" cy="294" r="5"/>
+    <circle cx="593" cy="327" r="7"/>
+    <circle cx="650" cy="164" r="5"/>
+  </g>
+</svg>

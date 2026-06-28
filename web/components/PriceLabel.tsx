@@ -5,19 +5,20 @@ export function PriceLabel({
   priceOriginal,
   discountRate,
   isDiscounted,
+  compact = false,
 }: {
   priceCurrent?: number;
   priceOriginal?: number;
   discountRate?: number;
   isDiscounted?: boolean;
+  compact?: boolean;
 }) {
+  const showOriginal = Boolean(isDiscounted && priceOriginal && priceCurrent && priceOriginal > priceCurrent);
   return (
-    <div className="priceLabel">
-      <span className="priceLabel__current">{formatPrice(priceCurrent)}</span>
-      {isDiscounted && priceOriginal && priceOriginal > (priceCurrent ?? 0) ? (
-        <span className="priceLabel__original">{formatPrice(priceOriginal)}</span>
-      ) : null}
-      {isDiscounted && discountRate ? <span className="discountBadge">{discountRate}% OFF</span> : null}
+    <div className={compact ? "priceLine priceLine--compact" : "priceLine"}>
+      <strong>{formatPrice(priceCurrent)}</strong>
+      {showOriginal ? <del>{formatPrice(priceOriginal)}</del> : null}
+      {isDiscounted && discountRate ? <span>{discountRate}% OFF</span> : null}
     </div>
   );
 }

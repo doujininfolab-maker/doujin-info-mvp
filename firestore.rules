@@ -1,0 +1,47 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isPublicRead() {
+      return true;
+    }
+
+    match /products/{productId} {
+      allow read: if isPublicRead();
+      allow write: if false;
+
+      match /dailyMetrics/{metricId} {
+        allow read: if isPublicRead();
+        allow write: if false;
+      }
+    }
+
+    match /rankingSnapshots/{snapshotId} {
+      allow read: if isPublicRead();
+      allow write: if false;
+
+      match /items/{itemId} {
+        allow read: if isPublicRead();
+        allow write: if false;
+      }
+    }
+
+    match /taxonomies/{taxonomyId} {
+      allow read: if isPublicRead();
+      allow write: if false;
+    }
+
+    match /sellers/{sellerId} {
+      allow read: if isPublicRead();
+      allow write: if false;
+    }
+
+    match /batchRuns/{runId} {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

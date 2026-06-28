@@ -1,0 +1,49 @@
+# dependencies
+node_modules/
+web/node_modules/
+functions/node_modules/
+
+# Next.js
+.next/
+web/.next/
+out/
+web/out/
+
+# build outputs
+lib/
+dist/
+functions/lib/
+
+# local env
+.env
+.env.local
+.env.*.local
+web/.env.local
+web/.env.*.local
+functions/.env
+functions/.env.*.local
+
+# Firebase local files
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+firestore-debug.*.log
+ui-debug.log
+ui-debug.*.log
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# temporary
+tmp/
+temp/

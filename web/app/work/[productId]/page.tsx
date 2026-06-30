@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
+import { WorkTrendCharts } from "@/components/WorkTrendCharts";
 import { PriceLabel } from "@/components/PriceLabel";
 import { PlatformBadge } from "@/components/PlatformBadge";
 import { getProductById } from "@/lib/firebase/products";
@@ -37,6 +38,36 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
+function getPrimaryGenreLabel(genres: string[], category: string): string {
+  const normalizedGenres = genres.map((genre) => genre.trim()).filter(Boolean);
+
+  if (normalizedGenres.some((genre) => ["マンガ", "漫画", "コミック"].includes(genre))) {
+    return "マンガ";
+  }
+
+  if (normalizedGenres.some((genre) => genre.includes("音声") || genre.includes("ASMR"))) {
+    return "音声";
+  }
+
+  if (normalizedGenres.some((genre) => genre.includes("ゲーム"))) {
+    return "ゲーム";
+  }
+
+  if (category === "comic") return "マンガ";
+  if (category === "voice") return "音声";
+  if (category === "game") return "ゲーム";
+  return "同人";
+}
+
+function getDailyRank(product: Awaited<ReturnType<typeof getProductById>>): number | undefined {
+  return product?.latestRankings?.find((ranking) => ranking.type === "daily")?.rank;
+}
+
+function buildGenreHref(segmentPath: string, genre: string): string {
+  const normalizedGenre = genre.trim().toLowerCase();
+  return `${segmentPath}/genre/dlsite:${encodeURIComponent(normalizedGenre)}`;
+}
+
 export default async function WorkDetailPage({ params }: PageProps) {
   const { productId } = await params;
   const product = await getProductById(productId);
@@ -44,41 +75,90 @@ export default async function WorkDetailPage({ params }: PageProps) {
 
   const officialUrl = product.affiliateUrl || product.sourceUrl;
   const segmentPath = getSegmentPath(product.platform, product.audience, product.category);
+  const headerImage = product.thumbnailUrl || product.mainImageUrl || product.images?.[0]?.url || "/no-image.svg";
+  const primaryGenreLabel = getPrimaryGenreLabel(product.genres ?? [], product.category);
+  const dailyRank = getDailyRank(product);
 
   return (
     <div className="detailPage">
-      <div>
+      <header className="detailHeader detailHeader--compact">
+        <div className="detailHeader__workThumb">
+          <img src={headerImage} alt="" />
+        </div>
+        <div className="detailHeader__body">
+          <div className="detailHeader__metaLine">
+            <span className="detailHeader__genrePill">{primaryGenreLabel}</span>
+            <div className="badgeRow detailHeader__badges">
+              <PlatformBadge platform={product.platform} audience={product.audience} category={product.category} />
+            </div>
+          </div>
+          <h1 className="detailTitle detailTitle--compact">{product.title}</h1>
+          {product.seller?.sellerName ? <p className="detailHeader__seller">{product.seller.sellerName}</p> : null}
+        </div>
+        {dailyRank ? (
+          <div className="detailRankBadge" aria-label={`日間ランキング${dailyRank}位`}>
+            <span>♛</span>
+            <strong>日間{dailyRank}位</strong>
+            <small>ランキング中</small>
+          </div>
+        ) : null}
+      </header>
+
+      <div className="detailMain">
         <ProductImageGallery title={product.title} images={product.images ?? []} />
+
+        <aside className="detailSide">
+          <PriceLabel
+            priceCurrent={product.priceCurrent}
+            priceOriginal={product.priceOriginal}
+            discountRate={product.discountRate}
+            isDiscounted={product.isDiscounted}
+          />
+
+          <dl className="detailMetaTable">
+            <div><dt>サークル</dt><dd>{product.seller?.sellerName || "-"}</dd></div>
+            <div><dt>販売数</dt><dd>{formatNumber(product.salesCount)}</dd></div>
+            <div><dt>評価</dt><dd>{formatRating(product.rating ?? product.ratingAverage)}</dd></div>
+            <div><dt>評価数</dt><dd>{formatNumber(product.reviewCount)}</dd></div>
+            <div><dt>発売日</dt><dd>{formatDate(product.releaseDate)}</dd></div>
+          </dl>
+
+          <div className="buttonRow buttonRow--side">
+            <a className="button button--official" href={officialUrl} target="_blank" rel="sponsored noreferrer">
+              公式サイトで見る
+            </a>
+            <Link className="button button--ghost" href={segmentPath}>
+              一覧へ戻る
+            </Link>
+          </div>
+
+          {product.genres.length > 0 ? (
+            <section className="detailSideSection">
+              <h2>ジャンル</h2>
+              <div className="tagList">
+                {product.genres.slice(0, 12).map((genre, index) => (
+                  <Link className="tagList__item" href={buildGenreHref(segmentPath, genre)} key={`${genre}_${index}`}>
+                    {genre}
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {product.tags.length > 0 ? (
+            <section className="detailSideSection">
+              <h2>タグ</h2>
+              <div className="tagList">
+                {product.tags.slice(0, 12).map((tag, index) => (
+                  <span key={`${tag}_${index}`}>{tag}</span>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </aside>
       </div>
 
-      <article className="detailBody">
-        <PlatformBadge platform={product.platform} audience={product.audience} category={product.category} />
-        <h1>{product.title}</h1>
-        {product.seller?.sellerName ? <p className="detailBody__seller">{product.seller.sellerName}</p> : null}
-
-        <PriceLabel
-          priceCurrent={product.priceCurrent}
-          priceOriginal={product.priceOriginal}
-          discountRate={product.discountRate}
-          isDiscounted={product.isDiscounted}
-        />
-
-        <div className="detailStats">
-          <div><span>販売数</span><strong>{formatNumber(product.salesCount)}</strong></div>
-          <div><span>評価</span><strong>{formatRating(product.rating ?? product.ratingAverage)}</strong></div>
-          <div><span>レビュー</span><strong>{formatNumber(product.reviewCount)}</strong></div>
-          <div><span>発売日</span><strong>{formatDate(product.releaseDate)}</strong></div>
-        </div>
-
-        <div className="buttonRow">
-          <a className="button" href={officialUrl} target="_blank" rel="sponsored noreferrer">
-            公式サイトで見る
-          </a>
-          <Link className="button button--ghost" href={segmentPath}>
-            一覧へ戻る
-          </Link>
-        </div>
-
+      <article className="detailBelow">
         {product.description ? (
           <section className="detailSection">
             <h2>作品説明</h2>
@@ -86,23 +166,11 @@ export default async function WorkDetailPage({ params }: PageProps) {
           </section>
         ) : null}
 
-        <section className="detailSection">
-          <h2>ジャンル</h2>
-          <div className="tagList">
-            {product.genres.map((genre, index) => (
-              <span key={`${genre}_${index}`}>{genre}</span>
-            ))}
-          </div>
-        </section>
-
-        <section className="detailSection">
-          <h2>タグ</h2>
-          <div className="tagList">
-            {product.tags.map((tag, index) => (
-              <span key={`${tag}_${index}`}>{tag}</span>
-            ))}
-          </div>
-        </section>
+        <WorkTrendCharts
+          priceCurrent={product.priceCurrent}
+          priceOriginal={product.priceOriginal}
+          salesCount={product.salesCount}
+        />
 
         <section className="detailSection detailSection--muted">
           <h2>管理情報</h2>

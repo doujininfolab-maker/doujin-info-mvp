@@ -1,19 +1,10 @@
-import Link from "next/link";
 import type { Product, SiteSegment } from "@/lib/types";
 import { fillProducts } from "@/lib/mockProducts";
 import { ProductGrid } from "./ProductGrid";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { SectionHeader } from "./SectionHeader";
-import { SegmentNav } from "./SegmentNav";
 import { ScrollRail } from "./ScrollRail";
-import { GenreIcon, StatIcon } from "@/components/icons/SiteIcons";
-
-const stats = [
-  { label: "掲載作品数", value: "128,456", suffix: "作品", icon: "▣", tone: "pink" as const },
-  { label: "本日の更新", value: "1,243", suffix: "作品", icon: "✦", tone: "orange" as const },
-  { label: "セール件数", value: "892", suffix: "件", icon: "◆", tone: "pink" as const },
-  { label: "注目ジャンル", value: "ボーイズラブ", suffix: "人気No.1", icon: "●", tone: "purple" as const },
-];
+import { GenreIcon } from "@/components/icons/SiteIcons";
 
 const genres = [
   { name: "ボーイズラブ", count: "62,341作品", icon: "♟", tone: "purple" as const },
@@ -33,6 +24,33 @@ const circles = [
   { name: "melty.", followers: "6,543", image: "/ui/avatar-05.svg" },
   { name: "moonlit", followers: "5,432", image: "/ui/avatar-06.svg" },
 ];
+
+const homeStats = [
+  { label: "掲載作品数", value: "128,456", suffix: "作品", icon: "▣", tone: "pink" as const },
+  { label: "本日の更新", value: "1,243", suffix: "作品", icon: "✦", tone: "orange" as const },
+  { label: "セール件数", value: "892", suffix: "件", icon: "◆", tone: "pink" as const },
+  { label: "注目ジャンル", value: "ボーイズラブ", suffix: "人気No.1", icon: "●", tone: "purple" as const, isGenre: true },
+];
+
+function HomeStatsPanel() {
+  return (
+    <section className="sidebarCard sideMetricsPanel" aria-label="サイト指標">
+      <div className="sideStatsGrid">
+        {homeStats.map((stat) => (
+          <div className={`statCard statCard--side${stat.isGenre ? " statCard--genre" : ""}`} key={stat.label}>
+            <span className={`iconShell iconTone--${stat.tone}`}>{stat.icon}</span>
+            <span>
+              <small>{stat.label}</small>
+              <strong>
+                {stat.value}<em>{stat.suffix}</em>
+              </strong>
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function RankingTabs() {
   return (
@@ -67,33 +85,6 @@ export function HomeDashboard({
     <div className="dashboardPage">
       <div className="dashboardLayout">
         <div className="mainColumn">
-          <section className="heroSection">
-            <div className="heroSection__main">
-              <div className="heroCopy">
-                <p className="eyebrow">DLSITE / FEMALE / DOUJIN</p>
-                <h1>女性向け同人が、<br /><span>すぐ見つかる。</span></h1>
-                <p className="heroLead">ランキング・新着・セール情報をまとめてチェック。ジャンルやサークルから、あなたの“好き”をもっと深掘り。</p>
-                <div className="heroActions">
-                  <Link className="button button--primary" href={`${segment.path}/ranking`}>♕ ランキングを見る</Link>
-                  <Link className="button button--secondary" href={`${segment.path}/new`}>✦ 新着を見る</Link>
-                </div>
-              </div>
-              <div className="heroVisual" aria-hidden="true">
-                <img src="/ui/hero-visual.svg" alt="" />
-              </div>
-            </div>
-            <div className="statsGrid">
-              {stats.map((stat) => (
-                <div className={`statCard ${stat.label === "注目ジャンル" ? "statCard--genre" : ""}`} key={stat.label}>
-                  <StatIcon tone={stat.tone}>{stat.icon}</StatIcon>
-                  <span><small>{stat.label}</small><strong>{stat.value}<em>{stat.suffix}</em></strong></span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <SegmentNav segment={segment} />
-
           <section className="contentSection rankingSection">
             <SectionHeader title="人気ランキング" description="販売数・人気度の高い作品" href={`${segment.path}/ranking`} icon="♕">
               <RankingTabs />
@@ -136,7 +127,10 @@ export function HomeDashboard({
             </ScrollRail>
           </section>
         </div>
-        <DashboardSidebar />
+        <div className="dashboardSideStack">
+          <HomeStatsPanel />
+          <DashboardSidebar />
+        </div>
       </div>
     </div>
   );

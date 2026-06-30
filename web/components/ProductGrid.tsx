@@ -23,5 +23,5 @@ export function ProductGrid({
     return <ScrollRail ariaLabel={ariaLabel}>{content}</ScrollRail>;
   }
 
-  return <div className="productGrid">{content}</div>;
+  return <div className={`productGrid productGrid--${variant}`}>{content}</div>;
 }

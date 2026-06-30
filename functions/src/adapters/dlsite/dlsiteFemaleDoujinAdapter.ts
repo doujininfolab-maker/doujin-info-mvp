@@ -149,6 +149,52 @@ function extractAnchorsByHref(html: string, hrefPattern: RegExp, limit: number):
   return uniq(values).slice(0, limit);
 }
 
+
+function extractAnchorTexts(html: string, hrefPattern: RegExp, limit: number): string[] {
+  const values: string[] = [];
+  const anchorPattern = /<a\b([^>]*href=["']([^"']+)["'][^>]*)>([\s\S]*?)<\/a>/gi;
+
+  for (const match of html.matchAll(anchorPattern)) {
+    const href = decodeHtml(match[2] ?? "");
+    hrefPattern.lastIndex = 0;
+    if (!hrefPattern.test(href)) continue;
+
+    const text = cleanText(match[3]);
+    if (text) values.push(text);
+    if (values.length >= limit) break;
+  }
+
+  return uniq(values).slice(0, limit);
+}
+
+function isDlsiteGenreNoise(value: string): boolean {
+  return (
+    /^\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}\s*まで$/.test(value) ||
+    /^(R18|全年齢|マンガ|漫画|コミック|JPEG|JPG|PNG|PDF|ZIP|MP3|WAV|動画|ゲーム|音声|ドラマCD|乙女向け|女性向け|男性向け|成人向け)$/i.test(value)
+  );
+}
+
+function extractDlsiteMainGenres(html: string): string[] {
+  const values: string[] = [];
+  const mainGenrePattern = /<div\b[^>]*class=["'][^"']*\bmain_genre\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi;
+
+  for (const match of html.matchAll(mainGenrePattern)) {
+    values.push(...extractAnchorTexts(match[1] ?? "", /\/genre\/\d+\//i, 30));
+  }
+
+  // DLsiteのテンプレート差分に備え、テーブル行の「ジャンル」欄もフォールバックで見る。
+  if (values.length === 0) {
+    const rowPattern = /<tr[^>]*>\s*<t[hd][^>]*>\s*(?:ジャンル|作品ジャンル)\s*<\/t[hd]>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi;
+    for (const match of html.matchAll(rowPattern)) {
+      values.push(...extractAnchorTexts(match[1] ?? "", /\/genre\/\d+\//i, 30));
+    }
+  }
+
+  return uniq(values)
+    .filter((value) => !isDlsiteGenreNoise(value))
+    .slice(0, 20);
+}
+
 function extractSeller(html: string): { sellerId?: string; sellerName?: string; sellerUrl?: string } {
   const makerMatch = html.match(/<a\b([^>]*href=["']([^"']*maker_id\/(RG\d+)[^"']*)["'][^>]*)>([\s\S]*?)<\/a>/i);
   if (!makerMatch) return {};
@@ -160,47 +206,362 @@ function extractSeller(html: string): { sellerId?: string; sellerName?: string; 
   };
 }
 
-function extractImages(html: string, sourceProductId: string): ProductImage[] {
-  const imageCandidates: string[] = [];
-  const ogImage = findMetaContent(html, "og:image");
-  if (ogImage) imageCandidates.push(ogImage);
+function normalizeImageUrlForKey(url: string): string {
+  return url.split(/[?#]/)[0] ?? url;
+}
 
-  const imagePattern = /<(?:img|source)\b[^>]*(?:src|data-src|data-original|data-lazy)=["']([^"']+)["'][^>]*>/gi;
-  for (const match of html.matchAll(imagePattern)) {
-    const url = buildAbsoluteUrl(match[1]);
-    if (!url) continue;
-    if (
-      url.includes(sourceProductId) ||
-      /\/modpub\//.test(url) ||
-      /\/resize\//.test(url) ||
-      /work_main|work_thumb|sam/.test(url)
-    ) {
-      imageCandidates.push(url);
+function decodeJsEscapedUrl(value: string): string {
+  return decodeHtml(value)
+    .replace(/\\\//g, "/")
+    .replace(/\\u002f/gi, "/")
+    .replace(/\\u0026/gi, "&")
+    .replace(/\\u003d/gi, "=")
+    .replace(/\\u003a/gi, ":")
+    .replace(/\\u002d/gi, "-")
+    .replace(/\\u005f/gi, "_")
+    .replace(/\\/g, "");
+}
+
+function imageSortScore(url: string): number {
+  const normalized = normalizeImageUrlForKey(url);
+  const sampleMatch = normalized.match(/(?:_img_)?(?:smp|sam|sample)_?(\d+)/i);
+
+  if (/_img_main|_main\.|work_main/i.test(normalized)) {
+    return 0;
+  }
+
+  if (sampleMatch?.[1]) {
+    return 100 + Number(sampleMatch[1]);
+  }
+
+  if (/smp|sam|sample/i.test(normalized)) {
+    return 200;
+  }
+
+  return 500;
+}
+
+function canonicalImageKey(url: string, sourceProductId: string): string {
+  const normalized = normalizeImageUrlForKey(url);
+  const escapedId = sourceProductId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = normalized.match(new RegExp(`${escapedId}_img_(main|smp_?\\d+|sam_?\\d+|sample_?\\d+)`, "i"));
+
+  if (match?.[1]) {
+    return `${sourceProductId}_img_${match[1].replace(/_/g, "").toLowerCase()}`;
+  }
+
+  return normalized.replace(/_\d+x\d+\.(?:jpg|jpeg|png|webp)$/i, "").toLowerCase();
+}
+
+function isLikelyWorkImage(url: string, sourceProductId: string): boolean {
+  const normalized = normalizeImageUrlForKey(url);
+  const lower = normalized.toLowerCase();
+
+  if (!lower.includes(sourceProductId.toLowerCase())) {
+    return false;
+  }
+
+  if (!/\.(?:jpg|jpeg|png|webp)$/i.test(normalized)) {
+    return false;
+  }
+
+  if (/logo|banner|bnr|button|icon|sprite|common|campaign|affiliate|favicon/i.test(normalized)) {
+    return false;
+  }
+
+  return true;
+}
+
+function pushImageCandidate(candidates: string[], rawValue: string | undefined | null): void {
+  if (!rawValue) return;
+
+  const normalizedValue = decodeJsEscapedUrl(rawValue.trim());
+  if (!normalizedValue) return;
+
+  // srcset は "url 1x, url 2x" の形式になるため、URL部分だけを候補にする。
+  const parts = normalizedValue
+    .split(",")
+    .map((part) => part.trim().split(/\s+/)[0])
+    .filter(Boolean);
+
+  for (const part of parts) {
+    const url = buildAbsoluteUrl(part);
+    if (url) candidates.push(url);
+  }
+}
+
+type DlsiteAjaxInfo = {
+  priceCurrent?: number;
+  priceOriginal?: number;
+  discountRate?: number;
+  salesCount?: number;
+  rating?: number;
+  reviewCount?: number;
+  releaseDate?: string;
+};
+
+function buildDisplayImageUrl(url: string): string {
+  const normalized = normalizeImageUrlForKey(decodeJsEscapedUrl(url));
+  const absolute = buildAbsoluteUrl(normalized) ?? normalized;
+
+  // DLsiteのサムネイルは以下のような resize URL になっている。
+  //   /resize/images2/work/doujin/RJ01638000/RJ01637636_img_smp1_100x100.webp
+  // 画面のメイン表示には、同じファイル名の原寸寄りURLを使う。
+  return absolute
+    .replace("/resize/", "/modpub/")
+    .replace(/_(?:\d+x\d+|[wh]\d+)\.(?:jpg|jpeg|png|webp)$/i, ".jpg")
+    .replace(/\.webp$/i, ".jpg");
+}
+
+function buildThumbnailImageUrl(url: string): string {
+  // DLsite の resize/webp サムネイルはブラウザ表示で壊れることがあるため、
+  // サイト側では表示確認済みの modpub/jpg URL をサムネイルにも使う。
+  // 取得時に追加リクエストは行わないので、v6 のように遅くならない。
+  return buildDisplayImageUrl(url);
+}
+
+function extractImageUrlsFromHtml(html: string, sourceProductId: string): Array<{ displayUrl: string; thumbnailUrl: string }> {
+  const rawCandidates: string[] = [];
+  const escapedId = sourceProductId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const normalizedHtml = decodeJsEscapedUrl(html);
+
+  const ogImage = findMetaContent(html, "og:image");
+  pushImageCandidate(rawCandidates, ogImage);
+
+  // DLsiteの作品画像は、メイン画像だけでなく、サムネイル部の
+  // src / srcset / data-src / href に入っていることが多い。
+  // 例:
+  //   //img.dlsite.jp/resize/images2/work/doujin/RJ01638000/RJ01637636_img_smp1_100x100.webp
+  const attrPattern = /\b(?:src|data-src|data-original|data-lazy|data-srcset|srcset|href)=(['"])([\s\S]*?)\1/gi;
+  for (const match of normalizedHtml.matchAll(attrPattern)) {
+    pushImageCandidate(rawCandidates, match[2]);
+  }
+
+  const absoluteUrlPattern = new RegExp(
+    String.raw`(?:https?:)?//[^"'<>\s\)\]]*${escapedId}[^"'<>\s\)\]]*\.(?:jpg|jpeg|png|webp)(?:\?[^"'<>\s\)\]]*)?`,
+    "gi",
+  );
+  for (const match of normalizedHtml.matchAll(absoluteUrlPattern)) {
+    pushImageCandidate(rawCandidates, match[0]);
+  }
+
+  const relativeUrlPattern = new RegExp(
+    String.raw`/(?:resize|modpub)/images2/work/[^"'<>\s\)\]]*${escapedId}[^"'<>\s\)\]]*\.(?:jpg|jpeg|png|webp)(?:\?[^"'<>\s\)\]]*)?`,
+    "gi",
+  );
+  for (const match of normalizedHtml.matchAll(relativeUrlPattern)) {
+    pushImageCandidate(rawCandidates, match[0]);
+  }
+
+  return rawCandidates
+    .map((rawUrl) => ({
+      displayUrl: buildDisplayImageUrl(rawUrl),
+      thumbnailUrl: buildThumbnailImageUrl(rawUrl),
+    }))
+    .filter(({ displayUrl, thumbnailUrl }) =>
+      isLikelyWorkImage(displayUrl, sourceProductId) || isLikelyWorkImage(thumbnailUrl, sourceProductId),
+    );
+}
+
+async function fetchProductInfoAjax(sourceProductId: string): Promise<DlsiteAjaxInfo> {
+  const urls = [
+    `${DLSITE_GIRLS_BASE_URL}/product/info/ajax?product_id=${sourceProductId}`,
+    `${DLSITE_GIRLS_BASE_URL}/product/info/ajax?product_id[]=${sourceProductId}`,
+  ];
+
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "user-agent": USER_AGENT,
+          accept: "application/json,text/javascript,*/*;q=0.8",
+          "accept-language": "ja,en;q=0.8",
+          referer: buildSourceUrl(sourceProductId),
+        },
+      });
+      if (!response.ok) continue;
+
+      const text = await response.text();
+      const parsed = JSON.parse(text) as unknown;
+      const values = flattenJsonValues(parsed);
+      const info: DlsiteAjaxInfo = {};
+
+      info.salesCount = firstNumberByKey(values, ["dl_count", "dlCount", "download_count", "downloadCount", "sales_count", "salesCount"]);
+      info.rating = firstNumberByKey(values, ["rate_average_2dp", "rateAverage2dp", "rate_average", "rateAverage", "ratingValue"]);
+      info.reviewCount = firstNumberByKey(values, ["rate_count", "rateCount", "rating_count", "ratingCount", "review_count", "reviewCount"]);
+      info.priceCurrent = firstNumberByKey(values, ["price", "priceCurrent", "price_current", "work_price"]);
+      info.priceOriginal = firstNumberByKey(values, ["official_price", "priceOriginal", "price_original", "regular_price", "base_price"]);
+      info.discountRate = firstNumberByKey(values, ["discount_rate", "discountRate", "discount"]);
+      info.releaseDate = normalizeReleaseDate(firstStringByKey(values, ["regist_date", "release_date", "releaseDate", "datePublished"]));
+
+      return info;
+    } catch {
+      // 公開ページHTMLのパース結果を優先して処理継続する。
     }
   }
 
-  const urls = [...new Set(imageCandidates.map(buildAbsoluteUrl).filter((url): url is string => Boolean(url)))].slice(0, 6);
-  return urls.map((url, index) => ({
-    url,
-    thumbnailUrl: url,
+  return {};
+}
+
+function flattenJsonValues(value: unknown, prefix = ""): Map<string, unknown> {
+  const result = new Map<string, unknown>();
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      for (const [key, childValue] of flattenJsonValues(item, `${prefix}${index}.`)) {
+        result.set(key, childValue);
+      }
+    });
+    return result;
+  }
+
+  if (value && typeof value === "object") {
+    for (const [key, childValue] of Object.entries(value as Record<string, unknown>)) {
+      result.set(key, childValue);
+      for (const [childKey, grandChildValue] of flattenJsonValues(childValue, `${prefix}${key}.`)) {
+        result.set(childKey, grandChildValue);
+      }
+    }
+  }
+
+  return result;
+}
+
+function firstNumberByKey(values: Map<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = values.get(key);
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+      const parsed = toNumber(value);
+      if (parsed !== undefined) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function firstStringByKey(values: Map<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = values.get(key);
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return undefined;
+}
+
+async function extractImages(html: string, sourceProductId: string): Promise<ProductImage[]> {
+  // v6では smp1..smp16 を推測してHEAD確認していたが、
+  // DLsite側へのリクエスト数が増えてFunctionが遅くなるため廃止。
+  // v7ではページHTML内に実際に出ている main/smp サムネイルURLを直接拾い、
+  // resize URL から表示用の modpub URLを機械的に作る。
+  const pairs = extractImageUrlsFromHtml(html, sourceProductId);
+
+  const byKey = new Map<string, { displayUrl: string; thumbnailUrl: string }>();
+  const sortedPairs = pairs.sort((a, b) => imageSortScore(a.displayUrl) - imageSortScore(b.displayUrl));
+
+  for (const pair of sortedPairs) {
+    const key = canonicalImageKey(pair.displayUrl, sourceProductId);
+    const existing = byKey.get(key);
+
+    // 同じ画像の resize / modpub が混在する場合は、表示用はmodpub寄り、サムネは実在するresize寄りを残す。
+    if (!existing) {
+      byKey.set(key, pair);
+      continue;
+    }
+
+    byKey.set(key, {
+      displayUrl: existing.displayUrl.includes("/resize/") ? pair.displayUrl : existing.displayUrl,
+      thumbnailUrl: pair.thumbnailUrl.includes("/resize/") ? pair.thumbnailUrl : existing.thumbnailUrl,
+    });
+  }
+
+  const urls = [...byKey.values()]
+    .sort((a, b) => imageSortScore(a.displayUrl) - imageSortScore(b.displayUrl))
+    .slice(0, 16);
+
+  return urls.map((image, index) => ({
+    url: image.displayUrl,
+    thumbnailUrl: image.thumbnailUrl,
     type: index === 0 ? "main" : "sample",
     displayOrder: index,
   }));
 }
 
+function extractJsonLikeNumber(html: string, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const value = matchFirst(html, [
+      new RegExp(`["']${escaped}["']\\s*:\\s*["']?([0-9][0-9,.]*)`, "i"),
+      new RegExp(`\\b${escaped}\\b\\s*[:=]\\s*["']?([0-9][0-9,.]*)`, "i"),
+      new RegExp(`data-${escaped.replace(/_/g, "-")}=["']([0-9][0-9,.]*)["']`, "i"),
+    ]);
+    const parsed = toNumber(value);
+    if (parsed !== undefined) return parsed;
+  }
+
+  return undefined;
+}
+
 function extractRating(html: string, text: string): number | undefined {
   return (
-    toNumber(matchFirst(html, [/itemprop=["']ratingValue["'][^>]+content=["']([^"']+)["']/i])) ??
-    toNumber(matchFirst(html, [/"ratingValue"\s*:\s*"?([0-9.]+)"?/i])) ??
-    toNumber(text.match(/評価\s*[:：]?\s*([0-9.]+)/)?.[1])
+    toNumber(matchFirst(html, [
+      /itemprop=["']ratingValue["'][^>]+content=["']([^"']+)["']/i,
+      /content=["']([^"']+)["'][^>]+itemprop=["']ratingValue["']/i,
+      /data-(?:rating|rate|score)=["']([0-9.]+)["']/i,
+    ])) ??
+    extractJsonLikeNumber(html, [
+      "rate_average_2dp",
+      "rateAverage2dp",
+      "rate_average",
+      "rateAverage",
+      "ratingValue",
+      "rating_average",
+      "average_rating",
+      "work_rating",
+    ]) ??
+    toNumber(text.match(/評価\s*[:：]?\s*([0-9.]+)/)?.[1]) ??
+    toNumber(text.match(/([0-9.]+)\s*\/\s*5/)?.[1])
   );
 }
 
-function extractReviewCount(html: string, text: string): number | undefined {
+function extractEvaluationCount(html: string, text: string): number | undefined {
   return (
-    toNumber(matchFirst(html, [/itemprop=["']reviewCount["'][^>]+content=["']([^"']+)["']/i])) ??
-    toNumber(matchFirst(html, [/"reviewCount"\s*:\s*"?([0-9,]+)"?/i])) ??
-    toNumber(text.match(/レビュー(?:数)?\s*[:：]?\s*([0-9,]+)/)?.[1])
+    extractJsonLikeNumber(html, [
+      "ratingCount",
+      "rating_count",
+      "rateCount",
+      "rate_count",
+      "evaluationCount",
+      "evaluation_count",
+      "reviewCount",
+      "review_count",
+    ]) ??
+    toNumber(matchFirst(html, [
+      /itemprop=["']reviewCount["'][^>]+content=["']([^"']+)["']/i,
+      /content=["']([^"']+)["'][^>]+itemprop=["']reviewCount["']/i,
+    ])) ??
+    toNumber(text.match(/評価\s*[:：]?\s*[0-9.]+[\s\S]{0,120}?\(([0-9,]+)\)/)?.[1]) ??
+    toNumber(text.match(/評価数\s*[:：]?\s*([0-9,]+)/)?.[1]) ??
+    toNumber(text.match(/評価(?:件数)?\s*[:：]?\s*([0-9,]+)\s*件/)?.[1]) ??
+    toNumber(text.match(/([0-9,]+)\s*件の評価/)?.[1]) ??
+    toNumber(text.match(/レビュー(?:数)?\s*[:：]?\s*([0-9,]+)/)?.[1]) ??
+    toNumber(text.match(/([0-9,]+)\s*件のレビュー/)?.[1])
+  );
+}
+
+function extractSalesCount(html: string, text: string): number | undefined {
+  return (
+    extractJsonLikeNumber(html, [
+      "dl_count",
+      "dlCount",
+      "download_count",
+      "downloadCount",
+      "sales_count",
+      "salesCount",
+      "work_dl_count",
+      "workDlCount",
+    ]) ??
+    toNumber(text.match(/(?:販売数|販売本数|DL数|ダウンロード数)\s*[:：]?\s*([0-9,]+)/)?.[1]) ??
+    toNumber(text.match(/([0-9,]+)\s*(?:DL|ダウンロード)/i)?.[1])
   );
 }
 
@@ -215,7 +576,7 @@ function extractPriceCurrent(html: string, text: string): number | undefined {
   );
 }
 
-function extractProductDetail(html: string, sourceProductId: string): RawProductDetail {
+async function extractProductDetail(html: string, sourceProductId: string): Promise<RawProductDetail> {
   const text = stripTags(html);
   const title =
     cleanText(findMetaContent(html, "og:title")?.replace(/\s*\|\s*DLsite.*$/i, "")) ??
@@ -223,29 +584,27 @@ function extractProductDetail(html: string, sourceProductId: string): RawProduct
     sourceProductId;
 
   const seller = extractSeller(html);
-  const images = extractImages(html, sourceProductId);
-  const priceCurrent = extractPriceCurrent(html, text);
+  const ajaxInfo = await fetchProductInfoAjax(sourceProductId);
+  const images = await extractImages(html, sourceProductId);
+  const priceCurrent = ajaxInfo.priceCurrent ?? extractPriceCurrent(html, text);
   const priceOriginal =
+    ajaxInfo.priceOriginal ??
     toNumber(matchFirst(html, [/class=["'][^"']*(?:base_price|default_price|strike|regular_price)[^"']*["'][^>]*>([\s\S]*?)<\//i])) ??
     toNumber(text.match(/(?:通常価格|定価)\s*[:：]?\s*([0-9,]+)\s*円/)?.[1]);
   const discountRate =
+    ajaxInfo.discountRate ??
     toNumber(text.match(/([0-9]{1,2})\s*%\s*OFF/i)?.[1]) ??
     toNumber(text.match(/([0-9]{1,2})\s*％\s*OFF/i)?.[1]);
-  const salesCount =
-    toNumber(text.match(/販売数\s*[:：]?\s*([0-9,]+)/)?.[1]) ??
-    toNumber(text.match(/DL数\s*[:：]?\s*([0-9,]+)/)?.[1]);
-  const reviewCount = extractReviewCount(html, text);
-  const rating = extractRating(html, text);
-  const releaseDate = normalizeReleaseDate(
+  const salesCount = ajaxInfo.salesCount ?? extractSalesCount(html, text);
+  // DLsiteでは「レビュー本文数」よりも「評価数」が表示・取得しやすいケースが多いため、
+  // MVPでは reviewCount に評価数を入れて画面表示する。
+  const reviewCount = ajaxInfo.reviewCount ?? extractEvaluationCount(html, text);
+  const rating = ajaxInfo.rating ?? extractRating(html, text);
+  const releaseDate = ajaxInfo.releaseDate ?? normalizeReleaseDate(
     text.match(/(?:販売日|発売日)\s*[:：]?\s*(\d{4}[/.年-]\d{1,2}[/.月-]\d{1,2})/)?.[1] ??
       matchFirst(html, [/itemprop=["']datePublished["'][^>]+content=["']([^"']+)["']/i]),
   );
-  const genres = uniq([
-    ...extractAnchorsByHref(html, /genre|work_type|category/i, 20),
-    text.includes("TL") ? "TL" : undefined,
-    /ASMR/i.test(text) ? "ASMR" : undefined,
-    text.includes("乙女向け") ? "乙女向け" : undefined,
-  ]).slice(0, 20);
+  const genres = extractDlsiteMainGenres(html);
   const tags = extractAnchorsByHref(html, /keyword|tag|options/i, 30).slice(0, 30);
   const hintTypes = sourceProductIdHints.get(sourceProductId) ?? new Set<RankingType>();
   const isAdult = /R18|18禁|成人向け|年齢確認/.test(text);
@@ -269,7 +628,7 @@ function extractProductDetail(html: string, sourceProductId: string): RawProduct
     releaseDate,
     ageRating: isAdult ? "r18" : "all",
     workType,
-    thumbnailUrl: images[0]?.thumbnailUrl,
+    thumbnailUrl: images[0]?.url,
     mainImageUrl: images[0]?.url,
     images,
     sourceUrl: buildSourceUrl(sourceProductId),
@@ -357,7 +716,7 @@ export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
 
   async fetchProductDetail(sourceProductId: string): Promise<RawProductDetail> {
     const html = await fetchPublicHtml(buildSourceUrl(sourceProductId));
-    return extractProductDetail(html, sourceProductId);
+    return await extractProductDetail(html, sourceProductId);
   },
 
   normalizeProduct,

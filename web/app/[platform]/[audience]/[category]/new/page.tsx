@@ -2,14 +2,17 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProductGrid } from "@/components/ProductGrid";
 import { SectionHeader } from "@/components/SectionHeader";
-import { SegmentNav } from "@/components/SegmentNav";
+import { PageSizeSelect } from "@/components/PageSizeSelect";
+import { parsePageSize } from "@/lib/pageSize";
 import { getSegment } from "@/lib/siteSegments";
 import { getNewProducts } from "@/lib/firebase/products";
-import { fillProducts } from "@/lib/mockProducts";
 
 export const dynamic = "force-dynamic";
 
-type PageProps = { params: Promise<{ platform: string; audience: string; category: string }> };
+type PageProps = {
+  params: Promise<{ platform: string; audience: string; category: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { platform, audience, category } = await params;
@@ -17,17 +20,27 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return { title: segment ? `${segment.label}の新着作品` : "新着作品" };
 }
 
-export default async function NewPage({ params }: PageProps) {
+export default async function NewPage({ params, searchParams }: PageProps) {
   const { platform, audience, category } = await params;
+  const query = searchParams ? await searchParams : {};
+  const limitCount = parsePageSize(query.limit);
   const segment = getSegment(platform, audience, category);
   if (!segment || !segment.enabled) notFound();
-  const products = await getNewProducts({ platform: segment.platform, audience: segment.audience, category: segment.category, limitCount: 30 });
+
+  const products = await getNewProducts({
+    platform: segment.platform,
+    audience: segment.audience,
+    category: segment.category,
+    limitCount,
+  });
+
   return (
-    <div className="listPage">
-      <SegmentNav segment={segment} />
-      <section className="contentSection">
-        <SectionHeader title="新着作品" description={`${segment.label}の新着`} icon="NEW" />
-        <ProductGrid products={fillProducts(products, 12)} variant="grid" />
+    <div className="listPage listPage--wide">
+      <section className="contentSection listSection">
+        <SectionHeader title="新着作品" description={`${segment.label}の新着`} icon="●">
+          <PageSizeSelect value={limitCount} />
+        </SectionHeader>
+        <ProductGrid products={products} variant="list" />
       </section>
     </div>
   );

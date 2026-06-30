@@ -3576,3 +3576,151 @@ img {
 .circleSalesTrendOnly .workTrendHeader--sub + .workChart + .workChartLegend {
   display: none;
 }
+
+/* v39: MVP link cleanup */
+.toggleGroup__item:is(span) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+
+.rankingTabs--single span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  min-height: 34px;
+  border-radius: 8px;
+  font-weight: 800;
+}
+
+.sidebarEmptyText {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.circleCard--empty {
+  min-width: 260px;
+  justify-content: center;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.footerSocial__placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--muted);
+  background: #fff;
+}
+
+.footerSocial small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.staticPage {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 40px 0 64px;
+}
+
+.staticPage__card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  padding: clamp(24px, 4vw, 48px);
+}
+
+.staticPage__eyebrow {
+  margin: 0 0 10px;
+  color: var(--pink);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: .14em;
+}
+
+.staticPage h1 {
+  margin: 0 0 18px;
+  color: var(--ink);
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.2;
+}
+
+.staticPage h2 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.staticPage p,
+.staticPage dd {
+  color: var(--text);
+  line-height: 1.9;
+}
+
+.staticPage__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.staticPage__grid > div,
+.staticPage__faq {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  background: #fff;
+}
+
+.staticPage__faq dt {
+  margin-top: 18px;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.staticPage__faq dt:first-child {
+  margin-top: 0;
+}
+
+.staticPage__faq dd {
+  margin: 6px 0 0;
+}
+
+.staticPage__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.staticPage__actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--pink-soft);
+  border-radius: 10px;
+  color: var(--purple-strong);
+  font-weight: 900;
+  text-decoration: none;
+  background: #fff7fb;
+}
+
+@media (max-width: 760px) {
+  .staticPage__grid {
+    grid-template-columns: 1fr;
+  }
+}

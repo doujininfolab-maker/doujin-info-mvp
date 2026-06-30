@@ -1,10 +1,35 @@
 import Link from "next/link";
 import { LogoIcon } from "@/components/icons/SiteIcons";
 
-const footerGroups = [
-  { title: "ご利用ガイド", links: ["使い方", "よくある質問", "お問い合わせ"] },
-  { title: "サービスについて", links: ["運営について", "プライバシーポリシー", "利用規約"] },
-  { title: "外部リンク", links: ["DLsite", "FANZA", "Ci-en"] },
+type FooterLink = { label: string; href: string; external?: boolean };
+
+type FooterGroup = { title: string; links: FooterLink[] };
+
+const footerGroups: FooterGroup[] = [
+  {
+    title: "ご利用ガイド",
+    links: [
+      { label: "使い方", href: "/guide" },
+      { label: "よくある質問", href: "/faq" },
+      { label: "お問い合わせ", href: "/contact" },
+    ],
+  },
+  {
+    title: "サービスについて",
+    links: [
+      { label: "運営について", href: "/about" },
+      { label: "プライバシーポリシー", href: "/privacy" },
+      { label: "利用規約", href: "/terms" },
+    ],
+  },
+  {
+    title: "外部リンク",
+    links: [
+      { label: "DLsite", href: "https://www.dlsite.com/girls/", external: true },
+      { label: "FANZA", href: "https://www.dmm.co.jp/dc/doujin/", external: true },
+      { label: "Ci-en", href: "https://ci-en.dlsite.com/", external: true },
+    ],
+  },
 ];
 
 export function Footer() {
@@ -21,12 +46,23 @@ export function Footer() {
         {footerGroups.map((group) => (
           <div className="footerLinks" key={group.title}>
             <h3>{group.title}</h3>
-            {group.links.map((link) => <a key={link} href="#">{link}</a>)}
+            {group.links.map((link) => (
+              link.external ? (
+                <a key={link.label} href={link.href} target="_blank" rel="noreferrer">{link.label}</a>
+              ) : (
+                <Link key={link.label} href={link.href}>{link.label}</Link>
+              )
+            ))}
           </div>
         ))}
         <div className="footerSocial">
           <h3>公式SNS</h3>
-          <div><a href="#">𝕏</a><a href="#">◎</a><a href="#">✉</a></div>
+          <div aria-label="公式SNSは準備中です">
+            <span className="footerSocial__placeholder">𝕏</span>
+            <span className="footerSocial__placeholder">◎</span>
+            <span className="footerSocial__placeholder">✉</span>
+          </div>
+          <small>準備中</small>
         </div>
       </div>
       <small className="copyright">© 2024 Doujin Info</small>

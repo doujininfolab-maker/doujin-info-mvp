@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Product, SiteSegment } from "@/lib/types";
 import { fillProducts } from "@/lib/mockProducts";
 import { ProductGrid } from "./ProductGrid";
@@ -16,14 +17,53 @@ const genres = [
   { name: "ASMR", count: "9,201作品", icon: "◐", tone: "pink" as const },
 ];
 
-const circles = [
-  { name: "Luna Note", followers: "12,345", image: "/ui/avatar-01.svg" },
-  { name: "TearDrop", followers: "9,876", image: "/ui/avatar-02.svg" },
-  { name: "petit étoile", followers: "8,765", image: "/ui/avatar-03.svg" },
-  { name: "Scent Note", followers: "7,654", image: "/ui/avatar-04.svg" },
-  { name: "melty.", followers: "6,543", image: "/ui/avatar-05.svg" },
-  { name: "moonlit", followers: "5,432", image: "/ui/avatar-06.svg" },
-];
+type CircleHighlight = {
+  key: string;
+  name: string;
+  productCount: number;
+  totalSales: number;
+  image: string;
+};
+
+function getProductImage(product: Product): string {
+  return (
+    product.mainImageUrl ||
+    product.images?.[0]?.thumbnailUrl ||
+    product.images?.[0]?.url ||
+    product.thumbnailUrl ||
+    "/no-image.svg"
+  );
+}
+
+function buildCircleHighlights(products: Product[]): CircleHighlight[] {
+  const map = new Map<string, CircleHighlight>();
+
+  for (const product of products) {
+    const name = product.seller?.sellerName?.trim() || product.seller?.sellerId?.trim();
+    if (!name) continue;
+
+    const key = product.seller?.sellerId?.trim() || name;
+    const current = map.get(key);
+
+    if (current) {
+      current.productCount += 1;
+      current.totalSales += product.salesCount ?? 0;
+      continue;
+    }
+
+    map.set(key, {
+      key,
+      name,
+      productCount: 1,
+      totalSales: product.salesCount ?? 0,
+      image: getProductImage(product),
+    });
+  }
+
+  return [...map.values()]
+    .sort((a, b) => b.totalSales - a.totalSales)
+    .slice(0, 8);
+}
 
 const homeStats = [
   { label: "掲載作品数", value: "128,456", suffix: "作品", icon: "▣", tone: "pink" as const },
@@ -54,10 +94,8 @@ function HomeStatsPanel() {
 
 function RankingTabs() {
   return (
-    <div className="rankingTabs" aria-label="ランキング期間">
-      <button type="button" className="isActive">日間</button>
-      <button type="button">週間</button>
-      <button type="button">月間</button>
+    <div className="rankingTabs rankingTabs--single" aria-label="ランキング期間">
+      <span className="isActive">日間</span>
     </div>
   );
 }
@@ -80,6 +118,7 @@ export function HomeDashboard({
     isDiscounted: product.isDiscounted ?? true,
     discountRate: product.discountRate ?? (index % 3 === 0 ? 30 : 20),
   }));
+  const circleHighlights = buildCircleHighlights([...rankingProducts, ...newProducts, ...saleProducts]);
 
   return (
     <div className="dashboardPage">
@@ -106,30 +145,32 @@ export function HomeDashboard({
             <SectionHeader title="ジャンルから探す" icon="♟" />
             <ScrollRail ariaLabel="ジャンル一覧">
               {genres.map((genre) => (
-                <a className="genreCard" href={`${segment.path}/genre/dlsite:${genre.name}`} key={genre.name}>
+                <Link className="genreCard" href={`${segment.path}/genre/dlsite:${encodeURIComponent(genre.name)}`} key={genre.name}>
                   <GenreIcon tone={genre.tone}>{genre.icon}</GenreIcon>
                   <span><strong>{genre.name}</strong><small>{genre.count}</small></span>
-                </a>
+                </Link>
               ))}
             </ScrollRail>
           </section>
 
           <section className="contentSection railOnlySection">
-            <SectionHeader title="注目サークル" href={segment.path} icon="♕" />
+            <SectionHeader title="注目サークル" href={`${segment.path}/circle`} icon="♕" />
             <ScrollRail ariaLabel="注目サークル一覧">
-              {circles.map((circle) => (
-                <a className="circleCard" href="#" key={circle.name}>
+              {circleHighlights.length ? circleHighlights.map((circle) => (
+                <Link className="circleCard" href={`${segment.path}/circle/${encodeURIComponent(circle.key)}`} key={circle.key}>
                   <img src={circle.image} alt="" loading="lazy" />
-                  <span><strong>{circle.name}</strong><small>フォロワー {circle.followers}</small></span>
-                  <em>フォロー</em>
-                </a>
-              ))}
+                  <span><strong>{circle.name}</strong><small>作品 {circle.productCount} / 販売 {circle.totalSales.toLocaleString()}</small></span>
+                  <em>詳細</em>
+                </Link>
+              )) : (
+                <div className="circleCard circleCard--empty">サークルデータ取得後に表示されます。</div>
+              )}
             </ScrollRail>
           </section>
         </div>
         <div className="dashboardSideStack">
           <HomeStatsPanel />
-          <DashboardSidebar />
+          <DashboardSidebar recentProducts={newProducts} />
         </div>
       </div>
     </div>

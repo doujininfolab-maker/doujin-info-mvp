@@ -3,9 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
 import { WorkTrendCharts } from "@/components/WorkTrendCharts";
+import { ProductGrid } from "@/components/ProductGrid";
 import { PriceLabel } from "@/components/PriceLabel";
 import { PlatformBadge } from "@/components/PlatformBadge";
-import { getProductById } from "@/lib/firebase/products";
+import { getProductById, getProductsBySameSeller } from "@/lib/firebase/products";
 import { formatDate, formatNumber, formatRating } from "@/lib/format";
 import { getSegmentPath } from "@/lib/siteSegments";
 
@@ -68,6 +69,12 @@ function buildGenreHref(segmentPath: string, genre: string): string {
   return `${segmentPath}/genre/dlsite:${encodeURIComponent(normalizedGenre)}`;
 }
 
+function normalizeRatingBreakdown(product: Awaited<ReturnType<typeof getProductById>>) {
+  return (product?.ratingBreakdown ?? [])
+    .filter((item) => item.count >= 0)
+    .sort((a, b) => b.star - a.star);
+}
+
 export default async function WorkDetailPage({ params }: PageProps) {
   const { productId } = await params;
   const product = await getProductById(productId);
@@ -78,6 +85,17 @@ export default async function WorkDetailPage({ params }: PageProps) {
   const headerImage = product.thumbnailUrl || product.mainImageUrl || product.images?.[0]?.url || "/no-image.svg";
   const primaryGenreLabel = getPrimaryGenreLabel(product.genres ?? [], product.category);
   const dailyRank = getDailyRank(product);
+  const ratingBreakdown = normalizeRatingBreakdown(product);
+  const maxRatingBreakdownCount = Math.max(1, ...ratingBreakdown.map((item) => item.count));
+  const sameSellerProducts = await getProductsBySameSeller({
+    platform: product.platform,
+    audience: product.audience,
+    category: product.category,
+    sellerId: product.seller?.sellerId,
+    sellerName: product.seller?.sellerName,
+    excludeProductId: product.productId,
+    limitCount: 6,
+  });
 
   return (
     <div className="detailPage">
@@ -105,7 +123,7 @@ export default async function WorkDetailPage({ params }: PageProps) {
       </header>
 
       <div className="detailMain">
-        <ProductImageGallery title={product.title} images={product.images ?? []} />
+        <ProductImageGallery title={product.title} images={product.images ?? []} officialUrl={officialUrl} />
 
         <aside className="detailSide">
           <PriceLabel
@@ -120,6 +138,27 @@ export default async function WorkDetailPage({ params }: PageProps) {
             <div><dt>販売数</dt><dd>{formatNumber(product.salesCount)}</dd></div>
             <div><dt>評価</dt><dd>{formatRating(product.rating ?? product.ratingAverage)}</dd></div>
             <div><dt>評価数</dt><dd>{formatNumber(product.reviewCount)}</dd></div>
+            {ratingBreakdown.length > 0 ? (
+              <div className="detailMetaTable__ratingBreakdown">
+                <dt>評価内訳</dt>
+                <dd>
+                  <div className="ratingBreakdown" aria-label="評価内訳">
+                    {ratingBreakdown.map((item) => (
+                      <div className="ratingBreakdown__row" key={item.star}>
+                        <span className="ratingBreakdown__label">星{item.star}</span>
+                        <span className="ratingBreakdown__track" aria-hidden="true">
+                          <span
+                            className="ratingBreakdown__bar"
+                            style={{ width: `${Math.round((item.count / maxRatingBreakdownCount) * 100)}%` }}
+                          />
+                        </span>
+                        <span className="ratingBreakdown__count">{formatNumber(item.count)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </dd>
+              </div>
+            ) : null}
             <div><dt>発売日</dt><dd>{formatDate(product.releaseDate)}</dd></div>
           </dl>
 
@@ -144,33 +183,22 @@ export default async function WorkDetailPage({ params }: PageProps) {
               </div>
             </section>
           ) : null}
-
-          {product.tags.length > 0 ? (
-            <section className="detailSideSection">
-              <h2>タグ</h2>
-              <div className="tagList">
-                {product.tags.slice(0, 12).map((tag, index) => (
-                  <span key={`${tag}_${index}`}>{tag}</span>
-                ))}
-              </div>
-            </section>
-          ) : null}
         </aside>
       </div>
 
       <article className="detailBelow">
-        {product.description ? (
-          <section className="detailSection">
-            <h2>作品説明</h2>
-            <p>{product.description}</p>
-          </section>
-        ) : null}
-
         <WorkTrendCharts
           priceCurrent={product.priceCurrent}
           priceOriginal={product.priceOriginal}
           salesCount={product.salesCount}
         />
+
+        {sameSellerProducts.length > 0 ? (
+          <section className="detailSection sameSellerSection">
+            <h2>同じサークルの作品</h2>
+            <ProductGrid products={sameSellerProducts} variant="list" />
+          </section>
+        ) : null}
 
         <section className="detailSection detailSection--muted">
           <h2>管理情報</h2>

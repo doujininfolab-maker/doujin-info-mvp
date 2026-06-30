@@ -5,18 +5,20 @@ import { ScrollRail } from "./ScrollRail";
 export function ProductGrid({
   products,
   showRank = false,
+  rankOffset = 0,
   variant = "grid",
   rail = false,
   ariaLabel = "商品リスト",
 }: {
   products: Product[];
   showRank?: boolean;
+  rankOffset?: number;
   variant?: ProductCardVariant;
   rail?: boolean;
   ariaLabel?: string;
 }) {
   const content = products.map((product, index) => (
-    <ProductCard key={product.productId} product={product} rank={showRank ? index + 1 : undefined} variant={variant} />
+    <ProductCard key={product.productId} product={product} rank={showRank ? rankOffset + index + 1 : undefined} variant={variant} />
   ));
 
   if (rail) {

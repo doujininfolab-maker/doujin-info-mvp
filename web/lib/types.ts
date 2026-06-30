@@ -22,6 +22,11 @@ export type ProductImage = {
   height?: number;
 };
 
+export type ProductRatingBreakdown = {
+  star: 1 | 2 | 3 | 4 | 5;
+  count: number;
+};
+
 export type Seller = {
   sellerId?: string;
   sellerName?: string;
@@ -67,6 +72,7 @@ export type Product = {
   rating?: number;
   ratingAverage?: number;
   reviewCount?: number;
+  ratingBreakdown?: ProductRatingBreakdown[];
 
   releaseDate?: string;
 
@@ -119,6 +125,7 @@ export type ProductDailyMetric = {
   rating?: number;
   ratingAverage?: number;
   reviewCount?: number;
+  ratingBreakdown?: ProductRatingBreakdown[];
 
   fetchedAt: FirestoreTimestampLike | string;
 };
@@ -212,6 +219,7 @@ export type ProductListFilter = {
   audience: Audience;
   category: Category;
   limitCount?: number;
+  offsetCount?: number;
 };
 
 export type SiteSegment = {
@@ -224,4 +232,31 @@ export type SiteSegment = {
   path: string;
   enabled: boolean;
   description: string;
+};
+
+export type SellerSummary = {
+  sellerKey: string;
+  sellerId?: string;
+  sellerName: string;
+  sellerUrl?: string;
+  sellerType?: SellerType;
+
+  platform: Platform;
+  audience: Audience;
+  category: Category;
+
+  productCount: number;
+  totalSalesCount: number;
+  averageSalesCount: number;
+  estimatedRevenue: number;
+  averagePrice?: number;
+
+  firstReleaseDate?: string;
+  latestReleaseDate?: string;
+  newestProductTitle?: string;
+
+  topProduct?: Product;
+  latestProduct?: Product;
+  products?: Product[];
+  tags: { name: string; count: number }[];
 };

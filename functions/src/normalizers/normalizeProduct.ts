@@ -17,6 +17,7 @@ type RawNormalizedProduct = RawProductDetail & {
   rating?: number;
   ratingAverage?: number;
   reviewCount?: number;
+  ratingBreakdown?: Product["ratingBreakdown"];
   releaseDate?: string;
   ageRating?: "all" | "r15" | "r18" | "adult";
   workType?: string;
@@ -91,6 +92,7 @@ export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Pr
     rating: value.rating ?? value.ratingAverage,
     ratingAverage: value.ratingAverage ?? value.rating,
     reviewCount: value.reviewCount,
+    ratingBreakdown: value.ratingBreakdown,
     releaseDate: value.releaseDate,
     ageRating: value.ageRating ?? (target.audience === "adult" ? "adult" : "all"),
     isAdult: value.ageRating === "r18" || value.ageRating === "adult" || target.audience === "adult",

@@ -18,6 +18,11 @@ export type ProductImage = {
   height?: number;
 };
 
+export type ProductRatingBreakdown = {
+  star: 1 | 2 | 3 | 4 | 5;
+  count: number;
+};
+
 export type Seller = {
   sellerId?: string;
   sellerName?: string;
@@ -63,6 +68,7 @@ export type Product = {
   rating?: number;
   ratingAverage?: number;
   reviewCount?: number;
+  ratingBreakdown?: ProductRatingBreakdown[];
 
   releaseDate?: string;
 
@@ -115,6 +121,7 @@ export type ProductDailyMetric = {
   rating?: number;
   ratingAverage?: number;
   reviewCount?: number;
+  ratingBreakdown?: ProductRatingBreakdown[];
 
   fetchedAt: Timestamp;
 };

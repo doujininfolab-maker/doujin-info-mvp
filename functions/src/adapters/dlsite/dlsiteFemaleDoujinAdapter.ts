@@ -1,4 +1,4 @@
-import type { ProductImage, RawProductDetail, RankingType } from "../../types";
+import type { ProductImage, ProductRatingBreakdown, RawProductDetail, RankingType } from "../../types";
 import type { RankingFetchResult, SourceAdapter } from "../types";
 import { BlockedAccessError } from "../types";
 import { normalizeProduct } from "../../normalizers/normalizeProduct";
@@ -133,20 +133,6 @@ function extractProductIds(html: string): string[] {
   }
 
   return [...ids];
-}
-
-function extractAnchorsByHref(html: string, hrefPattern: RegExp, limit: number): string[] {
-  const values: string[] = [];
-  const anchorPattern = /<a\b([^>]*href=["'][^"']+["'][^>]*)>([\s\S]*?)<\/a>/gi;
-  for (const match of html.matchAll(anchorPattern)) {
-    const attrs = match[1] ?? "";
-    if (!hrefPattern.test(attrs)) continue;
-    hrefPattern.lastIndex = 0;
-    const text = cleanText(match[2]);
-    if (text) values.push(text);
-    if (values.length >= limit) break;
-  }
-  return uniq(values).slice(0, limit);
 }
 
 
@@ -297,6 +283,7 @@ type DlsiteAjaxInfo = {
   salesCount?: number;
   rating?: number;
   reviewCount?: number;
+  ratingBreakdown?: ProductRatingBreakdown[];
   releaseDate?: string;
 };
 
@@ -363,11 +350,42 @@ function extractImageUrlsFromHtml(html: string, sourceProductId: string): Array<
     );
 }
 
+function mergeDlsiteAjaxInfo(base: DlsiteAjaxInfo, next: DlsiteAjaxInfo): DlsiteAjaxInfo {
+  return {
+    priceCurrent: base.priceCurrent ?? next.priceCurrent,
+    priceOriginal: base.priceOriginal ?? next.priceOriginal,
+    discountRate: base.discountRate ?? next.discountRate,
+    salesCount: base.salesCount ?? next.salesCount,
+    rating: base.rating ?? next.rating,
+    reviewCount: base.reviewCount ?? next.reviewCount,
+    ratingBreakdown: base.ratingBreakdown && base.ratingBreakdown.length > 0 ? base.ratingBreakdown : next.ratingBreakdown,
+    releaseDate: base.releaseDate ?? next.releaseDate,
+  };
+}
+
+function parseDlsiteAjaxInfo(parsed: unknown): DlsiteAjaxInfo {
+  const values = flattenJsonValues(parsed);
+  const info: DlsiteAjaxInfo = {};
+
+  info.salesCount = firstNumberByKey(values, ["dl_count", "dlCount", "download_count", "downloadCount", "sales_count", "salesCount"]);
+  info.rating = firstNumberByKey(values, ["rate_average_2dp", "rateAverage2dp", "rate_average", "rateAverage", "ratingValue"]);
+  info.reviewCount = firstNumberByKey(values, ["rate_count", "rateCount", "rating_count", "ratingCount", "review_count", "reviewCount"]);
+  info.priceCurrent = firstNumberByKey(values, ["price", "priceCurrent", "price_current", "work_price"]);
+  info.priceOriginal = firstNumberByKey(values, ["official_price", "priceOriginal", "price_original", "regular_price", "base_price"]);
+  info.discountRate = firstNumberByKey(values, ["discount_rate", "discountRate", "discount"]);
+  info.releaseDate = normalizeReleaseDate(firstStringByKey(values, ["regist_date", "release_date", "releaseDate", "datePublished"]));
+  info.ratingBreakdown = findRatingBreakdownInJson(parsed, info.rating);
+
+  return info;
+}
+
 async function fetchProductInfoAjax(sourceProductId: string): Promise<DlsiteAjaxInfo> {
   const urls = [
     `${DLSITE_GIRLS_BASE_URL}/product/info/ajax?product_id=${sourceProductId}`,
     `${DLSITE_GIRLS_BASE_URL}/product/info/ajax?product_id[]=${sourceProductId}`,
   ];
+
+  let merged: DlsiteAjaxInfo = {};
 
   for (const url of urls) {
     try {
@@ -384,24 +402,19 @@ async function fetchProductInfoAjax(sourceProductId: string): Promise<DlsiteAjax
 
       const text = await response.text();
       const parsed = JSON.parse(text) as unknown;
-      const values = flattenJsonValues(parsed);
-      const info: DlsiteAjaxInfo = {};
+      merged = mergeDlsiteAjaxInfo(merged, parseDlsiteAjaxInfo(parsed));
 
-      info.salesCount = firstNumberByKey(values, ["dl_count", "dlCount", "download_count", "downloadCount", "sales_count", "salesCount"]);
-      info.rating = firstNumberByKey(values, ["rate_average_2dp", "rateAverage2dp", "rate_average", "rateAverage", "ratingValue"]);
-      info.reviewCount = firstNumberByKey(values, ["rate_count", "rateCount", "rating_count", "ratingCount", "review_count", "reviewCount"]);
-      info.priceCurrent = firstNumberByKey(values, ["price", "priceCurrent", "price_current", "work_price"]);
-      info.priceOriginal = firstNumberByKey(values, ["official_price", "priceOriginal", "price_original", "regular_price", "base_price"]);
-      info.discountRate = firstNumberByKey(values, ["discount_rate", "discountRate", "discount"]);
-      info.releaseDate = normalizeReleaseDate(firstStringByKey(values, ["regist_date", "release_date", "releaseDate", "datePublished"]));
-
-      return info;
+      // product_id と product_id[] で返る項目が微妙に違うことがある。
+      // 評価内訳が取れた時点では十分だが、取れない場合は次のURLも試す。
+      if (merged.ratingBreakdown && merged.ratingBreakdown.length > 0) {
+        return merged;
+      }
     } catch {
       // 公開ページHTMLのパース結果を優先して処理継続する。
     }
   }
 
-  return {};
+  return merged;
 }
 
 function flattenJsonValues(value: unknown, prefix = ""): Map<string, unknown> {
@@ -548,6 +561,368 @@ function extractEvaluationCount(html: string, text: string): number | undefined 
   );
 }
 
+
+function normalizeRatingBreakdown(
+  counts: number[],
+  rating?: number,
+): ProductRatingBreakdown[] | undefined {
+  if (counts.length < 5) return undefined;
+
+  const firstFive = counts.slice(0, 5).map((count) => Math.max(0, Math.floor(count || 0)));
+  if (firstFive.every((count) => count === 0)) return undefined;
+
+  const ascending = firstFive.map((count, index) => ({ star: (index + 1) as 1 | 2 | 3 | 4 | 5, count }));
+  const descending = firstFive.map((count, index) => ({ star: (5 - index) as 1 | 2 | 3 | 4 | 5, count }));
+
+  if (rating !== undefined && rating > 0) {
+    const score = (items: ProductRatingBreakdown[]) => {
+      const total = items.reduce((sum, item) => sum + item.count, 0);
+      if (total <= 0) return Number.MAX_SAFE_INTEGER;
+      const average = items.reduce((sum, item) => sum + item.star * item.count, 0) / total;
+      return Math.abs(average - rating);
+    };
+
+    return score(descending) < score(ascending) ? descending : ascending;
+  }
+
+  const averageAscending = ascending.reduce((sum, item) => sum + item.star * item.count, 0) / firstFive.reduce((sum, count) => sum + count, 0);
+  const averageDescending = descending.reduce((sum, item) => sum + item.star * item.count, 0) / firstFive.reduce((sum, count) => sum + count, 0);
+  return averageDescending >= averageAscending ? descending : ascending;
+}
+
+function normalizeExplicitRatingBreakdown(
+  byStar: Partial<Record<1 | 2 | 3 | 4 | 5, number>>,
+): ProductRatingBreakdown[] | undefined {
+  const items = ([5, 4, 3, 2, 1] as const).map((star) => ({
+    star,
+    count: Math.max(0, Math.floor(byStar[star] ?? 0)),
+  }));
+
+  if (items.every((item) => item.count === 0)) return undefined;
+  return items;
+}
+
+function setRatingBreakdownCount(
+  byStar: Partial<Record<1 | 2 | 3 | 4 | 5, number>>,
+  star: number | undefined,
+  count: number | undefined,
+): void {
+  if (star !== 1 && star !== 2 && star !== 3 && star !== 4 && star !== 5) return;
+  if (count === undefined || !Number.isFinite(count) || count < 0) return;
+  byStar[star] = Math.max(0, Math.floor(count));
+}
+
+function findStarCountInObject(record: Record<string, unknown>): { star?: number; count?: number } {
+  let star: number | undefined;
+  let count: number | undefined;
+
+  for (const [key, rawValue] of Object.entries(record)) {
+    const lowerKey = key.toLowerCase();
+    const numberValue = typeof rawValue === "number" ? rawValue : typeof rawValue === "string" ? toNumber(rawValue) : undefined;
+
+    if (numberValue === undefined) continue;
+
+    if (/^(?:star|stars|rate|rating|score|level|rank|評価|星)$/i.test(lowerKey)) {
+      star = numberValue;
+      continue;
+    }
+
+    if (/(?:count|num|total|件数|votes?|review|rate_count)$/i.test(lowerKey)) {
+      count = numberValue;
+    }
+  }
+
+  return { star, count };
+}
+
+function extractRatingBreakdownFromObject(
+  value: unknown,
+  rating?: number,
+): ProductRatingBreakdown[] | undefined {
+  if (!value || typeof value !== "object") return undefined;
+
+  if (Array.isArray(value)) {
+    const byStar: Partial<Record<1 | 2 | 3 | 4 | 5, number>> = {};
+
+    for (const item of value) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const { star, count } = findStarCountInObject(item as Record<string, unknown>);
+      setRatingBreakdownCount(byStar, star, count);
+    }
+
+    const explicit = normalizeExplicitRatingBreakdown(byStar);
+    if (explicit) return explicit;
+
+    const counts = value
+      .map((item) => (typeof item === "number" ? item : typeof item === "string" ? toNumber(item) : undefined))
+      .filter((item): item is number => item !== undefined);
+    return normalizeRatingBreakdown(counts, rating);
+  }
+
+  const record = value as Record<string, unknown>;
+  const byStar: Partial<Record<1 | 2 | 3 | 4 | 5, number>> = {};
+
+  for (const [key, rawValue] of Object.entries(record)) {
+    const starMatch =
+      key.match(/(?:star|stars|rate|rating|score|評価|星)[_-]?([1-5])(?:[_-]?(?:count|num|total|件数))?$/i) ??
+      key.match(/(?:count|num|total|件数)[_-]?([1-5])$/i) ??
+      key.match(/^([1-5])$/);
+    if (!starMatch?.[1]) continue;
+    const count = typeof rawValue === "number" ? rawValue : typeof rawValue === "string" ? toNumber(rawValue) : undefined;
+    setRatingBreakdownCount(byStar, Number(starMatch[1]), count);
+  }
+
+  return normalizeExplicitRatingBreakdown(byStar);
+}
+
+function findRatingBreakdownInJson(
+  value: unknown,
+  rating?: number,
+  depth = 0,
+): ProductRatingBreakdown[] | undefined {
+  if (depth > 10 || !value || typeof value !== "object") return undefined;
+
+  if (Array.isArray(value)) {
+    const direct = extractRatingBreakdownFromObject(value, rating);
+    if (direct) return direct;
+
+    for (const item of value) {
+      const found = findRatingBreakdownInJson(item, rating, depth + 1);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const direct = extractRatingBreakdownFromObject(record, rating);
+  if (direct) return direct;
+
+  for (const [key, childValue] of Object.entries(record)) {
+    const lowerKey = key.toLowerCase();
+    if (
+      /(?:rate|rating|review|evaluation|star|score)/.test(lowerKey) &&
+      /(?:breakdown|detail|star|distribution|count|histogram|summary)/.test(lowerKey)
+    ) {
+      const found = extractRatingBreakdownFromObject(childValue, rating) ?? findRatingBreakdownInJson(childValue, rating, depth + 1);
+      if (found) return found;
+    }
+  }
+
+  for (const childValue of Object.values(record)) {
+    const found = findRatingBreakdownInJson(childValue, rating, depth + 1);
+    if (found) return found;
+  }
+
+  return undefined;
+}
+
+function extractRatingBreakdownFromText(text: string): ProductRatingBreakdown[] | undefined {
+  const byStar: Partial<Record<1 | 2 | 3 | 4 | 5, number>> = {};
+  const normalizedText = decodeHtml(text).replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
+
+  for (const star of [5, 4, 3, 2, 1] as const) {
+    const patterns = [
+      new RegExp(`星\\s*${star}\\s*つ?[\\s\\S]{0,120}?[（(]\\s*([0-9][0-9,]*)\\s*[)）]`, "i"),
+      new RegExp(`星\\s*${star}\\s*つ?[\\s\\S]{0,60}?([0-9][0-9,]*)`, "i"),
+      new RegExp(`${star}\\s*つ星[\\s\\S]{0,120}?[（(]\\s*([0-9][0-9,]*)\\s*[)）]`, "i"),
+      new RegExp(`${star}\\s*つ星[\\s\\S]{0,60}?([0-9][0-9,]*)`, "i"),
+      new RegExp(`★\\s*${star}[\\s\\S]{0,60}?([0-9][0-9,]*)`, "i"),
+    ];
+
+    for (const pattern of patterns) {
+      const match = normalizedText.match(pattern);
+      const count = toNumber(match?.[1]);
+      if (count !== undefined) {
+        byStar[star] = Math.max(0, Math.floor(count));
+        break;
+      }
+    }
+  }
+
+  return normalizeExplicitRatingBreakdown(byStar);
+}
+
+function extractRatingBreakdownFromDlsiteRatingMap(html: string): ProductRatingBreakdown[] | undefined {
+  const normalizedHtml = decodeHtml(decodeJsEscapedUrl(html));
+  const byStar: Partial<Record<1 | 2 | 3 | 4 | 5, number>> = {};
+
+  // DLsiteのhover後DOMは概ね以下の形。
+  //   <dt class="rating_map_label"><p>星5つ</p></dt> ... <dd>(403)</dd>
+  // タグの入れ子が崩れていても拾えるよう、rating_map_label から次の count dd を短い範囲で探す。
+  const labelPattern = /class=["'][^"']*\brating_map_label\b[^"']*["'][\s\S]{0,240}?星\s*([1-5])\s*つ?[\s\S]{0,900}?[（(]\s*([0-9][0-9,]*)\s*[)）]/gi;
+  for (const match of normalizedHtml.matchAll(labelPattern)) {
+    setRatingBreakdownCount(byStar, Number(match[1]), toNumber(match[2]));
+  }
+
+  const direct = normalizeExplicitRatingBreakdown(byStar);
+  if (direct) return direct;
+
+  // class名が削られた断片にも対応。星ラベルの直後、次の星ラベルまでの最後の括弧数字を件数とする。
+  for (const star of [5, 4, 3, 2, 1] as const) {
+    const startMatch = normalizedHtml.match(new RegExp(`星\\s*${star}\\s*つ?`, "i"));
+    if (!startMatch || startMatch.index === undefined) continue;
+
+    const startIndex = startMatch.index + startMatch[0].length;
+    const nextStars = ([5, 4, 3, 2, 1] as const)
+      .filter((nextStar) => nextStar !== star)
+      .map((nextStar) => normalizedHtml.slice(startIndex).search(new RegExp(`星\\s*${nextStar}\\s*つ?`, "i")))
+      .filter((index) => index >= 0);
+    const endIndex = nextStars.length > 0 ? startIndex + Math.min(...nextStars) : Math.min(normalizedHtml.length, startIndex + 1200);
+    const chunk = stripTags(normalizedHtml.slice(startIndex, endIndex));
+    const parenNumbers = [...chunk.matchAll(/[（(]\s*([0-9][0-9,]*)\s*[)）]/g)]
+      .map((match) => toNumber(match[1]))
+      .filter((value): value is number => value !== undefined);
+
+    if (parenNumbers.length > 0) {
+      byStar[star] = Math.max(0, Math.floor(parenNumbers[parenNumbers.length - 1]));
+    }
+  }
+
+  return normalizeExplicitRatingBreakdown(byStar);
+}
+
+function extractRatingBreakdownFromRatingRows(html: string): ProductRatingBreakdown[] | undefined {
+  return extractRatingBreakdownFromDlsiteRatingMap(html);
+}
+
+function findClosingTagEnd(html: string, startIndex: number, tagName: string): number | undefined {
+  const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const tagPattern = new RegExp(`</?${escapedTag}\\b[^>]*>`, "gi");
+  tagPattern.lastIndex = startIndex;
+  let depth = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tagPattern.exec(html)) !== null) {
+    const tag = match[0];
+    if (tag.startsWith("</")) {
+      depth -= 1;
+      if (depth <= 0) return match.index + tag.length;
+    } else if (!tag.endsWith("/>")) {
+      depth += 1;
+    }
+  }
+
+  return undefined;
+}
+
+function extractRatingBreakdownFromRatingPopup(html: string): ProductRatingBreakdown[] | undefined {
+  const normalizedHtml = decodeHtml(decodeJsEscapedUrl(html));
+  const popupPattern = /<([a-z][a-z0-9]*)\b[^>]*(?:(?:class|id)=['"][^'"]*\brating_popup\b[^'"]*['"])[^>]*>/gi;
+
+  for (const match of normalizedHtml.matchAll(popupPattern)) {
+    const tagName = match[1];
+    if (!tagName) continue;
+    const startIndex = match.index ?? 0;
+    const endIndex = findClosingTagEnd(normalizedHtml, startIndex, tagName) ?? Math.min(normalizedHtml.length, startIndex + 8000);
+    const popupHtml = normalizedHtml.slice(startIndex, endIndex);
+    const popupText = stripTags(popupHtml);
+
+    const fromRows = extractRatingBreakdownFromRatingRows(popupHtml);
+    if (fromRows) return fromRows;
+
+    const fromText = extractRatingBreakdownFromText(popupText);
+    if (fromText) return fromText;
+
+    const fromAttrs = extractRatingBreakdownFromHtmlAttributes(popupHtml);
+    if (fromAttrs) return fromAttrs;
+  }
+
+  return undefined;
+}
+
+function extractRatingBreakdownFromEmbeddedRatingPopupFragments(html: string): ProductRatingBreakdown[] | undefined {
+  const normalizedHtml = decodeHtml(decodeJsEscapedUrl(html));
+
+  // hover時にDOMへ挿入されるHTMLが、script内の文字列/templateとして埋まっているケース用。
+  // rating_popup / rating_map を含む周辺だけを切り出して、同じパーサにかける。
+  const markerPatterns = [/rating_popup/gi, /rating_map_label/gi, /rating_map_body/gi];
+  for (const markerPattern of markerPatterns) {
+    for (const match of normalizedHtml.matchAll(markerPattern)) {
+      const markerIndex = match.index ?? 0;
+      const startIndex = Math.max(0, markerIndex - 2000);
+      const endIndex = Math.min(normalizedHtml.length, markerIndex + 10000);
+      const fragment = normalizedHtml.slice(startIndex, endIndex);
+
+      const fromMap = extractRatingBreakdownFromDlsiteRatingMap(fragment);
+      if (fromMap) return fromMap;
+
+      const fromText = extractRatingBreakdownFromText(stripTags(fragment));
+      if (fromText) return fromText;
+    }
+  }
+
+  return undefined;
+}
+
+
+function extractRatingBreakdownFromHtmlAttributes(html: string): ProductRatingBreakdown[] | undefined {
+  const byStar: Partial<Record<1 | 2 | 3 | 4 | 5, number>> = {};
+  const normalizedHtml = decodeHtml(decodeJsEscapedUrl(html));
+
+  const starThenCountPatterns = [
+    /(?:star|stars|rate|rating|score|評価|星)[_-]?([1-5])[^>]{0,220}?(?:count|num|total|件数)["']?\s*[:=]\s*["']?([0-9,]+)/gi,
+    /(?:data-star|data-rate|data-rating|data-score)["']?\s*=\s*["']?([1-5])["']?[^>]{0,220}?(?:data-count|data-num|data-total)["']?\s*=\s*["']?([0-9,]+)/gi,
+  ];
+  const countThenStarPatterns = [
+    /(?:count|num|total|件数)["']?\s*[:=]\s*["']?([0-9,]+)[^>]{0,220}?(?:star|stars|rate|rating|score|評価|星)[_-]?([1-5])/gi,
+    /(?:data-count|data-num|data-total)["']?\s*=\s*["']?([0-9,]+)["']?[^>]{0,220}?(?:data-star|data-rate|data-rating|data-score)["']?\s*=\s*["']?([1-5])["']?/gi,
+  ];
+
+  for (const pattern of starThenCountPatterns) {
+    for (const match of normalizedHtml.matchAll(pattern)) {
+      setRatingBreakdownCount(byStar, Number(match[1]), toNumber(match[2]));
+    }
+  }
+
+  for (const pattern of countThenStarPatterns) {
+    for (const match of normalizedHtml.matchAll(pattern)) {
+      setRatingBreakdownCount(byStar, Number(match[2]), toNumber(match[1]));
+    }
+  }
+
+  return normalizeExplicitRatingBreakdown(byStar);
+}
+
+function extractRatingBreakdown(html: string, text: string, rating?: number): ProductRatingBreakdown[] | undefined {
+  const normalizedHtml = decodeHtml(decodeJsEscapedUrl(html));
+  const jsonPatterns = [
+    /(?:rate|rating|review|evaluation)[_-]?(?:count)?[_-]?(?:detail|breakdown|distribution|histogram)\s*[=:]\s*(\[[\s\S]*?\]|\{[\s\S]*?\})/gi,
+    /["'](?:rate|rating|review|evaluation)[_-]?(?:count)?[_-]?(?:detail|breakdown|distribution|histogram)["']\s*:\s*(\[[\s\S]*?\]|\{[\s\S]*?\})/gi,
+  ];
+
+  for (const pattern of jsonPatterns) {
+    for (const match of normalizedHtml.matchAll(pattern)) {
+      const rawJson = match[1];
+      if (!rawJson) continue;
+      try {
+        const parsed = JSON.parse(decodeJsEscapedUrl(rawJson).replace(/'/g, '"')) as unknown;
+        const found = extractRatingBreakdownFromObject(parsed, rating);
+        if (found) return found;
+      } catch {
+        // HTML本文からの抽出へフォールバックする。
+      }
+    }
+  }
+
+  const scriptPattern = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  for (const match of normalizedHtml.matchAll(scriptPattern)) {
+    try {
+      const parsed = JSON.parse(decodeHtml(match[1] ?? "")) as unknown;
+      const found = findRatingBreakdownInJson(parsed, rating);
+      if (found) return found;
+    } catch {
+      // HTML本文からの抽出へフォールバックする。
+    }
+  }
+
+  return (
+    extractRatingBreakdownFromRatingPopup(normalizedHtml) ??
+    extractRatingBreakdownFromEmbeddedRatingPopupFragments(normalizedHtml) ??
+    extractRatingBreakdownFromHtmlAttributes(normalizedHtml) ??
+    extractRatingBreakdownFromText(text)
+  );
+}
+
 function extractSalesCount(html: string, text: string): number | undefined {
   return (
     extractJsonLikeNumber(html, [
@@ -600,12 +975,16 @@ async function extractProductDetail(html: string, sourceProductId: string): Prom
   // MVPでは reviewCount に評価数を入れて画面表示する。
   const reviewCount = ajaxInfo.reviewCount ?? extractEvaluationCount(html, text);
   const rating = ajaxInfo.rating ?? extractRating(html, text);
+  const ratingBreakdown = ajaxInfo.ratingBreakdown ?? extractRatingBreakdown(html, text, rating) ?? [];
   const releaseDate = ajaxInfo.releaseDate ?? normalizeReleaseDate(
     text.match(/(?:販売日|発売日)\s*[:：]?\s*(\d{4}[/.年-]\d{1,2}[/.月-]\d{1,2})/)?.[1] ??
       matchFirst(html, [/itemprop=["']datePublished["'][^>]+content=["']([^"']+)["']/i]),
   );
   const genres = extractDlsiteMainGenres(html);
-  const tags = extractAnchorsByHref(html, /keyword|tag|options/i, 30).slice(0, 30);
+  // DLsiteの keyword/tag/options 系リンクは「作品をもっと見る」「PDF同梱」など
+  // 作品分類として使いづらいノイズが混ざりやすいため、MVPでは取得しない。
+  // ジャンル導線は main_genre 由来の genres / genreIds に一本化する。
+  const tags: string[] = [];
   const hintTypes = sourceProductIdHints.get(sourceProductId) ?? new Set<RankingType>();
   const isAdult = /R18|18禁|成人向け|年齢確認/.test(text);
   const workType =
@@ -625,6 +1004,7 @@ async function extractProductDetail(html: string, sourceProductId: string): Prom
     rating,
     ratingAverage: rating,
     reviewCount,
+    ratingBreakdown,
     releaseDate,
     ageRating: isAdult ? "r18" : "all",
     workType,
@@ -637,7 +1017,7 @@ async function extractProductDetail(html: string, sourceProductId: string): Prom
     genres,
     tags,
     genreIds: genres.map((genre) => `dlsite:${genre.toLowerCase()}`),
-    tagIds: tags.map((tag) => `dlsite:${tag.toLowerCase()}`),
+    tagIds: [],
     isNew: hintTypes.has("new"),
     isOnSale: hintTypes.has("sale") || Boolean(discountRate && discountRate > 0),
   };

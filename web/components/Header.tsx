@@ -65,7 +65,7 @@ export function Header() {
             <Link href="/dlsite/female/doujin/ranking"><NavIcon>♕</NavIcon>ランキング</Link>
             <Link href="/dlsite/female/doujin/new"><NavIcon>◉</NavIcon>新着</Link>
             <Link href="/dlsite/female/doujin/sale"><NavIcon>◇</NavIcon>セール</Link>
-            <Link href="/dlsite/female/doujin"><NavIcon>♧</NavIcon>サークル</Link>
+            <Link href="/dlsite/female/doujin/circle"><NavIcon>♧</NavIcon>サークル</Link>
             <Link href="/dlsite/female/doujin"><NavIcon>⌘</NavIcon>ジャンル</Link>
             <Link href="/dlsite/female/doujin"><NavIcon>♡</NavIcon>お気に入り</Link>
           </nav>

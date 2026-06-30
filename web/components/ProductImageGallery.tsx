@@ -7,7 +7,15 @@ function imageSrc(image?: ProductImage): string {
   return image?.url || image?.thumbnailUrl || "/no-image.svg";
 }
 
-export function ProductImageGallery({ title, images }: { title: string; images: ProductImage[] }) {
+export function ProductImageGallery({
+  title,
+  images,
+  officialUrl,
+}: {
+  title: string;
+  images: ProductImage[];
+  officialUrl?: string;
+}) {
   const sortedImages = useMemo(
     () => [...images].sort((a, b) => a.displayOrder - b.displayOrder),
     [images],
@@ -42,27 +50,13 @@ export function ProductImageGallery({ title, images }: { title: string; images: 
   return (
     <div className="gallery">
       <div className="gallery__mainFrame">
-        {canMove ? (
-          <button
-            type="button"
-            className="gallery__nav gallery__nav--prev"
-            onClick={() => move(-1)}
-            aria-label="前の画像"
-          >
-            ‹
-          </button>
-        ) : null}
-        <img className="gallery__main" src={mainSrc} alt={title} />
-        {canMove ? (
-          <button
-            type="button"
-            className="gallery__nav gallery__nav--next"
-            onClick={() => move(1)}
-            aria-label="次の画像"
-          >
-            ›
-          </button>
-        ) : null}
+        {officialUrl ? (
+          <a className="gallery__mainLink" href={officialUrl} target="_blank" rel="sponsored noreferrer" aria-label="公式サイトで見る">
+            <img className="gallery__main" src={mainSrc} alt={title} />
+          </a>
+        ) : (
+          <img className="gallery__main" src={mainSrc} alt={title} />
+        )}
       </div>
 
       {sortedImages.length > 1 ? (

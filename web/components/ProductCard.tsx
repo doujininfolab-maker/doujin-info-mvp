@@ -21,6 +21,25 @@ function getTags(product: Product, count = 2): string[] {
   return source.slice(0, count);
 }
 
+function formatCurrencyValue(value?: number): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "-円";
+  return `${formatNumber(Math.round(value))}円`;
+}
+
+function getEstimatedRevenue(product: Product): number | undefined {
+  const price = product.priceCurrent;
+  const sales = product.salesCount;
+
+  if (typeof price !== "number" || typeof sales !== "number") return undefined;
+  return price * sales;
+}
+
+function getSellerHref(product: Product): string | undefined {
+  const sellerKey = product.seller?.sellerId?.trim() || product.seller?.sellerName?.trim();
+  if (!sellerKey) return undefined;
+  return `/${product.platform}/${product.audience}/${product.category}/circle/${encodeURIComponent(sellerKey)}`;
+}
+
 export function ProductCard({
   product,
   rank,
@@ -33,9 +52,12 @@ export function ProductCard({
   const imageUrl = getProductImage(product);
   const tags = getTags(product, variant === "list" ? 8 : 2);
   const sellerName = product.seller?.sellerName ?? product.seller?.sellerId ?? "サークル未取得";
+  const sellerHref = getSellerHref(product);
   const isSale = variant === "sale" || product.isDiscounted || Boolean(product.discountRate);
   const isNew = variant === "new";
   const isList = variant === "list";
+  const isRankingList = isList && Boolean(rank);
+  const estimatedRevenue = getEstimatedRevenue(product);
 
   return (
     <article className={`productCard productCard--${variant}`}>
@@ -48,7 +70,7 @@ export function ProductCard({
       <div className="productCard__body">
         {isList ? <span className="productCard__type">{product.workType || product.category}</span> : null}
         <Link className="productCard__title" href={`/work/${product.productId}`}>{product.title}</Link>
-        <p className="productCard__seller">サークル：{sellerName}</p>
+        <p className="productCard__seller">サークル：{sellerHref ? <Link href={sellerHref}>{sellerName}</Link> : sellerName}</p>
         <PriceLabel
           priceCurrent={product.priceCurrent}
           priceOriginal={product.priceOriginal}
@@ -57,7 +79,7 @@ export function ProductCard({
           compact
         />
         <div className="productCard__meta">
-          <span>販売 {formatNumber(product.salesCount)}</span>
+          {!isRankingList ? <span>販売 {formatNumber(product.salesCount)}</span> : null}
           <span>★ {formatRating(product.rating ?? product.ratingAverage)}</span>
           {isList ? <span>発売 {formatDate(product.releaseDate)}</span> : null}
         </div>
@@ -67,11 +89,16 @@ export function ProductCard({
           </div>
         ) : null}
       </div>
-      {isList && rank ? (
-        <div className="listRankBadge" aria-label={`${rank}位`}>
-          <span>♛</span>
-          <strong>{rank}</strong>
-          <small>ランキング</small>
+      {isRankingList ? (
+        <div className="listRankBadge listRankBadge--sales" aria-label={`${rank}位 売上額 ${formatCurrencyValue(estimatedRevenue)} 販売数 ${formatNumber(product.salesCount)}本`}>
+          <div className="listRankBadge__rank">
+            <span>♛</span>
+            <strong>{rank}</strong>
+          </div>
+          <div className="listRankBadge__metrics">
+            <strong>{formatCurrencyValue(estimatedRevenue)}</strong>
+            <small>{formatNumber(product.salesCount)}本</small>
+          </div>
         </div>
       ) : null}
     </article>

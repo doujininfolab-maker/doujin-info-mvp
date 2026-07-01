@@ -1,5 +1,5 @@
-import type { ProductImage, ProductRatingBreakdown, RawProductDetail, RankingType } from "../../types";
-import type { RankingFetchResult, SourceAdapter } from "../types";
+import type { ProductContentType, ProductImage, ProductRatingBreakdown, ProductWorkType, RawProductDetail, RankingType } from "../../types";
+import type { RankingFetchOptions, RankingFetchResult, SourceAdapter } from "../types";
 import { BlockedAccessError } from "../types";
 import { normalizeProduct } from "../../normalizers/normalizeProduct";
 
@@ -12,7 +12,7 @@ const target = {
 
 const DLSITE_GIRLS_BASE_URL = "https://www.dlsite.com/girls";
 const DEFAULT_LIST_LIMIT = 20;
-const MAX_LIST_LIMIT = 50;
+const MAX_LIST_LIMIT = 200;
 const USER_AGENT =
   "doujin-info-mvp/0.1 (+https://doujin-info-mvp.web.app; low-frequency public-page fetcher)";
 
@@ -35,8 +35,9 @@ const listUrls: Partial<Record<RankingType, string[]>> = {
   ],
 };
 
-function getListLimit(): number {
-  const parsed = Number(process.env.DLSITE_LIST_LIMIT ?? DEFAULT_LIST_LIMIT);
+function getListLimit(options?: RankingFetchOptions): number {
+  const rawLimit = options?.listLimit ?? Number(process.env.DLSITE_LIST_LIMIT ?? DEFAULT_LIST_LIMIT);
+  const parsed = Number(rawLimit);
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_LIST_LIMIT;
   return Math.min(Math.floor(parsed), MAX_LIST_LIMIT);
 }
@@ -158,6 +159,164 @@ function isDlsiteGenreNoise(value: string): boolean {
     /^\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}\s*まで$/.test(value) ||
     /^(R18|全年齢|マンガ|漫画|コミック|JPEG|JPG|PNG|PDF|ZIP|MP3|WAV|動画|ゲーム|音声|ドラマCD|乙女向け|女性向け|男性向け|成人向け)$/i.test(value)
   );
+}
+
+
+type NormalizedWorkType = {
+  workType: ProductWorkType;
+  workTypeLabel: string;
+};
+
+const DLSITE_WORK_TYPE_CODE_MAP: Record<string, NormalizedWorkType> = {
+  MNG: { workType: "comic", workTypeLabel: "マンガ" },
+  COM: { workType: "comic", workTypeLabel: "マンガ" },
+  ICG: { workType: "cg", workTypeLabel: "CG" },
+  CG: { workType: "cg", workTypeLabel: "CG" },
+  MOV: { workType: "movie", workTypeLabel: "動画" },
+  AVI: { workType: "movie", workTypeLabel: "動画" },
+  SND: { workType: "voice", workTypeLabel: "音声" },
+  SOU: { workType: "voice", workTypeLabel: "音声" },
+  MUS: { workType: "voice", workTypeLabel: "音声" },
+  GAM: { workType: "game", workTypeLabel: "ゲーム" },
+  RPG: { workType: "game", workTypeLabel: "ゲーム" },
+  ADV: { workType: "game", workTypeLabel: "ゲーム" },
+  ACT: { workType: "game", workTypeLabel: "ゲーム" },
+  STG: { workType: "game", workTypeLabel: "ゲーム" },
+  SLN: { workType: "game", workTypeLabel: "ゲーム" },
+  TBL: { workType: "game", workTypeLabel: "ゲーム" },
+  PZL: { workType: "game", workTypeLabel: "ゲーム" },
+  QIZ: { workType: "game", workTypeLabel: "ゲーム" },
+};
+
+function normalizeWorkTypeFromText(value: string | undefined): NormalizedWorkType | undefined {
+  const text = cleanText(value)?.toLowerCase();
+  if (!text) return undefined;
+
+  if (/マンガ|漫画|コミック|manga|comic/.test(text)) return { workType: "comic", workTypeLabel: "マンガ" };
+  if (/cg|イラスト|illust|画像/.test(text)) return { workType: "cg", workTypeLabel: "CG" };
+  if (/動画|ムービー|movie|video|アニメーション/.test(text)) return { workType: "movie", workTypeLabel: "動画" };
+  if (/ゲーム|game|rpg|ロールプレイング|アドベンチャー|シミュレーション|アクション|シューティング|パズル|クイズ/.test(text)) {
+    return { workType: "game", workTypeLabel: "ゲーム" };
+  }
+  if (/音声|asmr|ボイス|voice|ドラマcd|ボイスドラマ|サウンド|sound|音楽/.test(text)) return { workType: "voice", workTypeLabel: "音声" };
+  return undefined;
+}
+
+function normalizeWorkTypeFromCode(value: string | undefined): NormalizedWorkType | undefined {
+  const code = value?.trim().toUpperCase();
+  if (!code) return undefined;
+  return DLSITE_WORK_TYPE_CODE_MAP[code];
+}
+
+function extractDlsiteWorkType(html: string, text: string): NormalizedWorkType {
+  // DLsiteの商品詳細では以下のように作品形式が出る。
+  //   <div class="work_genre" id="category_type">
+  //     <a href=".../works/type/=/work_type/MNG/...">
+  //       <span class="icon MNG" title="マンガ">マンガ</span>
+  //     </a>
+  //   </div>
+  const categoryTypeBlock = matchFirst(html, [
+    /<div\b[^>]*id=["']category_type["'][^>]*>([\s\S]*?)<\/div>/i,
+    /<div\b[^>]*class=["'][^"']*\bwork_genre\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+  ]);
+
+  if (categoryTypeBlock) {
+    const codeFromHref = matchFirst(categoryTypeBlock, [/work_type\/([A-Za-z0-9_]+)/i]);
+    const byHref = normalizeWorkTypeFromCode(codeFromHref);
+    if (byHref) return byHref;
+
+    const codeFromClass = matchFirst(categoryTypeBlock, [/class=["'][^"']*\bicon\s+([A-Za-z0-9_]+)\b[^"']*["']/i]);
+    const byClass = normalizeWorkTypeFromCode(codeFromClass);
+    if (byClass) return byClass;
+
+    const title = matchFirst(categoryTypeBlock, [/title=["']([^"']+)["']/i]);
+    const byTitle = normalizeWorkTypeFromText(title);
+    if (byTitle) return byTitle;
+
+    const byText = normalizeWorkTypeFromText(categoryTypeBlock);
+    if (byText) return byText;
+  }
+
+  const rowPattern = /<tr[^>]*>\s*<t[hd][^>]*>\s*(?:作品形式|作品タイプ|形式)\s*<\/t[hd]>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/i;
+  const byRow = normalizeWorkTypeFromText(matchFirst(html, [rowPattern]));
+  if (byRow) return byRow;
+
+  const byFullText = normalizeWorkTypeFromText(text);
+  return byFullText ?? { workType: "other", workTypeLabel: "その他" };
+}
+
+
+
+type NormalizedContentType = {
+  contentType: ProductContentType;
+  contentTypeLabel: string;
+};
+
+const DLSITE_CONTENT_TYPE_CODE_MAP: Record<string, NormalizedContentType> = {
+  OTM: { contentType: "tl", contentTypeLabel: "TL" },
+  TL: { contentType: "tl", contentTypeLabel: "TL" },
+  TL1: { contentType: "tl", contentTypeLabel: "TL" },
+  TLG: { contentType: "tl", contentTypeLabel: "TL" },
+  BL: { contentType: "bl", contentTypeLabel: "BL" },
+  BL1: { contentType: "bl", contentTypeLabel: "BL" },
+  BLG: { contentType: "bl", contentTypeLabel: "BL" },
+};
+
+function normalizeContentTypeFromCode(value: string | undefined): NormalizedContentType | undefined {
+  const code = value?.trim().toUpperCase();
+  if (!code) return undefined;
+  return DLSITE_CONTENT_TYPE_CODE_MAP[code];
+}
+
+function normalizeContentTypeFromText(value: string | undefined): NormalizedContentType | undefined {
+  const text = cleanText(value);
+  if (!text) return undefined;
+
+  if (/ボーイズラブ|ＢＬ|BL/i.test(text)) return { contentType: "bl", contentTypeLabel: "BL" };
+  if (/乙女向け|ティーンズラブ|ＴＬ|TL/i.test(text)) return { contentType: "tl", contentTypeLabel: "TL" };
+  return undefined;
+}
+
+function pushNormalizedContentType(
+  map: Map<ProductContentType, NormalizedContentType>,
+  item: NormalizedContentType | undefined,
+): void {
+  if (!item) return;
+  map.set(item.contentType, item);
+}
+
+function extractDlsiteContentTypes(html: string): NormalizedContentType[] {
+  const found = new Map<ProductContentType, NormalizedContentType>();
+
+  // DLsiteの商品詳細では以下のようにTL/BL系のカテゴリが出る。
+  //   <a href=".../coupling_option/OTM/from/icon.work">
+  //     <span class="icon OTM" title="乙女向け">乙女向け</span>
+  //   </a>
+  //   <a href=".../coupling_option/BL1/from/icon.work">
+  //     <span class="icon BL1" title="ボーイズラブ">ボーイズラブ</span>
+  //   </a>
+  const anchorPattern = /<a\b([^>]*href=["']([^"']*coupling_option\/([^\/"']+)[^"']*)["'][^>]*)>([\s\S]*?)<\/a>/gi;
+  for (const match of html.matchAll(anchorPattern)) {
+    const attributes = match[1] ?? "";
+    const codeFromHref = match[3];
+    const body = match[4] ?? "";
+    const codeFromClass = matchFirst(body, [/class=["'][^"']*\bicon\s+([A-Za-z0-9_]+)\b[^"']*["']/i]);
+    const title = matchFirst(body, [/title=["']([^"']+)["']/i]) ?? matchFirst(attributes, [/title=["']([^"']+)["']/i]);
+
+    pushNormalizedContentType(found, normalizeContentTypeFromCode(codeFromHref));
+    pushNormalizedContentType(found, normalizeContentTypeFromCode(codeFromClass));
+    pushNormalizedContentType(found, normalizeContentTypeFromText(title));
+    pushNormalizedContentType(found, normalizeContentTypeFromText(body));
+  }
+
+  if (found.size === 0) {
+    const rowPattern = /<tr[^>]*>\s*<t[hd][^>]*>\s*(?:その他|カテゴリ|対象)\s*<\/t[hd]>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi;
+    for (const match of html.matchAll(rowPattern)) {
+      pushNormalizedContentType(found, normalizeContentTypeFromText(match[1]));
+    }
+  }
+
+  return Array.from(found.values());
 }
 
 function extractDlsiteMainGenres(html: string): string[] {
@@ -987,8 +1146,8 @@ async function extractProductDetail(html: string, sourceProductId: string): Prom
   const tags: string[] = [];
   const hintTypes = sourceProductIdHints.get(sourceProductId) ?? new Set<RankingType>();
   const isAdult = /R18|18禁|成人向け|年齢確認/.test(text);
-  const workType =
-    text.includes("音声") || /ASMR/i.test(text) ? "音声" : text.includes("マンガ") || text.includes("漫画") ? "マンガ" : "同人";
+  const workTypeInfo = extractDlsiteWorkType(html, text);
+  const contentTypeInfos = extractDlsiteContentTypes(html);
 
   return {
     sourceProductId,
@@ -1007,7 +1166,10 @@ async function extractProductDetail(html: string, sourceProductId: string): Prom
     ratingBreakdown,
     releaseDate,
     ageRating: isAdult ? "r18" : "all",
-    workType,
+    workType: workTypeInfo.workType,
+    workTypeLabel: workTypeInfo.workTypeLabel,
+    contentTypes: contentTypeInfos.map((item) => item.contentTypeLabel),
+    contentTypeIds: contentTypeInfos.map((item) => `dlsite:${item.contentType}`),
     thumbnailUrl: images[0]?.url,
     mainImageUrl: images[0]?.url,
     images,
@@ -1053,7 +1215,7 @@ export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
   key: "dlsite_female_doujin",
   target,
 
-  async fetchRankingWorkIds(fetchTarget): Promise<RankingFetchResult> {
+  async fetchRankingWorkIds(fetchTarget, options): Promise<RankingFetchResult> {
     const sourceUrls = listUrls[fetchTarget.rankingType] ?? listUrls.daily;
     if (!sourceUrls || sourceUrls.length === 0) {
       return { sourceProductIds: [], sourceUrl: undefined };
@@ -1081,7 +1243,7 @@ export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
       throw new Error(`DLsite list fetch failed: ${fetchTarget.rankingType}: ${failedMessages.join(" / ")}`);
     }
 
-    const sourceProductIds = extractProductIds(html).slice(0, getListLimit());
+    const sourceProductIds = extractProductIds(html).slice(0, getListLimit(options));
     for (const sourceProductId of sourceProductIds) {
       const hints = sourceProductIdHints.get(sourceProductId) ?? new Set<RankingType>();
       hints.add(fetchTarget.rankingType);

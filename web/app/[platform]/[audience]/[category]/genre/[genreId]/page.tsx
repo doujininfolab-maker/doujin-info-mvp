@@ -4,9 +4,12 @@ import { ProductGrid } from "@/components/ProductGrid";
 import { SectionHeader } from "@/components/SectionHeader";
 import { PageSizeSelect } from "@/components/PageSizeSelect";
 import { ListPagination } from "@/components/ListPagination";
+import { WorkTypeTabs } from "@/components/WorkTypeTabs";
 import { parsePageNumber, parsePageSize } from "@/lib/pageSize";
 import { getSegment } from "@/lib/siteSegments";
 import { getProductsByGenre } from "@/lib/firebase/products";
+import { parseWorkType } from "@/lib/workTypes";
+import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
 
 export const dynamic = "force-dynamic";
 
@@ -15,46 +18,23 @@ type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-function decodeRepeated(value: string): string {
-  let current = value;
-
-  for (let i = 0; i < 3; i++) {
-    try {
-      const decoded = decodeURIComponent(current);
-      if (decoded === current) return decoded;
-      current = decoded;
-    } catch {
-      return current;
-    }
+function decodeGenreId(genreId: string): string {
+  try {
+    return decodeURIComponent(genreId);
+  } catch {
+    return genreId;
   }
-
-  return current;
 }
 
-function normalizeGenreId(rawGenreId: string, platform: string): string {
-  const decoded = decodeRepeated(rawGenreId).trim();
-
-  if (decoded.includes(":")) {
-    const [provider, ...rest] = decoded.split(":");
-    const genreName = rest.join(":").trim();
-    return `${provider.toLowerCase()}:${genreName.toLowerCase()}`;
-  }
-
-  return `${platform.toLowerCase()}:${decoded.toLowerCase()}`;
-}
-
-function toGenreLabel(genreId: string): string {
-  const decoded = decodeRepeated(genreId).trim();
-  const label = decoded.includes(":") ? decoded.split(":").slice(1).join(":") : decoded;
-  return label || decoded;
+function displayGenreName(genreId: string): string {
+  return decodeGenreId(genreId).replace(/^dlsite:/, "");
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { platform, audience, category, genreId } = await params;
   const segment = getSegment(platform, audience, category);
-  const genreLabel = toGenreLabel(genreId);
-
-  return { title: segment ? `${genreLabel} | ${segment.label}` : genreLabel };
+  const genreName = displayGenreName(genreId);
+  return { title: segment ? `${genreName} | ${segment.label}` : genreName };
 }
 
 export default async function GenrePage({ params, searchParams }: PageProps) {
@@ -63,11 +43,14 @@ export default async function GenrePage({ params, searchParams }: PageProps) {
   const limitCount = parsePageSize(query.limit);
   const pageNumber = parsePageNumber(query.page);
   const offsetCount = (pageNumber - 1) * limitCount;
+  const workType = parseWorkType(query.workType);
+  const contentScope = parseContentScope(query.contentType);
+  const contentType = contentTypeForFilter(contentScope);
+  const contentTypeParam = contentTypeParamForScope(contentScope);
   const segment = getSegment(platform, audience, category);
   if (!segment || !segment.enabled) notFound();
 
-  const normalizedGenreId = normalizeGenreId(genreId, segment.platform);
-  const genreLabel = toGenreLabel(normalizedGenreId);
+  const normalizedGenreId = decodeGenreId(genreId);
   const products = await getProductsByGenre({
     platform: segment.platform,
     audience: segment.audience,
@@ -75,25 +58,26 @@ export default async function GenrePage({ params, searchParams }: PageProps) {
     genreId: normalizedGenreId,
     limitCount,
     offsetCount,
+    workType,
+    contentType,
   });
 
   return (
     <div className="listPage listPage--wide">
       <section className="contentSection listSection">
-        <SectionHeader title={`${genreLabel} の作品`} description={`${segment.label}のジャンル別作品`} icon="♟">
-          <div className="listToolbar">
-            <PageSizeSelect value={limitCount} />
-            <ListPagination page={pageNumber} limit={limitCount} hasNext={products.length === limitCount} />
-          </div>
+        <SectionHeader title={`${displayGenreName(genreId)} の作品`} description={`${segment.label}のジャンル別作品`} icon="♟">
+          <WorkTypeTabs
+            basePath={`${segment.path}/genre/${encodeURIComponent(normalizedGenreId)}`}
+            currentWorkType={workType}
+            currentParams={{ contentType: contentTypeParam, limit: String(limitCount), page: "1" }}
+          />
         </SectionHeader>
-        {products.length > 0 ? (
-          <>
-            <ProductGrid products={products} variant="list" />
-            <ListPagination page={pageNumber} limit={limitCount} hasNext={products.length === limitCount} />
-          </>
-        ) : (
-          <p className="emptyText">このジャンルの商品はまだ取得されていません。</p>
-        )}
+        <div className="listToolbar listToolbar--below">
+          <PageSizeSelect value={limitCount} />
+          <ListPagination page={pageNumber} limit={limitCount} hasNext={products.length === limitCount} />
+        </div>
+        <ProductGrid products={products} variant="list" contentTypeParam={contentTypeParam} />
+        <ListPagination page={pageNumber} limit={limitCount} hasNext={products.length === limitCount} />
       </section>
     </div>
   );

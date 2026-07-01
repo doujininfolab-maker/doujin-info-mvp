@@ -9,6 +9,8 @@ export function ProductGrid({
   variant = "grid",
   rail = false,
   ariaLabel = "商品リスト",
+  listRankMetric = "revenue",
+  contentTypeParam,
 }: {
   products: Product[];
   showRank?: boolean;
@@ -16,13 +18,23 @@ export function ProductGrid({
   variant?: ProductCardVariant;
   rail?: boolean;
   ariaLabel?: string;
+  listRankMetric?: "revenue" | "sales";
+  contentTypeParam?: string;
 }) {
   const content = products.map((product, index) => (
-    <ProductCard key={product.productId} product={product} rank={showRank ? rankOffset + index + 1 : undefined} variant={variant} />
+    <ProductCard
+      key={product.productId}
+      product={product}
+      rank={showRank ? rankOffset + index + 1 : undefined}
+      variant={variant}
+      listRankMetric={listRankMetric}
+      contentTypeParam={contentTypeParam}
+    />
   ));
 
   if (rail) {
-    return <ScrollRail ariaLabel={ariaLabel}>{content}</ScrollRail>;
+    const resetKey = products.map((product) => product.productId).join("|");
+    return <ScrollRail ariaLabel={ariaLabel} resetKey={resetKey}>{content}</ScrollRail>;
   }
 
   return <div className={`productGrid productGrid--${variant}`}>{content}</div>;

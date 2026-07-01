@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import { BlockedAccessError } from "../adapters/types";
 import { getAdapterForTarget } from "../adapters";
+import { rebuildSiteStatsForTargets } from "./rebuildSiteStats";
 import {
   buildRankItemId,
   buildRankingKey,
@@ -17,21 +18,19 @@ import {
   createRunId,
   nowTimestamp,
   sleep,
-  toIsoDateJst,
   toYyyyMMdd,
-  withoutUndefined,
 } from "../util";
 
 export type FetchDailyProductsOptions = {
   targets: FetchTarget[];
+  listLimit?: number;
+  detailLimit?: number;
   minIntervalMs?: number;
-  maxProductIdsPerTarget?: number;
 };
 
-function buildMetric(product: Product, date: string, dateIso: string): ProductDailyMetric {
+function buildMetric(product: Product, date: string): ProductDailyMetric {
   return {
     date,
-    dateIso,
     platform: product.platform,
     audience: product.audience,
     category: product.category,
@@ -39,39 +38,36 @@ function buildMetric(product: Product, date: string, dateIso: string): ProductDa
     priceOriginal: product.priceOriginal,
     discountRate: product.discountRate,
     isDiscounted: product.isDiscounted,
+    isOnSale: product.isOnSale,
     salesCount: product.salesCount,
     wishlistCount: product.wishlistCount,
     rating: product.rating,
     ratingAverage: product.ratingAverage,
     reviewCount: product.reviewCount,
+    ratingBreakdown: product.ratingBreakdown,
+    workType: product.workType,
+    workTypeLabel: product.workTypeLabel,
+    contentTypes: product.contentTypes,
+    contentTypeIds: product.contentTypeIds,
     fetchedAt: nowTimestamp(),
   };
 }
 
-async function saveProductAndMetric(product: Product, date: string, dateIso: string): Promise<void> {
+async function saveProductAndMetric(product: Product, date: string): Promise<void> {
   const productRef = db.collection("products").doc(product.productId);
-  await productRef.set(withoutUndefined(product), { merge: true });
-  await productRef.collection("dailyMetrics").doc(date).set(withoutUndefined(buildMetric(product, date, dateIso)), { merge: true });
+  await productRef.set(product, { merge: true });
+  await productRef.collection("dailyMetrics").doc(date).set(buildMetric(product, date), { merge: true });
 }
 
 async function saveRankingSnapshot(params: {
   target: FetchTarget;
   date: string;
-  dateIso: string;
   sourceUrl?: string;
   products: Product[];
 }): Promise<string> {
   const rankingKey = buildRankingKey(params.target);
   const snapshotId = buildSnapshotId(params.date, rankingKey);
   const capturedAt = nowTimestamp();
-
-  const snapshotItems = params.products.map((product, index) => ({
-    productId: product.productId,
-    sourceProductId: product.sourceProductId,
-    rank: index + 1,
-    title: product.title,
-    sourceUrl: product.sourceUrl,
-  }));
 
   const snapshot: RankingSnapshot = {
     snapshotId,
@@ -85,13 +81,12 @@ async function saveRankingSnapshot(params: {
     capturedAt,
     fetchedAt: capturedAt,
     itemCount: params.products.length,
-    items: snapshotItems,
     status: "success",
   };
 
   const snapshotRef = db.collection("rankingSnapshots").doc(snapshotId);
   const batch = db.batch();
-  batch.set(snapshotRef, withoutUndefined({ ...snapshot, dateIso: params.dateIso }), { merge: true });
+  batch.set(snapshotRef, snapshot, { merge: true });
 
   params.products.forEach((product, index) => {
     const rank = index + 1;
@@ -109,12 +104,12 @@ async function saveRankingSnapshot(params: {
     };
 
     const itemRef = snapshotRef.collection("items").doc(buildRankItemId(rank, product.productId));
-    batch.set(itemRef, withoutUndefined(item), { merge: true });
+    batch.set(itemRef, item, { merge: true });
 
     const productRef = db.collection("products").doc(product.productId);
     batch.set(
       productRef,
-      withoutUndefined({
+      {
         latestRankings: [
           {
             rankingKey,
@@ -124,7 +119,7 @@ async function saveRankingSnapshot(params: {
           },
         ],
         updatedAt: capturedAt,
-      }),
+      },
       { merge: true },
     );
   });
@@ -136,42 +131,30 @@ async function saveRankingSnapshot(params: {
 export async function fetchDailyProducts(options: FetchDailyProductsOptions): Promise<BatchRun> {
   const runId = createRunId("daily_products");
   const startedAt = nowTimestamp();
-  const startedAtMs = Date.now();
   const date = toYyyyMMdd();
-  const dateIso = toIsoDateJst();
-  const minIntervalMs = options.minIntervalMs ?? 1500;
-  const maxProductIdsPerTarget = options.maxProductIdsPerTarget ?? 10;
+  const minIntervalMs = options.minIntervalMs ?? 500;
+  const detailLimit = options.detailLimit;
 
   const runRef = db.collection("batchRuns").doc(runId);
-  const primaryTarget = options.targets[0];
   const run: BatchRun = {
     runId,
     jobName: "fetchDailyProducts",
-    source: primaryTarget?.platform ?? "unknown",
-    target: primaryTarget ? `${primaryTarget.audience}/${primaryTarget.category}` : "unknown",
-    platform: primaryTarget?.platform,
-    audience: primaryTarget?.audience,
-    category: primaryTarget?.category,
     status: "running",
     startedAt,
     fetchedProductCount: 0,
     updatedProductCount: 0,
     failedProductCount: 0,
     skippedProductCount: 0,
-    fetchedCount: 0,
-    savedCount: 0,
-    skippedCount: 0,
-    errorCount: 0,
-    errors: [],
     rankingSnapshotIds: [],
     errorMessages: [],
     createdAt: startedAt,
   };
 
-  await runRef.set(withoutUndefined(run));
+  await runRef.set(run);
 
   const errorMessages: string[] = [];
   const rankingSnapshotIds: string[] = [];
+  let siteStatsIds: string[] = [];
   let fetchedProductCount = 0;
   let updatedProductCount = 0;
   let failedProductCount = 0;
@@ -187,25 +170,17 @@ export async function fetchDailyProducts(options: FetchDailyProductsOptions): Pr
         continue;
       }
 
-      logger.info("fetch target started", target);
+      logger.info("fetch target started", {
+        target,
+        listLimit: options.listLimit,
+        detailLimit: options.detailLimit,
+        minIntervalMs,
+      });
 
-      let ranking;
-      try {
-        ranking = await adapter.fetchRankingWorkIds(target);
-      } catch (error) {
-        if (error instanceof BlockedAccessError) {
-          blocked = true;
-          errorMessages.push(`blocked: ${target.rankingType}: ${error.message}`);
-          break;
-        }
-
-        failedProductCount += 1;
-        const message = error instanceof Error ? error.message : String(error);
-        errorMessages.push(`ranking failed: ${target.rankingType}: ${message}`);
-        continue;
-      }
-
-      const sourceProductIds = ranking.sourceProductIds.slice(0, maxProductIdsPerTarget);
+      const ranking = await adapter.fetchRankingWorkIds(target, { listLimit: options.listLimit });
+      const sourceProductIds = detailLimit && detailLimit > 0
+        ? ranking.sourceProductIds.slice(0, detailLimit)
+        : ranking.sourceProductIds;
       const products: Product[] = [];
 
       for (const sourceProductId of sourceProductIds) {
@@ -224,7 +199,7 @@ export async function fetchDailyProducts(options: FetchDailyProductsOptions): Pr
 
           const raw = await adapter.fetchProductDetail(sourceProductId);
           const product = adapter.normalizeProduct(raw, target);
-          await saveProductAndMetric(product, date, dateIso);
+          await saveProductAndMetric(product, date);
           products.push(product);
           fetchedProductCount += 1;
           updatedProductCount += 1;
@@ -245,7 +220,6 @@ export async function fetchDailyProducts(options: FetchDailyProductsOptions): Pr
         const snapshotId = await saveRankingSnapshot({
           target,
           date,
-          dateIso,
           sourceUrl: ranking.sourceUrl,
           products,
         });
@@ -257,34 +231,33 @@ export async function fetchDailyProducts(options: FetchDailyProductsOptions): Pr
       }
     }
 
+    try {
+      siteStatsIds = await rebuildSiteStatsForTargets(options.targets);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errorMessages.push(`siteStats failed: ${message}`);
+    }
+
     const finishedAt = nowTimestamp();
     const status: BatchRun["status"] = blocked
       ? "blocked"
-      : errorMessages.length > 0 && updatedProductCount > 0
+      : failedProductCount > 0 || errorMessages.some((message) => message.startsWith("siteStats failed:"))
         ? "partial"
-        : errorMessages.length > 0
-          ? "failed"
-          : "success";
-    const durationMs = Date.now() - startedAtMs;
+        : "success";
     const result: BatchRun = {
       ...run,
       status,
       finishedAt,
-      durationMs,
       fetchedProductCount,
       updatedProductCount,
       failedProductCount,
       skippedProductCount,
-      fetchedCount: fetchedProductCount,
-      savedCount: updatedProductCount,
-      skippedCount: skippedProductCount,
-      errorCount: errorMessages.length,
-      errors: errorMessages.slice(0, 50),
       rankingSnapshotIds,
+      siteStatsIds,
       errorMessages,
     };
 
-    await runRef.set(withoutUndefined(result), { merge: true });
+    await runRef.set(result, { merge: true });
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -294,21 +267,16 @@ export async function fetchDailyProducts(options: FetchDailyProductsOptions): Pr
       ...run,
       status: "failed",
       finishedAt: nowTimestamp(),
-      durationMs: Date.now() - startedAtMs,
       fetchedProductCount,
       updatedProductCount,
       failedProductCount,
       skippedProductCount,
-      fetchedCount: fetchedProductCount,
-      savedCount: updatedProductCount,
-      skippedCount: skippedProductCount,
-      errorCount: errorMessages.length,
-      errors: errorMessages.slice(0, 50),
       rankingSnapshotIds,
+      siteStatsIds,
       errorMessages,
     };
 
-    await runRef.set(withoutUndefined(result), { merge: true });
+    await runRef.set(result, { merge: true });
     return result;
   }
 }

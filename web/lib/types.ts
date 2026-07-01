@@ -4,8 +4,11 @@ export type Category = "doujin" | "voice" | "comic" | "game" | "video" | "ebook"
 export type AffiliateProvider = "dlsite" | "dmm";
 export type AgeRating = "all" | "r15" | "r18" | "adult";
 export type RankingType = "daily" | "weekly" | "monthly" | "new" | "sale" | "popular";
+export type ProductRankingMode = "dailyRevenue" | "daily" | "weekly" | "monthly" | "cumulative";
 export type FetchStatus = "success" | "failed" | "not_found" | "blocked" | "skipped";
 export type SellerType = "circle" | "maker" | "label" | "author" | "publisher";
+export type ProductWorkType = "comic" | "cg" | "movie" | "game" | "voice" | "other";
+export type ProductContentType = "tl" | "bl";
 
 export type FirestoreTimestampLike = {
   seconds: number;
@@ -79,7 +82,10 @@ export type Product = {
   ageRating?: AgeRating;
   isAdult: boolean;
 
-  workType?: string;
+  workType?: ProductWorkType;
+  workTypeLabel?: string;
+  contentTypes?: string[];
+  contentTypeIds?: string[];
 
   thumbnailUrl?: string;
   mainImageUrl?: string;
@@ -126,6 +132,11 @@ export type ProductDailyMetric = {
   ratingAverage?: number;
   reviewCount?: number;
   ratingBreakdown?: ProductRatingBreakdown[];
+
+  workType?: ProductWorkType;
+  workTypeLabel?: string;
+  contentTypes?: string[];
+  contentTypeIds?: string[];
 
   fetchedAt: FirestoreTimestampLike | string;
 };
@@ -220,6 +231,10 @@ export type ProductListFilter = {
   category: Category;
   limitCount?: number;
   offsetCount?: number;
+  workType?: ProductWorkType;
+  contentType?: ProductContentType;
+  discountRateMin?: number;
+  sellerQuery?: string;
 };
 
 export type SiteSegment = {
@@ -259,4 +274,57 @@ export type SellerSummary = {
   latestProduct?: Product;
   products?: Product[];
   tags: { name: string; count: number }[];
+};
+
+
+export type GenreSummary = {
+  name: string;
+  genreId: string;
+  productCount: number;
+  totalSalesCount: number;
+};
+
+export type GenreRankingItem = GenreSummary & {
+  rank: number;
+  estimatedRevenue: number;
+  topProducts: Product[];
+};
+
+export type ProductCategoryKind = "contentType" | "workType";
+
+export type ProductCategorySummary = {
+  name: string;
+  categoryId: string;
+  kind: ProductCategoryKind;
+  value: string;
+  productCount: number;
+  totalSalesCount: number;
+};
+
+export type SiteStatsDocument = {
+  statId: string;
+  platform: Platform;
+  audience: Audience;
+  category: Category;
+
+  productCount: number;
+  todayUpdatedCount: number;
+  saleCount: number;
+  topGenre?: GenreSummary;
+  popularGenres: GenreSummary[];
+  popularCategories?: ProductCategorySummary[];
+  circleHighlights: SellerSummary[];
+
+  maxProducts?: number;
+  generatedAt?: FirestoreTimestampLike | string;
+  updatedAt?: FirestoreTimestampLike | string;
+};
+
+export type HomeDashboardStats = {
+  productCount: number;
+  todayUpdatedCount: number;
+  saleCount: number;
+  topGenre?: GenreSummary;
+  popularGenres: GenreSummary[];
+  popularCategories: ProductCategorySummary[];
 };

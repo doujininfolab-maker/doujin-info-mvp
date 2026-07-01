@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
+import { buildFilterHref } from "@/lib/workTypes";
 
 type SearchPageProps = {
-  searchParams?: Promise<{ q?: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 export const metadata = {
@@ -11,7 +13,9 @@ export const metadata = {
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const params = searchParams ? await searchParams : {};
-  const keyword = params.q?.trim() ?? "";
+  const keyword = (Array.isArray(params.q) ? params.q[0] : params.q)?.trim() ?? "";
+  const contentScope = parseContentScope(params.contentType);
+  const contentTypeParam = contentTypeParamForScope(contentScope);
 
   return (
     <main className="staticPage">
@@ -24,9 +28,9 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           <p>検索機能は準備中です。まずはランキング・新着・セール・ジャンルから探してください。</p>
         )}
         <div className="staticPage__actions">
-          <Link href="/dlsite/female/doujin/ranking">ランキングを見る</Link>
-          <Link href="/dlsite/female/doujin/new">新着を見る</Link>
-          <Link href="/dlsite/female/doujin/sale">セールを見る</Link>
+          <Link href={buildFilterHref("/dlsite/female/doujin/ranking", {}, { contentType: contentTypeParam })}>ランキングを見る</Link>
+          <Link href={buildFilterHref("/dlsite/female/doujin/new", {}, { contentType: contentTypeParam })}>新着を見る</Link>
+          <Link href={buildFilterHref("/dlsite/female/doujin/sale", {}, { contentType: contentTypeParam })}>セールを見る</Link>
         </div>
       </section>
     </main>

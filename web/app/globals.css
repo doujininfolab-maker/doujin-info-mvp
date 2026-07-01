@@ -316,6 +316,24 @@ img {
   align-items: start;
 }
 
+.dashboardFullWidthSection {
+  grid-column: 1 / -1;
+}
+
+.dashboardFullWidthSection .scrollRail {
+  padding-right: 48px;
+}
+
+.dashboardFullWidthSection .genreCard {
+  flex-basis: 190px;
+  min-width: 190px;
+}
+
+.dashboardFullWidthSection .circleCard {
+  flex-basis: 300px;
+  min-width: 300px;
+}
+
 .mainColumn {
   min-width: 0;
   display: grid;
@@ -3722,5 +3740,699 @@ img {
 @media (max-width: 760px) {
   .staticPage__grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* v47: TOP full-width genre/circle rails use content-sized cards */
+.dashboardFullWidthSection .genreCard,
+.dashboardFullWidthSection .circleCard {
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
+}
+
+.dashboardFullWidthSection .genreCard {
+  max-width: 260px;
+}
+
+.dashboardFullWidthSection .circleCard {
+  max-width: 380px;
+}
+
+.dashboardFullWidthSection .genreCard span,
+.dashboardFullWidthSection .circleCard span {
+  width: max-content;
+  max-width: 220px;
+}
+
+.dashboardFullWidthSection .circleCard em {
+  margin-left: 8px;
+}
+
+@media (max-width: 640px) {
+  .dashboardFullWidthSection .genreCard,
+  .dashboardFullWidthSection .circleCard {
+    max-width: min(82vw, 320px);
+  }
+
+  .dashboardFullWidthSection .genreCard span,
+  .dashboardFullWidthSection .circleCard span {
+    max-width: 58vw;
+  }
+}
+
+/* v48: 作品形式・割引率フィルター */
+.listFilterStack {
+  display: grid;
+  gap: 12px;
+  margin: 6px 0 18px;
+}
+
+.filterTabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  border-left: 1px solid var(--border-strong);
+}
+
+.filterTabs a {
+  display: inline-flex;
+  min-height: 42px;
+  min-width: 82px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 22px;
+  border: 1px solid var(--border-strong);
+  border-left: 0;
+  background: #fff;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.filterTabs a:hover {
+  color: var(--pink-strong);
+  background: #fff8fb;
+}
+
+.filterTabs a.isActive {
+  color: #fff;
+  border-color: var(--pink);
+  background: var(--pink);
+}
+
+.filterTabs--discount a {
+  min-width: 92px;
+}
+
+@media (max-width: 760px) {
+  .filterTabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+    border-left: 0;
+  }
+
+  .filterTabs a {
+    min-width: max-content;
+    border-left: 1px solid var(--border-strong);
+  }
+}
+
+/* v49: list pages regression fix - keep filters in the header and restore DLsite-like list layout. */
+.listSection .sectionHeader {
+  align-items: flex-start;
+}
+
+.listSection .sectionHeader__aside {
+  justify-content: flex-end;
+  max-width: 68%;
+}
+
+.listSection .sectionHeader__aside .filterTabs {
+  justify-content: flex-end;
+}
+
+.listSection .sectionHeader__aside .filterTabs a {
+  min-height: 38px;
+  min-width: 72px;
+  padding: 0 18px;
+  font-size: 13px;
+}
+
+.listToolbar--below {
+  margin: 6px 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.listFilterRow {
+  display: flex;
+  justify-content: flex-end;
+  margin: -4px 0 14px;
+}
+
+.listFilterRow .filterTabs a {
+  min-height: 34px;
+  min-width: 82px;
+  padding: 0 16px;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .listSection .sectionHeader {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .listSection .sectionHeader__aside {
+    width: 100%;
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+
+  .listSection .sectionHeader__aside .filterTabs {
+    justify-content: flex-start;
+  }
+
+  .listFilterRow {
+    justify-content: flex-start;
+  }
+}
+
+/* v50: list toolbar alignment and linked list metadata. */
+.listToolbar .listPagination {
+  margin-top: 0;
+}
+
+.listToolbar--below {
+  align-items: center;
+}
+
+.productCard__type {
+  text-decoration: none;
+}
+
+.productCard__type:hover,
+.productCard__seller a:hover,
+.tagRow a:hover {
+  color: var(--pink-strong);
+  border-color: #efb4d0;
+  background: #fff8fb;
+}
+
+.productCard__seller a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.tagRow a,
+.tagRow span {
+  display: inline-flex;
+  max-width: 100%;
+  height: 20px;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #f2edff;
+  color: var(--purple-strong);
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.productCard--list .tagRow a,
+.productCard--list .tagRow span {
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: #fff;
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+.detailHeader__genrePill,
+.detailHeader__seller a,
+.detailMetaTable dd a {
+  text-decoration: none;
+}
+
+.detailHeader__seller a,
+.detailMetaTable dd a {
+  color: inherit;
+}
+
+.detailHeader__seller a:hover,
+.detailMetaTable dd a:hover {
+  color: var(--pink-strong);
+}
+
+/* v51: TOP/list ranking mode filters and clickable section titles. */
+.sectionHeader__titleLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.sectionHeader__titleLink:hover {
+  color: var(--purple-strong);
+}
+
+.rankingModeTabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+  border-left: 1px solid var(--border-strong);
+}
+
+.rankingModeTabs a {
+  display: inline-flex;
+  min-height: 42px;
+  min-width: 86px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 20px;
+  border: 1px solid var(--border-strong);
+  border-left: 0;
+  background: #fff;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.rankingModeTabs a:hover {
+  color: var(--pink-strong);
+  background: #fff8fb;
+}
+
+.rankingModeTabs a.isActive {
+  color: #fff;
+  border-color: var(--pink);
+  background: var(--pink);
+}
+
+.homeSectionControls,
+.listHeaderFilters {
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+  min-width: 0;
+}
+
+.homeSectionControls .rankingModeTabs a,
+.homeSectionControls .filterTabs a {
+  min-height: 30px;
+  min-width: 58px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.homeSectionControls--ranking {
+  width: min(650px, 62vw);
+}
+
+.homeSectionControls--new {
+  width: min(470px, 50vw);
+}
+
+.homeSectionControls .rankingModeTabs,
+.homeSectionControls .filterTabs,
+.listHeaderFilters .rankingModeTabs,
+.listHeaderFilters .filterTabs {
+  justify-content: flex-end;
+}
+
+.listSection .sectionHeader__aside {
+  max-width: 78%;
+}
+
+.listHeaderFilters--ranking .rankingModeTabs a {
+  min-width: 86px;
+}
+
+@media (max-width: 1050px) {
+  .homeSectionControls--ranking,
+  .homeSectionControls--new {
+    width: min(100%, 620px);
+  }
+}
+
+@media (max-width: 900px) {
+  .homeSectionControls,
+  .listHeaderFilters {
+    width: 100%;
+    justify-items: start;
+  }
+
+  .homeSectionControls .rankingModeTabs,
+  .homeSectionControls .filterTabs,
+  .listHeaderFilters .rankingModeTabs,
+  .listHeaderFilters .filterTabs {
+    justify-content: flex-start;
+  }
+
+  .rankingModeTabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+    border-left: 0;
+    max-width: 100%;
+  }
+
+  .rankingModeTabs a {
+    min-width: max-content;
+    border-left: 1px solid var(--border-strong);
+  }
+}
+
+/* v52: TOP ranking filter cleanup and no-wrap section title. */
+.sectionHeader h2 {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.homeSectionControls--ranking {
+  width: min(470px, 50vw);
+}
+
+.homeSectionControls--ranking .filterTabs,
+.homeSectionControls--new .filterTabs {
+  justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .sectionHeader h2 {
+    white-space: normal;
+  }
+
+  .homeSectionControls--ranking {
+    width: 100%;
+  }
+}
+
+/* v53: keep TOP rails anchored when filters change, equalize TOP cards, and add genre ranking list. */
+.scrollRail {
+  overflow-anchor: none;
+  scroll-snap-type: none;
+  scroll-behavior: auto;
+}
+
+.scrollRail > * {
+  scroll-snap-align: none;
+}
+
+.productCard--ranking .productCard__body,
+.productCard--new .productCard__body,
+.productCard--sale .productCard__body,
+.productCard--compact .productCard__body {
+  display: grid;
+  grid-template-rows: 42px auto auto auto;
+  align-content: start;
+}
+
+.productCard--ranking .productCard__title,
+.productCard--new .productCard__title,
+.productCard--sale .productCard__title,
+.productCard--compact .productCard__title {
+  height: 42px;
+  min-height: 42px;
+}
+
+.listRankBadge--countOnly {
+  min-width: 132px;
+}
+
+.listRankBadge--countOnly .listRankBadge__metrics strong {
+  font-size: 18px;
+}
+
+.genreRankingList {
+  display: grid;
+  gap: 0;
+}
+
+.genreRankingCard {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.genreRankingCard:first-child {
+  padding-top: 0;
+}
+
+.genreRankingCard:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.genreRankingCard__rank {
+  display: grid;
+  grid-template-columns: auto auto;
+  place-content: center;
+  gap: 4px;
+  min-height: 58px;
+  border-radius: 6px;
+  background: #16151d;
+  color: #fff;
+  box-shadow: 0 5px 12px rgba(20, 10, 35, 0.14);
+}
+
+.genreRankingCard__rank span {
+  color: var(--gold);
+  font-size: 14px;
+}
+
+.genreRankingCard__rank strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.genreRankingCard__body {
+  min-width: 0;
+}
+
+.genreRankingCard__title {
+  display: inline-flex;
+  max-width: 100%;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.genreRankingCard__title:hover,
+.genreRankingCard__action:hover,
+.genreRankingCard__products a:hover span {
+  color: var(--pink-strong);
+}
+
+.genreRankingCard__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.genreRankingCard__meta span {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: #fff;
+}
+
+.genreRankingCard__products {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.genreRankingCard__products a {
+  display: inline-grid;
+  grid-template-columns: 34px minmax(0, 130px);
+  align-items: center;
+  gap: 7px;
+  max-width: 180px;
+  min-height: 38px;
+  padding: 2px 7px 2px 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: #fff;
+  color: var(--text-soft);
+  text-decoration: none;
+}
+
+.genreRankingCard__products img {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #f7f1f8;
+}
+
+.genreRankingCard__products span {
+  overflow: hidden;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.genreRankingCard__action {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: #fff;
+  color: var(--purple-strong);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .genreRankingCard {
+    grid-template-columns: 58px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .genreRankingCard__rank {
+    min-height: 50px;
+  }
+
+  .genreRankingCard__action {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+/* v56: global TL/BL content scope switch in header. */
+.contentScopeSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 5px 12px rgba(240, 68, 147, 0.05);
+}
+
+.contentScopeSwitch a {
+  display: inline-flex;
+  min-width: 58px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.contentScopeSwitch a:hover {
+  color: var(--pink-strong);
+  background: #fff8fb;
+}
+
+.contentScopeSwitch a.isActive {
+  color: #fff;
+  background: linear-gradient(135deg, #ff8cbd 0%, var(--pink) 100%);
+  box-shadow: 0 5px 12px rgba(240, 68, 147, 0.2);
+}
+
+.headerSwitches .toggleGroup--audience .toggleGroup__item.isActive {
+  background: linear-gradient(135deg, #ff8cbd 0%, var(--pink) 100%);
+  box-shadow: 0 5px 12px rgba(240, 68, 147, 0.2);
+}
+
+@media (max-width: 760px) {
+  .contentScopeSwitch a {
+    min-width: 48px;
+    padding: 0 10px;
+  }
+}
+
+/* v52: circle list instant search. */
+.sellerListSection .sectionHeader__aside {
+  flex: 0 1 460px;
+  max-width: min(460px, 48%);
+}
+
+.sellerListToolbar {
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.circleSearchBox {
+  display: flex;
+  align-items: center;
+  flex: 1 1 360px;
+  width: 100%;
+  max-width: 460px;
+  min-width: 240px;
+  height: 44px;
+  padding: 0 10px 0 18px;
+  border: 1px solid #f2c9df;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(240, 68, 147, 0.05);
+}
+
+.circleSearchBox input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.circleSearchBox input::placeholder {
+  color: #a49ab0;
+}
+
+.circleSearchBox button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--pink);
+  font-size: 23px;
+  line-height: 1;
+}
+
+.circleSearchBox button:disabled {
+  opacity: 0.65;
+}
+
+@media (max-width: 760px) {
+  .sellerListSection .sectionHeader__aside {
+    max-width: 100%;
+  }
+
+  .sellerListToolbar {
+    justify-content: flex-start;
+  }
+
+  .circleSearchBox {
+    flex-basis: 100%;
+    max-width: none;
+    min-width: 0;
   }
 }

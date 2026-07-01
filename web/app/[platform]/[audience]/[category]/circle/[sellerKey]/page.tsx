@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { ProductGrid } from "@/components/ProductGrid";
 import { WorkTrendCharts } from "@/components/WorkTrendCharts";
 import { getSellerSummaryByKey } from "@/lib/firebase/products";
+import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
+import { buildFilterHref } from "@/lib/workTypes";
 import { formatDate, formatNumber } from "@/lib/format";
 import { getSegment, getSegmentPath } from "@/lib/siteSegments";
 
@@ -11,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 type PageProps = {
   params: Promise<{ platform: string; audience: string; category: string; sellerKey: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 function getSellerImage(summary: NonNullable<Awaited<ReturnType<typeof getSellerSummaryByKey>>>): string {
@@ -57,8 +60,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return { title: summary ? `${summary.sellerName}のサークル情報` : "サークル詳細" };
 }
 
-export default async function CircleDetailPage({ params }: PageProps) {
+export default async function CircleDetailPage({ params, searchParams }: PageProps) {
   const { platform, audience, category, sellerKey } = await params;
+  const query = searchParams ? await searchParams : {};
+  const contentScope = parseContentScope(query.contentType);
+  const contentType = contentTypeForFilter(contentScope);
+  const contentTypeParam = contentTypeParamForScope(contentScope);
   const segment = getSegment(platform, audience, category);
   if (!segment || !segment.enabled) notFound();
 
@@ -67,6 +74,7 @@ export default async function CircleDetailPage({ params }: PageProps) {
     audience: segment.audience,
     category: segment.category,
     sellerKey,
+    contentType,
   });
 
   if (!summary) notFound();
@@ -83,9 +91,9 @@ export default async function CircleDetailPage({ params }: PageProps) {
       <nav className="circleBreadcrumb" aria-label="パンくず">
         <Link href="/">ホーム</Link>
         <span>›</span>
-        <Link href={segmentPath}>DLsite女性向け同人</Link>
+        <Link href={buildFilterHref(segmentPath, {}, { contentType: contentTypeParam })}>DLsite女性向け同人</Link>
         <span>›</span>
-        <Link href={`${segmentPath}/circle`}>サークル一覧</Link>
+        <Link href={buildFilterHref(`${segmentPath}/circle`, {}, { contentType: contentTypeParam })}>サークル一覧</Link>
         <span>›</span>
         <span>{summary.sellerName}</span>
       </nav>
@@ -113,7 +121,7 @@ export default async function CircleDetailPage({ params }: PageProps) {
               <dt>ジャンル</dt>
               <dd>
                 {summary.tags.slice(0, 18).map((tag) => (
-                  <Link href={buildGenreHref(segmentPath, tag.name)} key={tag.name}>
+                  <Link href={buildFilterHref(buildGenreHref(segmentPath, tag.name), {}, { contentType: contentTypeParam })} key={tag.name}>
                     {tag.name}<small>{tag.count}</small>
                   </Link>
                 ))}
@@ -134,7 +142,7 @@ export default async function CircleDetailPage({ params }: PageProps) {
 
       <section className="detailSection sameSellerSection circleWorksSection">
         <h2>「{summary.sellerName}」のサークル作品</h2>
-        <ProductGrid products={products} variant="list" />
+        <ProductGrid products={products} variant="list" contentTypeParam={contentTypeParam} />
       </section>
     </div>
   );

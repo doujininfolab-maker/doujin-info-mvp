@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { SellerSummary } from "@/lib/types";
 import { formatDate, formatNumber } from "@/lib/format";
+import { buildFilterHref } from "@/lib/workTypes";
 
 function getSellerImage(seller: SellerSummary): string {
   return (
@@ -13,17 +14,17 @@ function getSellerImage(seller: SellerSummary): string {
   );
 }
 
-function buildCircleHref(seller: SellerSummary): string {
-  return `/${seller.platform}/${seller.audience}/${seller.category}/circle/${encodeURIComponent(seller.sellerKey)}`;
+function buildCircleHref(seller: SellerSummary, contentTypeParam?: string): string {
+  return buildFilterHref(`/${seller.platform}/${seller.audience}/${seller.category}/circle/${encodeURIComponent(seller.sellerKey)}`, {}, { contentType: contentTypeParam });
 }
 
-function buildGenreHref(seller: SellerSummary, genreName: string): string {
+function buildGenreHref(seller: SellerSummary, genreName: string, contentTypeParam?: string): string {
   const normalizedGenre = genreName.trim().toLowerCase();
-  return `/${seller.platform}/${seller.audience}/${seller.category}/genre/dlsite:${encodeURIComponent(normalizedGenre)}`;
+  return buildFilterHref(`/${seller.platform}/${seller.audience}/${seller.category}/genre/dlsite:${encodeURIComponent(normalizedGenre)}`, {}, { contentType: contentTypeParam });
 }
 
-export function SellerCard({ seller }: { seller: SellerSummary }) {
-  const href = buildCircleHref(seller);
+export function SellerCard({ seller, contentTypeParam }: { seller: SellerSummary; contentTypeParam?: string }) {
+  const href = buildCircleHref(seller, contentTypeParam);
   const tags = seller.tags.slice(0, 8);
 
   return (
@@ -45,7 +46,7 @@ export function SellerCard({ seller }: { seller: SellerSummary }) {
         {tags.length ? (
           <div className="sellerCard__tags">
             {tags.map((tag) => (
-              <Link className="sellerCard__tagLink" href={buildGenreHref(seller, tag.name)} key={tag.name}>
+              <Link className="sellerCard__tagLink" href={buildGenreHref(seller, tag.name, contentTypeParam)} key={tag.name}>
                 {tag.name}<small>{tag.count}</small>
               </Link>
             ))}
@@ -56,10 +57,10 @@ export function SellerCard({ seller }: { seller: SellerSummary }) {
   );
 }
 
-export function SellerList({ sellers }: { sellers: SellerSummary[] }) {
+export function SellerList({ sellers, contentTypeParam }: { sellers: SellerSummary[]; contentTypeParam?: string }) {
   return (
     <div className="sellerList">
-      {sellers.map((seller) => <SellerCard key={seller.sellerKey} seller={seller} />)}
+      {sellers.map((seller) => <SellerCard key={seller.sellerKey} seller={seller} contentTypeParam={contentTypeParam} />)}
     </div>
   );
 }

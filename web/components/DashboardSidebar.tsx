@@ -1,25 +1,17 @@
 import Link from "next/link";
-import type { Product } from "@/lib/types";
+import type { GenreSummary, Product, SiteSegment } from "@/lib/types";
+import { buildFilterHref } from "@/lib/workTypes";
 
-const popularGenres = [
-  "監禁・束縛",
-  "年の差",
-  "執着",
-  "幼なじみ",
-  "同棲",
-  "シチュエーションCD",
-  "オメガバース",
-  "片想い",
-  "先輩×後輩",
-  "癒やし",
-];
-
-function genreHref(tag: string): string {
-  return `/dlsite/female/doujin/genre/dlsite:${encodeURIComponent(tag)}`;
+function genreHref(segment: SiteSegment, genre: GenreSummary): string {
+  const genreId = genre.genreId || `dlsite:${genre.name}`;
+  if (genreId.startsWith("dlsite:")) {
+    return `${segment.path}/genre/dlsite:${encodeURIComponent(genreId.replace(/^dlsite:/, ""))}`;
+  }
+  return `${segment.path}/genre/${encodeURIComponent(genreId)}`;
 }
 
-function productHref(product: Product): string {
-  return `/work/${product.productId}`;
+function productHref(product: Product, contentTypeParam?: string): string {
+  return buildFilterHref(`/work/${product.productId}`, {}, { contentType: contentTypeParam });
 }
 
 function getProductImage(product: Product): string {
@@ -32,22 +24,37 @@ function getProductImage(product: Product): string {
   );
 }
 
-export function DashboardSidebar({ recentProducts = [] }: { recentProducts?: Product[] }) {
+export function DashboardSidebar({
+  recentProducts = [],
+  popularGenres = [],
+  segment,
+  contentTypeParam,
+}: {
+  recentProducts?: Product[];
+  popularGenres?: GenreSummary[];
+  segment: SiteSegment;
+  contentTypeParam?: string;
+}) {
   const recentItems = recentProducts.slice(0, 3);
+  const genreItems = popularGenres.slice(0, 10);
 
   return (
     <aside className="dashboardSidebar" aria-label="サイドバー">
       <section className="sidebarCard">
         <h2 className="sidebarCard__title"><span>⌁</span>人気ジャンル</h2>
-        <div className="trendTagGrid">
-          {popularGenres.map((tag, index) => (
-            <Link className="trendTag" href={genreHref(tag)} key={tag} title={tag}>
-              <span className="trendTag__number">{index + 1}</span>
-              <span className="trendTag__label">{tag}</span>
-            </Link>
-          ))}
-        </div>
-        <Link className="sidebarMore" href="/dlsite/female/doujin">ジャンル一覧へ 〉</Link>
+        {genreItems.length ? (
+          <div className="trendTagGrid">
+            {genreItems.map((genre, index) => (
+              <Link className="trendTag" href={buildFilterHref(genreHref(segment, genre), {}, { contentType: contentTypeParam })} key={genre.genreId} title={genre.name}>
+                <span className="trendTag__number">{index + 1}</span>
+                <span className="trendTag__label">{genre.name}</span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="sidebarEmptyText">ジャンルデータ取得後に表示されます。</p>
+        )}
+        <Link className="sidebarMore" href={buildFilterHref(`${segment.path}/genre`, {}, { contentType: contentTypeParam })}>ジャンル一覧へ 〉</Link>
       </section>
 
       <section className="sidebarCard">
@@ -55,7 +62,7 @@ export function DashboardSidebar({ recentProducts = [] }: { recentProducts?: Pro
         {recentItems.length ? (
           <div className="recentList">
             {recentItems.map((item) => (
-              <Link className="recentItem" href={productHref(item)} key={item.productId}>
+              <Link className="recentItem" href={productHref(item, contentTypeParam)} key={item.productId}>
                 <img src={getProductImage(item)} alt="" loading="lazy" />
                 <span>
                   <strong>{item.title}</strong>
@@ -68,7 +75,7 @@ export function DashboardSidebar({ recentProducts = [] }: { recentProducts?: Pro
         ) : (
           <p className="sidebarEmptyText">作品データ取得後に表示されます。</p>
         )}
-        <Link className="sidebarMore" href="/dlsite/female/doujin/new">もっと見る 〉</Link>
+        <Link className="sidebarMore" href={buildFilterHref(`${segment.path}/new`, {}, { contentType: contentTypeParam })}>もっと見る 〉</Link>
       </section>
     </aside>
   );

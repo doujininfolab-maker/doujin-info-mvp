@@ -1,5 +1,5 @@
 import { Timestamp } from "firebase-admin/firestore";
-import type { FetchTarget, Product, RawProductDetail } from "../types";
+import type { FetchTarget, Product, ProductWorkType, RawProductDetail } from "../types";
 import { buildProductId, buildSearchTokens } from "../util";
 
 type RawNormalizedProduct = RawProductDetail & {
@@ -18,9 +18,13 @@ type RawNormalizedProduct = RawProductDetail & {
   ratingAverage?: number;
   reviewCount?: number;
   ratingBreakdown?: Product["ratingBreakdown"];
+  isOnSale?: boolean;
   releaseDate?: string;
   ageRating?: "all" | "r15" | "r18" | "adult";
-  workType?: string;
+  workType?: ProductWorkType;
+  workTypeLabel?: string;
+  contentTypes?: string[];
+  contentTypeIds?: string[];
   thumbnailUrl?: string;
   mainImageUrl?: string;
   images?: Product["images"];
@@ -31,8 +35,6 @@ type RawNormalizedProduct = RawProductDetail & {
   tags?: string[];
   genreIds?: string[];
   tagIds?: string[];
-  isOnSale?: boolean;
-  isNew?: boolean;
 };
 
 export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Product {
@@ -52,18 +54,16 @@ export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Pr
   const priceCurrent = value.priceCurrent;
   const priceOriginal = value.priceOriginal;
   const discountRate = value.discountRate;
-  const isDiscounted = Boolean(
-    value.isOnSale ||
-      (discountRate && discountRate > 0 && priceOriginal && priceCurrent && priceOriginal > priceCurrent),
-  );
+  const isDiscounted = Boolean(discountRate && discountRate > 0 && priceOriginal && priceCurrent && priceOriginal > priceCurrent);
   const genres = value.genres ?? [];
   const tags = value.tags ?? [];
   const genreIds = value.genreIds ?? [];
   const tagIds = value.tagIds ?? [];
+  const contentTypes = value.contentTypes ?? [];
+  const contentTypeIds = value.contentTypeIds ?? [];
   const sourceUrl = value.sourceUrl ?? "";
 
   return {
-    id: productId,
     productId,
     sourceProductId,
     platform: target.platform,
@@ -84,19 +84,21 @@ export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Pr
     priceOriginal,
     discountRate,
     isDiscounted,
-    isOnSale: isDiscounted,
-    isNew: Boolean(value.isNew),
+    isOnSale: value.isOnSale ?? isDiscounted,
     currency: "JPY",
     salesCount: value.salesCount,
     wishlistCount: value.wishlistCount,
     rating: value.rating ?? value.ratingAverage,
     ratingAverage: value.ratingAverage ?? value.rating,
     reviewCount: value.reviewCount,
-    ratingBreakdown: value.ratingBreakdown,
+    ratingBreakdown: value.ratingBreakdown ?? [],
     releaseDate: value.releaseDate,
     ageRating: value.ageRating ?? (target.audience === "adult" ? "adult" : "all"),
     isAdult: value.ageRating === "r18" || value.ageRating === "adult" || target.audience === "adult",
     workType: value.workType,
+    workTypeLabel: value.workTypeLabel,
+    contentTypes,
+    contentTypeIds,
     thumbnailUrl: value.thumbnailUrl,
     mainImageUrl: value.mainImageUrl,
     images: value.images ?? [],
@@ -107,7 +109,7 @@ export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Pr
     tags,
     genreIds,
     tagIds,
-    searchTokens: buildSearchTokens([title, value.sellerName ?? "", ...genres, ...tags]),
+    searchTokens: buildSearchTokens([title, value.sellerName ?? "", value.workTypeLabel ?? "", ...contentTypes, ...genres, ...tags]),
     isActive: true,
     fetchStatus: "success",
     lastFetchedAt: timestamp,

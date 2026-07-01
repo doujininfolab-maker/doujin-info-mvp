@@ -9,11 +9,14 @@ import { PlatformBadge } from "@/components/PlatformBadge";
 import { getProductById, getProductsBySameSeller } from "@/lib/firebase/products";
 import { formatDate, formatNumber, formatRating } from "@/lib/format";
 import { getSegmentPath } from "@/lib/siteSegments";
+import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
+import { buildFilterHref } from "@/lib/workTypes";
 
 export const dynamic = "force-dynamic";
 
 type PageProps = {
   params: Promise<{ productId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -64,9 +67,18 @@ function getDailyRank(product: Awaited<ReturnType<typeof getProductById>>): numb
   return product?.latestRankings?.find((ranking) => ranking.type === "daily")?.rank;
 }
 
-function buildGenreHref(segmentPath: string, genre: string): string {
+function buildGenreHref(segmentPath: string, genre: string, contentTypeParam?: string): string {
   const normalizedGenre = genre.trim().toLowerCase();
-  return `${segmentPath}/genre/dlsite:${encodeURIComponent(normalizedGenre)}`;
+  return buildFilterHref(`${segmentPath}/genre/dlsite:${encodeURIComponent(normalizedGenre)}`, {}, { contentType: contentTypeParam });
+}
+
+function buildWorkTypeHref(segmentPath: string, workType?: string, contentTypeParam?: string): string {
+  return buildFilterHref(`${segmentPath}/ranking`, {}, { workType, contentType: contentTypeParam });
+}
+
+function buildSellerHref(segmentPath: string, sellerId?: string, sellerName?: string, contentTypeParam?: string): string | undefined {
+  const sellerKey = sellerId?.trim() || sellerName?.trim();
+  return sellerKey ? buildFilterHref(`${segmentPath}/circle/${encodeURIComponent(sellerKey)}`, {}, { contentType: contentTypeParam }) : undefined;
 }
 
 function normalizeRatingBreakdown(product: Awaited<ReturnType<typeof getProductById>>) {
@@ -75,15 +87,21 @@ function normalizeRatingBreakdown(product: Awaited<ReturnType<typeof getProductB
     .sort((a, b) => b.star - a.star);
 }
 
-export default async function WorkDetailPage({ params }: PageProps) {
+export default async function WorkDetailPage({ params, searchParams }: PageProps) {
   const { productId } = await params;
+  const query = searchParams ? await searchParams : {};
+  const contentScope = parseContentScope(query.contentType);
+  const contentType = contentTypeForFilter(contentScope);
+  const contentTypeParam = contentTypeParamForScope(contentScope);
   const product = await getProductById(productId);
   if (!product) notFound();
 
   const officialUrl = product.affiliateUrl || product.sourceUrl;
   const segmentPath = getSegmentPath(product.platform, product.audience, product.category);
   const headerImage = product.thumbnailUrl || product.mainImageUrl || product.images?.[0]?.url || "/no-image.svg";
-  const primaryGenreLabel = getPrimaryGenreLabel(product.genres ?? [], product.category);
+  const primaryGenreLabel = product.workTypeLabel || getPrimaryGenreLabel(product.genres ?? [], product.category);
+  const workTypeHref = buildWorkTypeHref(segmentPath, product.workType, contentTypeParam);
+  const sellerHref = buildSellerHref(segmentPath, product.seller?.sellerId, product.seller?.sellerName, contentTypeParam);
   const dailyRank = getDailyRank(product);
   const ratingBreakdown = normalizeRatingBreakdown(product);
   const maxRatingBreakdownCount = Math.max(1, ...ratingBreakdown.map((item) => item.count));
@@ -95,6 +113,7 @@ export default async function WorkDetailPage({ params }: PageProps) {
     sellerName: product.seller?.sellerName,
     excludeProductId: product.productId,
     limitCount: 6,
+    contentType,
   });
 
   return (
@@ -105,13 +124,17 @@ export default async function WorkDetailPage({ params }: PageProps) {
         </div>
         <div className="detailHeader__body">
           <div className="detailHeader__metaLine">
-            <span className="detailHeader__genrePill">{primaryGenreLabel}</span>
+            <Link className="detailHeader__genrePill" href={workTypeHref}>{primaryGenreLabel}</Link>
             <div className="badgeRow detailHeader__badges">
               <PlatformBadge platform={product.platform} audience={product.audience} category={product.category} />
             </div>
           </div>
           <h1 className="detailTitle detailTitle--compact">{product.title}</h1>
-          {product.seller?.sellerName ? <p className="detailHeader__seller">{product.seller.sellerName}</p> : null}
+          {product.seller?.sellerName ? (
+            <p className="detailHeader__seller">
+              {sellerHref ? <Link href={sellerHref}>{product.seller.sellerName}</Link> : product.seller.sellerName}
+            </p>
+          ) : null}
         </div>
         {dailyRank ? (
           <div className="detailRankBadge" aria-label={`日間ランキング${dailyRank}位`}>
@@ -134,7 +157,10 @@ export default async function WorkDetailPage({ params }: PageProps) {
           />
 
           <dl className="detailMetaTable">
-            <div><dt>サークル</dt><dd>{product.seller?.sellerName || "-"}</dd></div>
+            <div>
+              <dt>サークル</dt>
+              <dd>{product.seller?.sellerName ? (sellerHref ? <Link href={sellerHref}>{product.seller.sellerName}</Link> : product.seller.sellerName) : "-"}</dd>
+            </div>
             <div><dt>販売数</dt><dd>{formatNumber(product.salesCount)}</dd></div>
             <div><dt>評価</dt><dd>{formatRating(product.rating ?? product.ratingAverage)}</dd></div>
             <div><dt>評価数</dt><dd>{formatNumber(product.reviewCount)}</dd></div>
@@ -166,7 +192,7 @@ export default async function WorkDetailPage({ params }: PageProps) {
             <a className="button button--official" href={officialUrl} target="_blank" rel="sponsored noreferrer">
               公式サイトで見る
             </a>
-            <Link className="button button--ghost" href={segmentPath}>
+            <Link className="button button--ghost" href={buildFilterHref(segmentPath, {}, { contentType: contentTypeParam })}>
               一覧へ戻る
             </Link>
           </div>
@@ -176,7 +202,7 @@ export default async function WorkDetailPage({ params }: PageProps) {
               <h2>ジャンル</h2>
               <div className="tagList">
                 {product.genres.slice(0, 12).map((genre, index) => (
-                  <Link className="tagList__item" href={buildGenreHref(segmentPath, genre)} key={`${genre}_${index}`}>
+                  <Link className="tagList__item" href={buildGenreHref(segmentPath, genre, contentTypeParam)} key={`${genre}_${index}`}>
                     {genre}
                   </Link>
                 ))}
@@ -196,7 +222,7 @@ export default async function WorkDetailPage({ params }: PageProps) {
         {sameSellerProducts.length > 0 ? (
           <section className="detailSection sameSellerSection">
             <h2>同じサークルの作品</h2>
-            <ProductGrid products={sameSellerProducts} variant="list" />
+            <ProductGrid products={sameSellerProducts} variant="list" contentTypeParam={contentTypeParam} />
           </section>
         ) : null}
 

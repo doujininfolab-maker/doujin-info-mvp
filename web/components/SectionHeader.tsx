@@ -13,10 +13,18 @@ export function SectionHeader({
   icon?: React.ReactNode;
   children?: React.ReactNode;
 }) {
+  const titleContent = (
+    <>
+      {icon ? <span className="sectionHeader__icon">{icon}</span> : null}{title}
+    </>
+  );
+
   return (
     <div className="sectionHeader">
       <div>
-        <h2>{icon ? <span className="sectionHeader__icon">{icon}</span> : null}{title}</h2>
+        <h2>
+          {href ? <Link className="sectionHeader__titleLink" href={href}>{titleContent}</Link> : titleContent}
+        </h2>
         {description ? <p>{description}</p> : null}
       </div>
       <div className="sectionHeader__aside">

@@ -1,5 +1,9 @@
 import type { FetchTarget, Product, RawProductDetail } from "../types";
 
+export type RankingFetchOptions = {
+  listLimit?: number;
+};
+
 export type RankingFetchResult = {
   sourceProductIds: string[];
   sourceUrl?: string;
@@ -9,7 +13,7 @@ export type SourceAdapter = {
   key: string;
   target: FetchTarget;
 
-  fetchRankingWorkIds: (target: FetchTarget) => Promise<RankingFetchResult>;
+  fetchRankingWorkIds: (target: FetchTarget, options?: RankingFetchOptions) => Promise<RankingFetchResult>;
   fetchProductDetail: (sourceProductId: string) => Promise<RawProductDetail>;
   normalizeProduct: (raw: RawProductDetail, target: FetchTarget) => Product;
   buildSourceUrl: (sourceProductId: string) => string;

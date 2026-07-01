@@ -101,7 +101,8 @@ export function buildDummyProducts(): Product[] {
       releaseDate: `2026-06-${releaseDay}`,
       ageRating: index % 5 === 0 ? "r18" : "all",
       isAdult: index % 5 === 0,
-      workType: index % 2 === 0 ? "音声" : "同人誌",
+      workType: index % 3 === 0 ? "voice" : index % 3 === 1 ? "comic" : "cg",
+      workTypeLabel: index % 3 === 0 ? "音声" : index % 3 === 1 ? "マンガ" : "CG",
       thumbnailUrl: `https://picsum.photos/seed/${imageSeed}-thumb/420/560`,
       mainImageUrl: `https://picsum.photos/seed/${imageSeed}-main/700/930`,
       images: [

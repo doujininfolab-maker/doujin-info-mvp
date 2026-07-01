@@ -3,22 +3,36 @@ import { onRequest } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { getEnabledFetchTargets } from "./adapters";
 import { fetchDailyProducts } from "./batch/fetchDailyProducts";
+import { rebuildSiteStatsForTargets } from "./batch/rebuildSiteStats";
 export { seedDummyProducts } from "./seed/seedDummyProducts";
 
-function parsePositiveInt(value: unknown, fallback: number, max: number): number {
-  const raw = Array.isArray(value) ? value[0] : value;
-  const parsed = typeof raw === "string" ? Number(raw) : Number.NaN;
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.min(Math.floor(parsed), max);
+
+function firstQueryValue(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return undefined;
 }
 
-function parseStringParam(value: unknown): string | undefined {
-  if (Array.isArray(value)) return typeof value[0] === "string" ? value[0] : undefined;
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+function parseIntegerQuery(value: unknown, options: { min: number; max: number }): number | undefined {
+  const raw = firstQueryValue(value);
+  if (!raw) return undefined;
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return undefined;
+
+  const integer = Math.floor(parsed);
+  if (integer < options.min) return options.min;
+  if (integer > options.max) return options.max;
+  return integer;
 }
 
-function isEmulator(): boolean {
-  return process.env.FUNCTIONS_EMULATOR === "true" || process.env.FIRESTORE_EMULATOR_HOST != null;
+function buildManualFetchOptions(query: Record<string, unknown>, isEmulator: boolean) {
+  return {
+    listLimit: parseIntegerQuery(query.listLimit, { min: 1, max: 200 }),
+    detailLimit: parseIntegerQuery(query.detailLimit, { min: 1, max: 200 }),
+    minIntervalMs:
+      parseIntegerQuery(query.minIntervalMs, { min: 0, max: 60_000 }) ?? (isEmulator ? 0 : 500),
+  };
 }
 
 export const scheduledFetchDailyAllSources = onSchedule(
@@ -30,11 +44,10 @@ export const scheduledFetchDailyAllSources = onSchedule(
     timeoutSeconds: 540,
   },
   async (): Promise<void> => {
-    const targets = getEnabledFetchTargets(process.env.DLSITE_RANKING_TYPES ?? "daily");
+    const targets = getEnabledFetchTargets();
     const result = await fetchDailyProducts({
       targets,
-      minIntervalMs: 2000,
-      maxProductIdsPerTarget: 10,
+      minIntervalMs: 500,
     });
     logger.info("scheduledFetchDailyAllSources finished", result);
   },
@@ -50,39 +63,40 @@ export const fetchDailyAllSourcesNow = onRequest(
   async (req, res): Promise<void> => {
     const key = typeof req.query.key === "string" ? req.query.key : undefined;
     const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator = process.env.FUNCTIONS_EMULATOR === "true" || process.env.FIRESTORE_EMULATOR_HOST != null;
 
-    if (!isEmulator() && (!expected || key !== expected)) {
+    if (!isEmulator && (!expected || key !== expected)) {
       res.status(403).json({ ok: false, message: "invalid manual fetch key" });
       return;
     }
 
-    const maxProductIdsPerTarget = parsePositiveInt(req.query.detailLimit ?? req.query.limit, 10, 30);
-    const listLimit = parsePositiveInt(req.query.listLimit, 20, 50);
-    const minIntervalMs = parsePositiveInt(req.query.minIntervalMs, isEmulator() ? 1000 : 1500, 5000);
-
-    process.env.DLSITE_LIST_LIMIT = String(listLimit);
-
-    // デフォルトは安定取得できている daily のみ。
-    // new / sale はDLsite側URL確認中のため、検証時だけ rankingTypes=daily,new,sale または rankingTypes=all で有効化する。
-    const rankingTypes = parseStringParam(req.query.rankingTypes ?? req.query.types) ?? process.env.DLSITE_RANKING_TYPES ?? "daily";
-
+    const fetchOptions = buildManualFetchOptions(req.query, isEmulator);
     const result = await fetchDailyProducts({
-      targets: getEnabledFetchTargets(rankingTypes),
-      minIntervalMs,
-      maxProductIdsPerTarget,
+      targets: getEnabledFetchTargets(),
+      ...fetchOptions,
     });
+    res.json({ ok: true, options: fetchOptions, result });
+  },
+);
 
-    const ok = result.status === "success" || result.status === "partial";
-    res.status(ok ? 200 : 500).json({
-      ok,
-      status: result.status,
-      fetchedCount: result.fetchedCount ?? result.fetchedProductCount ?? 0,
-      savedCount: result.savedCount ?? result.updatedProductCount ?? 0,
-      skippedCount: result.skippedCount ?? result.skippedProductCount ?? 0,
-      errorCount: result.errorCount ?? result.errorMessages.length,
-      errors: result.errors ?? result.errorMessages,
-      durationMs: result.durationMs,
-      result,
-    });
+export const rebuildSiteStatsNow = onRequest(
+  {
+    region: "asia-northeast1",
+    cors: true,
+    memory: "512MiB",
+    timeoutSeconds: 540,
+  },
+  async (req, res): Promise<void> => {
+    const key = typeof req.query.key === "string" ? req.query.key : undefined;
+    const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator = process.env.FUNCTIONS_EMULATOR === "true" || process.env.FIRESTORE_EMULATOR_HOST != null;
+
+    if (!isEmulator && (!expected || key !== expected)) {
+      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
+      return;
+    }
+
+    const siteStatsIds = await rebuildSiteStatsForTargets(getEnabledFetchTargets());
+    res.json({ ok: true, siteStatsIds });
   },
 );

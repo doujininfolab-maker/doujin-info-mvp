@@ -19,7 +19,8 @@ export function PageSizeSelect({ value }: { value: number }) {
           const params = new URLSearchParams(searchParams.toString());
           params.set("limit", event.target.value);
           params.set("page", "1");
-          router.push(`${pathname}?${params.toString()}`);
+          const query = params.toString();
+          router.push(query ? `${pathname}?${query}` : pathname);
         }}
       >
         {PAGE_SIZE_OPTIONS.map((option) => (

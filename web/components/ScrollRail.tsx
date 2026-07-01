@@ -6,10 +6,12 @@ export function ScrollRail({
   children,
   className = "",
   ariaLabel,
+  resetKey,
 }: {
   children: React.ReactNode;
   className?: string;
   ariaLabel: string;
+  resetKey?: string;
 }) {
   const railRef = useRef<HTMLDivElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -24,6 +26,14 @@ export function ScrollRail({
     setCanScrollLeft(nextLeft);
     setCanScrollRight(nextRight);
   }, []);
+
+
+  useEffect(() => {
+    const el = railRef.current;
+    if (!el || resetKey === undefined) return;
+    el.scrollLeft = 0;
+    updateScrollState();
+  }, [resetKey, updateScrollState]);
 
   useEffect(() => {
     const el = railRef.current;

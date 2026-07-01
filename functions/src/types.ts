@@ -8,6 +8,8 @@ export type AgeRating = "all" | "r15" | "r18" | "adult";
 export type RankingType = "daily" | "weekly" | "monthly" | "new" | "sale" | "popular";
 export type FetchStatus = "success" | "failed" | "not_found" | "blocked" | "skipped";
 export type SellerType = "circle" | "maker" | "label" | "author" | "publisher";
+export type ProductWorkType = "comic" | "cg" | "movie" | "game" | "voice" | "other";
+export type ProductContentType = "tl" | "bl";
 
 export type ProductImage = {
   url: string;
@@ -38,7 +40,6 @@ export type RankingSummary = {
 };
 
 export type Product = {
-  id?: string;
   productId: string;
   sourceProductId: string;
 
@@ -60,7 +61,6 @@ export type Product = {
   discountRate?: number;
   isDiscounted?: boolean;
   isOnSale?: boolean;
-  isNew?: boolean;
   currency: "JPY";
 
   salesCount?: number;
@@ -75,7 +75,10 @@ export type Product = {
   ageRating?: AgeRating;
   isAdult: boolean;
 
-  workType?: string;
+  workType?: ProductWorkType;
+  workTypeLabel?: string;
+  contentTypes?: string[];
+  contentTypeIds?: string[];
 
   thumbnailUrl?: string;
   mainImageUrl?: string;
@@ -105,7 +108,6 @@ export type Product = {
 
 export type ProductDailyMetric = {
   date: string;
-  dateIso?: string;
 
   platform: Platform;
   audience: Audience;
@@ -115,6 +117,7 @@ export type ProductDailyMetric = {
   priceOriginal?: number;
   discountRate?: number;
   isDiscounted?: boolean;
+  isOnSale?: boolean;
 
   salesCount?: number;
   wishlistCount?: number;
@@ -122,6 +125,11 @@ export type ProductDailyMetric = {
   ratingAverage?: number;
   reviewCount?: number;
   ratingBreakdown?: ProductRatingBreakdown[];
+
+  workType?: ProductWorkType;
+  workTypeLabel?: string;
+  contentTypes?: string[];
+  contentTypeIds?: string[];
 
   fetchedAt: Timestamp;
 };
@@ -143,13 +151,6 @@ export type RankingSnapshot = {
   fetchedAt: Timestamp;
 
   itemCount: number;
-  items?: {
-    productId: string;
-    sourceProductId: string;
-    rank: number;
-    title?: string;
-    sourceUrl?: string;
-  }[];
   status: "success" | "failed" | "blocked" | "partial";
 };
 
@@ -214,9 +215,6 @@ export type BatchRun = {
   runId: string;
   jobName: string;
 
-  source?: Platform | string;
-  target?: string;
-
   platform?: Platform;
   audience?: Audience;
   category?: Category;
@@ -225,20 +223,14 @@ export type BatchRun = {
 
   startedAt: Timestamp;
   finishedAt?: Timestamp;
-  durationMs?: number;
 
   fetchedProductCount?: number;
   updatedProductCount?: number;
   failedProductCount?: number;
   skippedProductCount?: number;
 
-  fetchedCount?: number;
-  savedCount?: number;
-  skippedCount?: number;
-  errorCount?: number;
-  errors?: string[];
-
   rankingSnapshotIds?: string[];
+  siteStatsIds?: string[];
   errorMessages: string[];
 
   createdAt: Timestamp;
@@ -249,6 +241,67 @@ export type FetchTarget = {
   audience: Audience;
   category: Category;
   rankingType: RankingType;
+};
+
+export type GenreSummary = {
+  name: string;
+  genreId: string;
+  productCount: number;
+  totalSalesCount: number;
+};
+
+export type ProductCategorySummary = {
+  name: string;
+  categoryId: string;
+  kind: "contentType" | "workType";
+  value: string;
+  productCount: number;
+  totalSalesCount: number;
+};
+
+export type SiteStatsCircleHighlight = {
+  sellerKey: string;
+  sellerId?: string;
+  sellerName: string;
+  sellerUrl?: string;
+  sellerType?: SellerType;
+
+  platform: Platform;
+  audience: Audience;
+  category: Category;
+
+  productCount: number;
+  totalSalesCount: number;
+  averageSalesCount: number;
+  estimatedRevenue: number;
+  averagePrice?: number;
+
+  firstReleaseDate?: string;
+  latestReleaseDate?: string;
+  newestProductTitle?: string;
+
+  topProduct?: Product;
+  latestProduct?: Product;
+  tags: { name: string; count: number }[];
+};
+
+export type SiteStatsDocument = {
+  statId: string;
+  platform: Platform;
+  audience: Audience;
+  category: Category;
+
+  productCount: number;
+  todayUpdatedCount: number;
+  saleCount: number;
+  topGenre?: GenreSummary;
+  popularGenres: GenreSummary[];
+  popularCategories?: ProductCategorySummary[];
+  circleHighlights: SiteStatsCircleHighlight[];
+
+  maxProducts: number;
+  generatedAt: Timestamp;
+  updatedAt: Timestamp;
 };
 
 export type RawProductDetail = Record<string, unknown>;

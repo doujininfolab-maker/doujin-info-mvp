@@ -22,12 +22,6 @@ export function toYyyyMMdd(date = new Date()): string {
   return `${parts.year}${parts.month}${parts.day}`;
 }
 
-
-export function toIsoDateJst(date = new Date()): string {
-  const yyyymmdd = toYyyyMMdd(date);
-  return `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
-}
-
 export function nowTimestamp(): Timestamp {
   return Timestamp.now();
 }
@@ -70,31 +64,4 @@ export function buildSearchTokens(values: string[]): string[] {
     }
   }
   return [...tokens];
-}
-
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object") return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-export function withoutUndefined<T>(value: T): T {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => withoutUndefined(item))
-      .filter((item) => item !== undefined) as T;
-  }
-
-  if (!isPlainRecord(value)) {
-    return value;
-  }
-
-  const cleaned: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (item === undefined) continue;
-    cleaned[key] = withoutUndefined(item);
-  }
-
-  return cleaned as T;
 }

@@ -136,6 +136,7 @@ function queryLimitForFilter(filter: ProductListFilter, fallback: number): numbe
   return Math.max((filter.offsetCount ?? 0) + (filter.limitCount ?? 24) * 8, 300);
 }
 
+
 export async function getPopularProducts(
   filter: ProductListFilter,
 ): Promise<Product[]> {
@@ -256,14 +257,11 @@ export async function getProductsBySameSeller(
     ? query.where("seller.sellerId", "==", sellerId)
     : query.where("seller.sellerName", "==", sellerName);
 
-  const snapshot = await query
-    .limit(queryLimitForFilter(filter, Math.max((filter.limitCount ?? 6) * 8, 50)))
-    .get();
+  const snapshot = await query.limit((filter.limitCount ?? 6) + 4).get();
 
   return snapshot.docs
     .map((doc) => toProduct(doc.id, doc.data()))
     .filter((product) => product.productId !== filter.excludeProductId)
-    .filter((product) => matchesProductListFilter(product, filter))
     .sort((a, b) => (b.salesCount ?? 0) - (a.salesCount ?? 0))
     .slice(0, filter.limitCount ?? 6);
 }
@@ -481,18 +479,6 @@ async function getProductsForSellerAggregation(
   return shouldPostFilter(filter) ? products.filter((product) => matchesProductListFilter(product, filter)) : products;
 }
 
-function normalizeSellerSearchText(value: string): string {
-  return value.normalize("NFKC").trim().toLowerCase();
-}
-
-function sellerMatchesQuery(seller: SellerSummary, query?: string): boolean {
-  const normalizedQuery = normalizeSellerSearchText(query ?? "");
-  if (!normalizedQuery) return true;
-
-  const searchTargets = [seller.sellerName, seller.sellerKey, seller.sellerId].filter(Boolean);
-  return searchTargets.some((value) => normalizeSellerSearchText(String(value)).includes(normalizedQuery));
-}
-
 function buildSellerSummaries(products: Product[]): SellerSummary[] {
   const groups = new Map<string, Product[]>();
 
@@ -556,9 +542,9 @@ export async function getSellerSummaries(
   filter: ProductListFilter & { maxProducts?: number },
 ): Promise<SellerSummary[]> {
   const products = await getProductsForSellerAggregation(filter);
-  const summaries = buildSellerSummaries(products)
-    .filter((seller) => sellerMatchesQuery(seller, filter.sellerQuery))
-    .sort((a, b) => b.totalSalesCount - a.totalSalesCount || b.productCount - a.productCount);
+  const summaries = buildSellerSummaries(products).sort(
+    (a, b) => b.totalSalesCount - a.totalSalesCount || b.productCount - a.productCount,
+  );
 
   return summaries.slice(
     filter.offsetCount ?? 0,
@@ -673,4 +659,220 @@ export async function getHomeDashboardStats(
 ): Promise<HomeDashboardStats> {
   const { stats } = await getHomeDashboardData(filter);
   return stats;
+}
+
+
+export type SearchProductsFilter = ProductListFilter & {
+  keyword: string;
+  searchToken?: string;
+};
+
+export type SearchProductsResult = {
+  products: Product[];
+  totalCount: number;
+};
+
+type SearchProductCandidate = {
+  productId: string;
+  sourceProductId?: string;
+  title?: string;
+  seller?: {
+    sellerName?: string;
+  };
+  workType?: string;
+  workTypeLabel?: string;
+  contentType?: string;
+  contentTypes?: string[];
+  contentTypeIds?: string[];
+  genres?: string[];
+  tags?: string[];
+  genreIds?: string[];
+  tagIds?: string[];
+  salesCount?: number;
+  rating?: number;
+  ratingAverage?: number;
+  releaseDate?: string;
+};
+
+const DIRECT_SEARCH_SEPARATOR_PATTERN = /[\s　/_\-‐‑‒–—―・,，.．。:：;；!！?？()[\]（）【】「」『』〈〉《》<>+＋=＝~〜～|｜]+/g;
+
+function normalizeDirectSearchText(value: string | undefined): string {
+  return (value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[\s　]+/g, " ")
+    .trim();
+}
+
+function compactDirectSearchText(value: string | undefined): string {
+  return normalizeDirectSearchText(value).replace(DIRECT_SEARCH_SEPARATOR_PATTERN, "").trim();
+}
+
+function splitDirectSearchTerms(value: string): string[] {
+  return normalizeDirectSearchText(value)
+    .split(DIRECT_SEARCH_SEPARATOR_PATTERN)
+    .map((term) => term.trim())
+    .filter(Boolean);
+}
+
+function getCandidateTextValues(candidate: SearchProductCandidate): string[] {
+  return [
+    candidate.sourceProductId,
+    candidate.productId,
+    candidate.title,
+    candidate.seller?.sellerName,
+    candidate.workType,
+    candidate.workTypeLabel,
+    ...(candidate.genres ?? []),
+    ...(candidate.tags ?? []),
+    ...(candidate.genreIds ?? []),
+    ...(candidate.tagIds ?? []),
+  ].filter((value): value is string => Boolean(value));
+}
+
+function candidateMatchesKeyword(candidate: SearchProductCandidate, keyword: string): boolean {
+  const terms = splitDirectSearchTerms(keyword);
+  if (terms.length === 0) return false;
+
+  const values = getCandidateTextValues(candidate);
+  const normalizedValues = values.map((value) => normalizeDirectSearchText(value));
+  const compactedValues = values.map((value) => compactDirectSearchText(value));
+
+  return terms.every((term) => {
+    const normalizedTerm = normalizeDirectSearchText(term);
+    const compactedTerm = compactDirectSearchText(term);
+
+    return normalizedValues.some((value) => value.includes(normalizedTerm)) ||
+      compactedValues.some((value) => value.includes(compactedTerm));
+  });
+}
+
+function candidateHasContentType(candidate: SearchProductCandidate, contentType: string): boolean {
+  const normalized = normalizeStoredContentType(contentType);
+  if (!normalized) return false;
+
+  const scalar = normalizeStoredContentType(candidate.contentType);
+  if (scalar === normalized) return true;
+
+  const ids = (candidate.contentTypeIds ?? []).map((id) => normalizeStoredContentType(id));
+  if (ids.includes(normalized)) return true;
+
+  const labels = (candidate.contentTypes ?? []).map((label) => normalizeStoredContentType(label));
+  return labels.includes(normalized);
+}
+
+function candidateMatchesSearchFilter(candidate: SearchProductCandidate, filter: SearchProductsFilter): boolean {
+  if (filter.workType && normalizeStoredWorkType(candidate as Product) !== filter.workType) return false;
+  if (filter.contentType && !candidateHasContentType(candidate, filter.contentType)) return false;
+  return candidateMatchesKeyword(candidate, filter.keyword);
+}
+
+function getSearchCandidateScore(candidate: SearchProductCandidate, keyword: string): number {
+  const normalizedKeyword = normalizeDirectSearchText(keyword);
+  const compactedKeyword = compactDirectSearchText(keyword);
+  const title = normalizeDirectSearchText(candidate.title);
+  const titleCompact = compactDirectSearchText(candidate.title);
+  const sellerName = normalizeDirectSearchText(candidate.seller?.sellerName);
+  const sellerCompact = compactDirectSearchText(candidate.seller?.sellerName);
+  const genres = (candidate.genres ?? []).map((genre) => normalizeDirectSearchText(genre));
+  const genreCompacts = (candidate.genres ?? []).map((genre) => compactDirectSearchText(genre));
+  const tags = (candidate.tags ?? []).map((tag) => normalizeDirectSearchText(tag));
+  const tagCompacts = (candidate.tags ?? []).map((tag) => compactDirectSearchText(tag));
+  const sourceProductId = normalizeDirectSearchText(candidate.sourceProductId);
+
+  let score = 0;
+  if (sourceProductId === normalizedKeyword) score += 20000;
+  if (title === normalizedKeyword || titleCompact === compactedKeyword) score += 12000;
+  if (title.includes(normalizedKeyword) || titleCompact.includes(compactedKeyword)) score += 8000;
+  if (sellerName === normalizedKeyword || sellerCompact === compactedKeyword) score += 7000;
+  if (sellerName.includes(normalizedKeyword) || sellerCompact.includes(compactedKeyword)) score += 5000;
+  if (genres.some((genre) => genre === normalizedKeyword) || genreCompacts.some((genre) => genre === compactedKeyword)) score += 4000;
+  if (genres.some((genre) => genre.includes(normalizedKeyword)) || genreCompacts.some((genre) => genre.includes(compactedKeyword))) score += 3000;
+  if (tags.some((tag) => tag.includes(normalizedKeyword)) || tagCompacts.some((tag) => tag.includes(compactedKeyword))) score += 1500;
+
+  score += Math.min(candidate.salesCount ?? 0, 100000) / 100;
+  score += (candidate.ratingAverage ?? candidate.rating ?? 0) * 10;
+
+  return score;
+}
+
+function sortSearchCandidates(candidates: SearchProductCandidate[], keyword: string): SearchProductCandidate[] {
+  return [...candidates].sort((a, b) => {
+    const scoreDiff = getSearchCandidateScore(b, keyword) - getSearchCandidateScore(a, keyword);
+    if (scoreDiff !== 0) return scoreDiff;
+
+    const salesDiff = (b.salesCount ?? 0) - (a.salesCount ?? 0);
+    if (salesDiff !== 0) return salesDiff;
+
+    const releaseDiff = (b.releaseDate ?? "").localeCompare(a.releaseDate ?? "");
+    if (releaseDiff !== 0) return releaseDiff;
+
+    return (a.title ?? "").localeCompare(b.title ?? "", "ja");
+  });
+}
+
+async function getSearchProductCandidates(filter: SearchProductsFilter): Promise<SearchProductCandidate[]> {
+  const snapshot = await getAdminDb()
+    .collection(PRODUCTS_COLLECTION)
+    .where("platform", "==", filter.platform)
+    .where("audience", "==", filter.audience)
+    .where("category", "==", filter.category)
+    .where("isActive", "==", true)
+    .select(
+      "productId",
+      "sourceProductId",
+      "title",
+      "seller",
+      "workType",
+      "workTypeLabel",
+      "contentType",
+      "contentTypes",
+      "contentTypeIds",
+      "genres",
+      "tags",
+      "genreIds",
+      "tagIds",
+      "salesCount",
+      "rating",
+      "ratingAverage",
+      "releaseDate",
+    )
+    .get();
+
+  return snapshot.docs.map((doc) => {
+    const data = doc.data() as SearchProductCandidate;
+    return {
+      ...data,
+      productId: data.productId ?? doc.id,
+    };
+  });
+}
+
+export async function searchProductsWithTotal(filter: SearchProductsFilter): Promise<SearchProductsResult> {
+  const candidates = await getSearchProductCandidates(filter);
+  const matchedCandidates = sortSearchCandidates(
+    candidates.filter((candidate) => candidateMatchesSearchFilter(candidate, filter)),
+    filter.keyword,
+  );
+
+  const offset = filter.offsetCount ?? 0;
+  const limit = filter.limitCount ?? 30;
+  const pageProductIds = matchedCandidates.slice(offset, offset + limit).map((candidate) => candidate.productId);
+  const products = await getProductsByIds(pageProductIds);
+
+  return {
+    products,
+    totalCount: matchedCandidates.length,
+  };
+}
+
+export async function countSearchProducts(filter: SearchProductsFilter): Promise<number> {
+  const candidates = await getSearchProductCandidates(filter);
+  return candidates.filter((candidate) => candidateMatchesSearchFilter(candidate, filter)).length;
+}
+
+export async function searchProducts(filter: SearchProductsFilter): Promise<Product[]> {
+  const result = await searchProductsWithTotal(filter);
+  return result.products;
 }

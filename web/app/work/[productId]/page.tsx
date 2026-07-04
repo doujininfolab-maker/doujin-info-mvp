@@ -9,14 +9,11 @@ import { PlatformBadge } from "@/components/PlatformBadge";
 import { getProductById, getProductsBySameSeller } from "@/lib/firebase/products";
 import { formatDate, formatNumber, formatRating } from "@/lib/format";
 import { getSegmentPath } from "@/lib/siteSegments";
-import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
-import { buildFilterHref } from "@/lib/workTypes";
 
 export const dynamic = "force-dynamic";
 
 type PageProps = {
   params: Promise<{ productId: string }>;
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -67,32 +64,23 @@ function getDailyRank(product: Awaited<ReturnType<typeof getProductById>>): numb
   return product?.latestRankings?.find((ranking) => ranking.type === "daily")?.rank;
 }
 
-function buildGenreHref(segmentPath: string, genre: string, contentTypeParam?: string): string {
+function buildGenreHref(segmentPath: string, genre: string): string {
   const normalizedGenre = genre.trim().toLowerCase();
-  return buildFilterHref(`${segmentPath}/genre/dlsite:${encodeURIComponent(normalizedGenre)}`, {}, { contentType: contentTypeParam });
+  return `${segmentPath}/genre/dlsite:${encodeURIComponent(normalizedGenre)}`;
 }
 
-function buildWorkTypeHref(segmentPath: string, workType?: string, contentTypeParam?: string): string {
-  return buildFilterHref(`${segmentPath}/ranking`, {}, { workType, contentType: contentTypeParam });
+function buildWorkTypeHref(segmentPath: string, workType?: string): string {
+  return workType ? `${segmentPath}/ranking?workType=${workType}` : `${segmentPath}/ranking`;
 }
 
-function buildSellerHref(segmentPath: string, sellerId?: string, sellerName?: string, contentTypeParam?: string): string | undefined {
+function buildSellerHref(segmentPath: string, sellerId?: string, sellerName?: string): string | undefined {
   const sellerKey = sellerId?.trim() || sellerName?.trim();
-  return sellerKey ? buildFilterHref(`${segmentPath}/circle/${encodeURIComponent(sellerKey)}`, {}, { contentType: contentTypeParam }) : undefined;
+  return sellerKey ? `${segmentPath}/circle/${encodeURIComponent(sellerKey)}` : undefined;
 }
 
-function normalizeRatingBreakdown(product: Awaited<ReturnType<typeof getProductById>>) {
-  return (product?.ratingBreakdown ?? [])
-    .filter((item) => item.count >= 0)
-    .sort((a, b) => b.star - a.star);
-}
 
-export default async function WorkDetailPage({ params, searchParams }: PageProps) {
+export default async function WorkDetailPage({ params }: PageProps) {
   const { productId } = await params;
-  const query = searchParams ? await searchParams : {};
-  const contentScope = parseContentScope(query.contentType);
-  const contentType = contentTypeForFilter(contentScope);
-  const contentTypeParam = contentTypeParamForScope(contentScope);
   const product = await getProductById(productId);
   if (!product) notFound();
 
@@ -100,11 +88,9 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
   const segmentPath = getSegmentPath(product.platform, product.audience, product.category);
   const headerImage = product.thumbnailUrl || product.mainImageUrl || product.images?.[0]?.url || "/no-image.svg";
   const primaryGenreLabel = product.workTypeLabel || getPrimaryGenreLabel(product.genres ?? [], product.category);
-  const workTypeHref = buildWorkTypeHref(segmentPath, product.workType, contentTypeParam);
-  const sellerHref = buildSellerHref(segmentPath, product.seller?.sellerId, product.seller?.sellerName, contentTypeParam);
+  const workTypeHref = buildWorkTypeHref(segmentPath, product.workType);
+  const sellerHref = buildSellerHref(segmentPath, product.seller?.sellerId, product.seller?.sellerName);
   const dailyRank = getDailyRank(product);
-  const ratingBreakdown = normalizeRatingBreakdown(product);
-  const maxRatingBreakdownCount = Math.max(1, ...ratingBreakdown.map((item) => item.count));
   const sameSellerProducts = await getProductsBySameSeller({
     platform: product.platform,
     audience: product.audience,
@@ -113,7 +99,6 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
     sellerName: product.seller?.sellerName,
     excludeProductId: product.productId,
     limitCount: 6,
-    contentType,
   });
 
   return (
@@ -164,27 +149,6 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
             <div><dt>販売数</dt><dd>{formatNumber(product.salesCount)}</dd></div>
             <div><dt>評価</dt><dd>{formatRating(product.rating ?? product.ratingAverage)}</dd></div>
             <div><dt>評価数</dt><dd>{formatNumber(product.reviewCount)}</dd></div>
-            {ratingBreakdown.length > 0 ? (
-              <div className="detailMetaTable__ratingBreakdown">
-                <dt>評価内訳</dt>
-                <dd>
-                  <div className="ratingBreakdown" aria-label="評価内訳">
-                    {ratingBreakdown.map((item) => (
-                      <div className="ratingBreakdown__row" key={item.star}>
-                        <span className="ratingBreakdown__label">星{item.star}</span>
-                        <span className="ratingBreakdown__track" aria-hidden="true">
-                          <span
-                            className="ratingBreakdown__bar"
-                            style={{ width: `${Math.round((item.count / maxRatingBreakdownCount) * 100)}%` }}
-                          />
-                        </span>
-                        <span className="ratingBreakdown__count">{formatNumber(item.count)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </dd>
-              </div>
-            ) : null}
             <div><dt>発売日</dt><dd>{formatDate(product.releaseDate)}</dd></div>
           </dl>
 
@@ -192,7 +156,7 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
             <a className="button button--official" href={officialUrl} target="_blank" rel="sponsored noreferrer">
               公式サイトで見る
             </a>
-            <Link className="button button--ghost" href={buildFilterHref(segmentPath, {}, { contentType: contentTypeParam })}>
+            <Link className="button button--ghost" href={segmentPath}>
               一覧へ戻る
             </Link>
           </div>
@@ -202,7 +166,7 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
               <h2>ジャンル</h2>
               <div className="tagList">
                 {product.genres.slice(0, 12).map((genre, index) => (
-                  <Link className="tagList__item" href={buildGenreHref(segmentPath, genre, contentTypeParam)} key={`${genre}_${index}`}>
+                  <Link className="tagList__item" href={buildGenreHref(segmentPath, genre)} key={`${genre}_${index}`}>
                     {genre}
                   </Link>
                 ))}
@@ -222,7 +186,7 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
         {sameSellerProducts.length > 0 ? (
           <section className="detailSection sameSellerSection">
             <h2>同じサークルの作品</h2>
-            <ProductGrid products={sameSellerProducts} variant="list" contentTypeParam={contentTypeParam} />
+            <ProductGrid products={sameSellerProducts} variant="list" />
           </section>
         ) : null}
 

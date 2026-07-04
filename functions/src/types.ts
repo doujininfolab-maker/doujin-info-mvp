@@ -241,6 +241,11 @@ export type FetchTarget = {
   audience: Audience;
   category: Category;
   rankingType: RankingType;
+  /**
+   * DLsite女性向け内のTL/BL取得元を分けるための任意項目。
+   * 既存データ・既存Targetとの後方互換のため任意にしている。
+   */
+  contentType?: ProductContentType;
 };
 
 export type GenreSummary = {

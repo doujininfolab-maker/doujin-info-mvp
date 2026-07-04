@@ -256,8 +256,19 @@ img {
 }
 
 .navIcon {
-  font-size: 16px;
-  color: #493f68;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: #65617a;
+  flex: 0 0 auto;
+}
+
+.navIcon svg {
+  width: 18px;
+  height: 18px;
+  overflow: visible;
 }
 
 .headerSwitches {
@@ -599,10 +610,39 @@ img {
 .sectionHeader__icon {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   color: var(--pink);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.sectionHeader__icon svg {
+  display: block;
+  width: 22px;
+  height: 22px;
+  overflow: visible;
+}
+
+.sectionHeader__icon:has(.newLabelIcon) {
+  width: auto;
+  flex-basis: auto;
+}
+
+.newLabelIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  height: 22px;
+  color: var(--pink);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
 }
 
 .sectionHeader__aside {
@@ -774,7 +814,7 @@ img {
 
 .priceLine strong {
   color: #d43c82;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -973,10 +1013,23 @@ img {
 }
 
 .genreIcon {
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radius-lg);
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
   font-size: 20px;
+}
+
+.iconShell svg {
+  width: 22px;
+  height: 22px;
+  overflow: visible;
+}
+
+.genreIcon svg {
+  width: 28px;
+  height: 28px;
 }
 
 .genreCard span,
@@ -1054,7 +1107,7 @@ img {
   gap: 7px;
   margin: 0 0 16px;
   color: var(--text);
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 800;
   line-height: 1.2;
 }
@@ -2131,7 +2184,7 @@ img {
 .productCard--new .priceLine strong,
 .productCard--sale .priceLine strong,
 .productCard--compact .priceLine strong {
-  font-size: 16px;
+  font-size: 17px;
 }
 
 .productCard--ranking .productCard__meta,
@@ -2660,7 +2713,7 @@ img {
 
 .workTrendSummary strong {
   color: var(--text);
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 800;
 }
 
@@ -3024,7 +3077,7 @@ img {
   grid-area: auto;
   margin: 0;
   color: #fff;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 800;
   line-height: 1.1;
 }
@@ -4364,75 +4417,69 @@ img {
   }
 }
 
-/* v52: circle list instant search. */
-.sellerListSection .sectionHeader__aside {
-  flex: 0 1 460px;
-  max-width: min(460px, 48%);
-}
-
-.sellerListToolbar {
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.circleSearchBox {
+/* Search page */
+.searchPageForm {
   display: flex;
   align-items: center;
-  flex: 1 1 360px;
-  width: 100%;
-  max-width: 460px;
-  min-width: 240px;
-  height: 44px;
-  padding: 0 10px 0 18px;
-  border: 1px solid #f2c9df;
-  border-radius: 11px;
+  gap: 8px;
+  width: min(720px, 100%);
+  margin: 0 0 14px;
+  padding: 7px 8px 7px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
   background: #fff;
-  box-shadow: 0 8px 20px rgba(240, 68, 147, 0.05);
+  box-shadow: var(--shadow-soft);
 }
 
-.circleSearchBox input {
-  width: 100%;
+.searchPageForm input[type="text"],
+.searchPageForm input[name="q"] {
+  flex: 1 1 auto;
   min-width: 0;
   border: 0;
   outline: 0;
-  background: transparent;
   color: var(--text);
+  background: transparent;
   font-size: 14px;
+  font-weight: 700;
 }
 
-.circleSearchBox input::placeholder {
+.searchPageForm input::placeholder {
   color: #a49ab0;
 }
 
-.circleSearchBox button {
+.searchPageForm button {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   place-items: center;
   border: 0;
   border-radius: var(--radius-md);
-  background: transparent;
+  background: var(--pink-soft);
   color: var(--pink);
-  font-size: 23px;
-  line-height: 1;
 }
 
-.circleSearchBox button:disabled {
-  opacity: 0.65;
+.searchPageForm button svg {
+  width: 20px;
+  height: 20px;
 }
 
-@media (max-width: 760px) {
-  .sellerListSection .sectionHeader__aside {
-    max-width: 100%;
-  }
+.searchEmptyState {
+  display: grid;
+  gap: 6px;
+  padding: 22px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-soft);
+}
 
-  .sellerListToolbar {
-    justify-content: flex-start;
-  }
+.searchEmptyState strong {
+  color: var(--text);
+  font-size: 15px;
+}
 
-  .circleSearchBox {
-    flex-basis: 100%;
-    max-width: none;
-    min-width: 0;
-  }
+.searchEmptyState p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
 }

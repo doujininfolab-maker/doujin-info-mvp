@@ -4,7 +4,12 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 const PAGE_SIZE_OPTIONS = [30, 50, 100, 200] as const;
 
-export function PageSizeSelect({ value }: { value: number }) {
+type PageSizeSelectProps = {
+  value: number;
+  options?: readonly number[];
+};
+
+export function PageSizeSelect({ value, options = PAGE_SIZE_OPTIONS }: PageSizeSelectProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -23,7 +28,7 @@ export function PageSizeSelect({ value }: { value: number }) {
           router.push(query ? `${pathname}?${query}` : pathname);
         }}
       >
-        {PAGE_SIZE_OPTIONS.map((option) => (
+        {options.map((option) => (
           <option key={option} value={option}>
             {option}件
           </option>

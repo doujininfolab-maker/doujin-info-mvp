@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProductGrid } from "@/components/ProductGrid";
 import { SectionHeader } from "@/components/SectionHeader";
+import { NewSectionIcon } from "@/components/icons/SiteIcons";
 import { PageSizeSelect } from "@/components/PageSizeSelect";
 import { ListPagination } from "@/components/ListPagination";
 import { WorkTypeTabs } from "@/components/WorkTypeTabs";
@@ -50,7 +51,7 @@ export default async function NewPage({ params, searchParams }: PageProps) {
   return (
     <div className="listPage listPage--wide">
       <section className="contentSection listSection">
-        <SectionHeader title="新着作品" description={`${segment.label}の新着`} icon="NEW">
+        <SectionHeader title="新着作品" description={`${segment.label}の新着`} icon={<NewSectionIcon />}>
           <WorkTypeTabs
             basePath={`${segment.path}/new`}
             currentWorkType={workType}

@@ -1,7 +1,9 @@
 import type { ProductContentType, ProductImage, ProductRatingBreakdown, ProductWorkType, RawProductDetail, RankingType } from "../../types";
-import type { RankingFetchOptions, RankingFetchResult, SourceAdapter } from "../types";
+import type { DiscoveredProductSource, ProductDetailFetchOptions, RankingFetchOptions, RankingFetchResult, SourceAdapter } from "../types";
 import { BlockedAccessError } from "../types";
 import { normalizeProduct } from "../../normalizers/normalizeProduct";
+import { logger } from "firebase-functions";
+import dns from "node:dns";
 
 const target = {
   platform: "dlsite" as const,
@@ -11,29 +13,57 @@ const target = {
 };
 
 const DLSITE_GIRLS_BASE_URL = "https://www.dlsite.com/girls";
+const DLSITE_BL_BASE_URL = "https://www.dlsite.com/bl";
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 200;
+const MAX_LIST_PAGE_COUNT = 20;
 const USER_AGENT =
   "doujin-info-mvp/0.1 (+https://doujin-info-mvp.web.app; low-frequency public-page fetcher)";
+const FETCH_TIMEOUT_MS = 30_000;
+const FETCH_RETRY_COUNT = 2;
+
+try {
+  // Windows/一部ネットワーク環境では Node fetch がIPv6側へ接続して低レベルで
+  // `fetch failed` になることがあるため、DLsite取得ではIPv4を優先する。
+  dns.setDefaultResultOrder("ipv4first");
+} catch (error) {
+  logger.warn("Failed to set DNS default result order", {
+    message: error instanceof Error ? error.message : String(error),
+  });
+}
 
 const sourceProductIdHints = new Map<string, Set<RankingType>>();
+const sourceProductIdContentTypeHints = new Map<string, ProductContentType>();
 
-const listUrls: Partial<Record<RankingType, string[]>> = {
-  daily: [`${DLSITE_GIRLS_BASE_URL}/ranking/day`],
-  // DLsiteの一覧URLはフロア/カテゴリ構成変更で404になりやすいため、
-  // doujin絞り込みURLが使えない場合は女性向け全体の新着/セールにフォールバックする。
-  new: [
-    `${DLSITE_GIRLS_BASE_URL}/works/=/work_type_category/doujin/order/release_d`,
-    `${DLSITE_GIRLS_BASE_URL}/works/=/work_type/doujin/order/release_d`,
-    `${DLSITE_GIRLS_BASE_URL}/works/=/category/doujin/order/release_d`,
-    `${DLSITE_GIRLS_BASE_URL}/works/=/order/release_d`,
-  ],
-  sale: [
-    `${DLSITE_GIRLS_BASE_URL}/works/=/work_type_category/doujin/options_and_or/and/options%5B0%5D/discount/order/trend`,
-    `${DLSITE_GIRLS_BASE_URL}/works/=/options_and_or/and/options%5B0%5D/discount/order/trend`,
-    `${DLSITE_GIRLS_BASE_URL}/works/=/order/trend/options_and_or/and/options%5B0%5D/discount`,
-  ],
-};
+type DlsiteFloor = "girls" | "bl";
+
+function getBaseUrlForContentType(contentType: ProductContentType | undefined): string {
+  return contentType === "bl" ? DLSITE_BL_BASE_URL : DLSITE_GIRLS_BASE_URL;
+}
+
+
+function buildListUrls(fetchTarget: { rankingType: RankingType; contentType?: ProductContentType }): string[] {
+  const baseUrl = getBaseUrlForContentType(fetchTarget.contentType);
+
+  switch (fetchTarget.rankingType) {
+    case "daily":
+      return [`${baseUrl}/ranking/day`];
+    case "weekly":
+      return [`${baseUrl}/ranking/week`];
+    case "monthly":
+      return [`${baseUrl}/ranking/month`];
+    case "new":
+    case "sale":
+      // 2026-07時点の検証ログで従来候補URLが404になっていたため、
+      // サーバー負荷を避ける目的で一旦バッチ対象から外す。
+      // 正しいURLを確認できたら、listOnly=trueで一覧だけ検証してから再追加する。
+      return [];
+    case "popular":
+      return [`${baseUrl}/ranking/day`];
+    default:
+      return [`${baseUrl}/ranking/day`];
+  }
+}
 
 function getListLimit(options?: RankingFetchOptions): number {
   const rawLimit = options?.listLimit ?? Number(process.env.DLSITE_LIST_LIMIT ?? DEFAULT_LIST_LIMIT);
@@ -42,8 +72,16 @@ function getListLimit(options?: RankingFetchOptions): number {
   return Math.min(Math.floor(parsed), MAX_LIST_LIMIT);
 }
 
+function buildSourceUrlWithBase(baseUrl: string, sourceProductId: string): string {
+  return `${baseUrl}/work/=/product_id/${sourceProductId}.html`;
+}
+
 function buildSourceUrl(sourceProductId: string): string {
-  return `${DLSITE_GIRLS_BASE_URL}/work/=/product_id/${sourceProductId}.html`;
+  return buildSourceUrlWithBase(DLSITE_GIRLS_BASE_URL, sourceProductId);
+}
+
+function buildBlSourceUrl(sourceProductId: string): string {
+  return buildSourceUrlWithBase(DLSITE_BL_BASE_URL, sourceProductId);
 }
 
 function buildAbsoluteUrl(url: string | undefined | null): string | undefined {
@@ -109,6 +147,10 @@ function matchFirst(html: string, patterns: RegExp[]): string | undefined {
   return undefined;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function findMetaContent(html: string, key: string): string | undefined {
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return matchFirst(html, [
@@ -119,23 +161,428 @@ function findMetaContent(html: string, key: string): string | undefined {
   ]);
 }
 
-function extractProductIds(html: string): string[] {
-  const ids = new Set<string>();
-  const patterns = [
-    /product_id\/(RJ\d{6,10})\.html/gi,
-    /product_id[=/](RJ\d{6,10})/gi,
-    /\b(RJ\d{6,10})\b/g,
-  ];
 
-  for (const pattern of patterns) {
-    for (const match of html.matchAll(pattern)) {
-      ids.add(match[1].toUpperCase());
+function extractCanonicalProductUrl(html: string, sourceProductId: string, currentUrl?: string): string | undefined {
+  const canonical = matchFirst(html, [
+    /<link\b[^>]*rel=["'][^"']*\bcanonical\b[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>/i,
+    /<link\b[^>]*href=["']([^"']+)["'][^>]*rel=["'][^"']*\bcanonical\b[^"']*["'][^>]*>/i,
+  ]);
+  const absolute = buildListAbsoluteUrl(canonical, currentUrl ?? buildSourceUrl(sourceProductId));
+  if (!absolute) return undefined;
+
+  const escapedId = escapeRegExp(sourceProductId);
+  if (!new RegExp(`/work/=/product_id/${escapedId}\\.html(?:[?#].*)?$`, "i").test(absolute)) {
+    return undefined;
+  }
+
+  return absolute;
+}
+
+function shouldTryBlProductPage(html: string, sourceProductId: string, currentUrl: string): boolean {
+  if (/\/bl(?:-touch)?\/work\//i.test(currentUrl)) return false;
+
+  const canonicalUrl = extractCanonicalProductUrl(html, sourceProductId, currentUrl);
+  if (canonicalUrl && /\/bl(?:-touch)?\/work\//i.test(canonicalUrl)) return true;
+
+  // BL作品をgirls側URLで開くと、メタ情報だけは取れてもスライダー画像が少ないケースがある。
+  // ただしページ全体には関連作品も混ざるため、meta/現在の商品属性だけでBL判定する。
+  const ogUrl = findMetaContent(html, "og:url") ?? "";
+  if (/\/bl(?:-touch)?\/work\//i.test(ogUrl)) return true;
+
+  const description = findMetaContent(html, "description") ?? "";
+  if (/(?:ボーイズラブ|BL同人|BLマンガ|BL漫画)/i.test(description)) return true;
+
+  const escapedId = escapeRegExp(sourceProductId);
+  return new RegExp(`data-product_id=["']${escapedId}["'][^>]+data-options=["'][^"']*(?:^|#|,)(?:BL|BL1|BLG)(?:#|,|$)`, "i").test(html);
+}
+
+function countExtractedProductImages(html: string, sourceProductId: string): number {
+  const keys = new Set<string>();
+  for (const pair of extractImageUrlsFromHtml(html, sourceProductId)) {
+    keys.add(canonicalImageKey(pair.displayUrl, sourceProductId));
+  }
+  return keys.size;
+}
+
+type ProductDetailHtmlCandidate = {
+  url: string;
+  html: string;
+  imageCount: number;
+  hasProductSlider: boolean;
+  hasWorkSlider: boolean;
+};
+
+function scoreProductDetailHtmlCandidate(candidate: ProductDetailHtmlCandidate): number {
+  return (
+    candidate.imageCount * 100 +
+    (candidate.hasProductSlider ? 20 : 0) +
+    (candidate.hasWorkSlider ? 10 : 0) +
+    (/\/bl(?:-touch)?\/work\//i.test(candidate.url) ? 1 : 0)
+  );
+}
+
+function sortProductDetailHtmlCandidates(a: ProductDetailHtmlCandidate, b: ProductDetailHtmlCandidate): number {
+  return scoreProductDetailHtmlCandidate(b) - scoreProductDetailHtmlCandidate(a);
+}
+
+async function fetchBestProductDetailHtml(sourceProductId: string, preferredSourceUrl?: string): Promise<ProductDetailHtmlCandidate> {
+  const hintedContentType = sourceProductIdContentTypeHints.get(sourceProductId);
+  const initialUrl = preferredSourceUrl ?? (hintedContentType === "bl" ? buildBlSourceUrl(sourceProductId) : buildSourceUrl(sourceProductId));
+  const queue: string[] = [initialUrl];
+  const queued = new Set(queue.map((url) => normalizeListPageUrlKey(url)));
+  const candidates: ProductDetailHtmlCandidate[] = [];
+  const failedMessages: string[] = [];
+
+  const enqueue = (url: string | undefined) => {
+    if (!url) return;
+    const key = normalizeListPageUrlKey(url);
+    if (queued.has(key)) return;
+    queued.add(key);
+    queue.push(url);
+  };
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const url = queue[index];
+    try {
+      const html = await fetchPublicHtml(url);
+      const candidate: ProductDetailHtmlCandidate = {
+        url,
+        html,
+        imageCount: countExtractedProductImages(html, sourceProductId),
+        hasProductSlider: /class=["'][^"']*\bproduct-slider\b/i.test(html),
+        hasWorkSlider: /class=["'][^"']*\bwork_slider\b/i.test(html),
+      };
+      candidates.push(candidate);
+
+      const canonicalUrl = extractCanonicalProductUrl(html, sourceProductId, url);
+      enqueue(canonicalUrl);
+
+      if (candidate.imageCount <= 1 && shouldTryBlProductPage(html, sourceProductId, url)) {
+        enqueue(buildBlSourceUrl(sourceProductId));
+      }
+
+      // 複数画像が取れている商品は追加URLを叩かず、従来と同じ低負荷で終了する。
+      if (candidate.imageCount > 1) {
+        break;
+      }
+    } catch (error) {
+      if (error instanceof BlockedAccessError) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      failedMessages.push(`${url}: ${message}`);
+
+      // 初回URLが404等で取れない場合に備え、TL/BLの反対側URLも一度だけ試す。
+      if (index === 0) {
+        enqueue(hintedContentType === "bl" ? buildSourceUrl(sourceProductId) : buildBlSourceUrl(sourceProductId));
+      }
     }
   }
 
-  return [...ids];
+  const best = [...candidates].sort(sortProductDetailHtmlCandidates)[0];
+  if (!best) {
+    throw new Error(`DLsite product detail fetch failed: ${sourceProductId}: ${failedMessages.join(" / ")}`);
+  }
+
+  if (best.url !== buildSourceUrl(sourceProductId) || candidates.length > 1) {
+    logger.info("DLsite product detail source selected", {
+      sourceProductId,
+      selectedUrl: best.url,
+      selectedImageCount: best.imageCount,
+      candidates: candidates.map((candidate) => ({
+        url: candidate.url,
+        imageCount: candidate.imageCount,
+        hasProductSlider: candidate.hasProductSlider,
+        hasWorkSlider: candidate.hasWorkSlider,
+      })),
+    });
+  }
+
+  return best;
 }
 
+function extractProductIdFromWorkUrl(url: string): string | undefined {
+  const decoded = safeDecodeURIComponent(decodeHtml(url));
+  const match = decoded.match(/\/work\/=\/product_id\/(RJ\d{6,10})\.html(?:$|[?#/])/i) ??
+    decoded.match(/product_id\/(RJ\d{6,10})\.html(?:$|[?#/])/i) ??
+    decoded.match(/product_id[=/](RJ\d{6,10})(?:$|[?#/&])/i);
+  return match?.[1]?.toUpperCase();
+}
+
+function extractProductSources(html: string, currentUrl: string): DiscoveredProductSource[] {
+  const products: DiscoveredProductSource[] = [];
+  const seenProductIds = new Set<string>();
+
+  const push = (sourceProductId: string | undefined, sourceUrl: string | undefined, listUrl = currentUrl) => {
+    if (!sourceProductId) return;
+    const normalizedId = sourceProductId.toUpperCase();
+    if (!/^RJ\d{6,10}$/.test(normalizedId)) return;
+    if (seenProductIds.has(normalizedId)) return;
+    seenProductIds.add(normalizedId);
+    products.push({
+      sourceProductId: normalizedId,
+      sourceUrl,
+      rank: products.length + 1,
+      listUrl,
+    });
+  };
+
+  // 画像URL内のフォルダRJを商品IDとして誤取得しないよう、
+  // 実際の商品詳細リンクだけを最優先で採用する。
+  const anchorPattern = /<a\b([^>]*href=["']([^"']+)["'][^>]*)>/gi;
+  for (const match of html.matchAll(anchorPattern)) {
+    const rawHref = match[2] ?? "";
+    if (!/\/work\/=\/product_id\//i.test(decodeHtml(rawHref))) continue;
+    const sourceProductId = extractProductIdFromWorkUrl(rawHref);
+    const sourceUrl = buildListAbsoluteUrl(rawHref, currentUrl);
+    push(sourceProductId, sourceUrl);
+  }
+
+  // まれに一覧カードが data-product_id 中心でレンダリングされるケースへのフォールバック。
+  // hrefが1件も取れない場合だけ使い、HTML全体のRJ正規表現スキャンはしない。
+  if (products.length === 0) {
+    const dataProductPattern = /\bdata-product[_-]id=["'](RJ\d{6,10})["']/gi;
+    for (const match of html.matchAll(dataProductPattern)) {
+      push(match[1], undefined);
+    }
+  }
+
+  return products;
+}
+
+function buildListAbsoluteUrl(url: string | undefined | null, currentUrl: string): string | undefined {
+  if (!url) return undefined;
+  const trimmed = decodeHtml(url.trim());
+  if (!trimmed || trimmed.startsWith("#") || /^javascript:/i.test(trimmed)) return undefined;
+  if (trimmed.startsWith("//")) return `https:${trimmed}`;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+
+  try {
+    return new URL(trimmed, currentUrl).toString();
+  } catch {
+    return buildAbsoluteUrl(trimmed);
+  }
+}
+
+function normalizeListPageUrlKey(url: string): string {
+  return decodeHtml(url)
+    .replace(/#.*$/, "")
+    .replace(/\/+$/, "");
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function isLikelyRequestedListPageUrl(url: string, pageNumber: number): boolean {
+  const decoded = safeDecodeURIComponent(decodeHtml(url));
+  const escapedPage = String(pageNumber).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  return (
+    new RegExp(`(?:^|/)page/${escapedPage}(?:/|$|[?#])`, "i").test(decoded) ||
+    new RegExp(`[?&](?:page|p|pagenum|page_no)=${escapedPage}(?:&|$)`, "i").test(decoded) ||
+    new RegExp(`(?:^|/)p/${escapedPage}(?:/|$|[?#])`, "i").test(decoded)
+  );
+}
+
+function isLikelyNextAnchor(attributes: string, body: string, href: string, pageNumber: number): boolean {
+  if (/\brel=["'][^"']*\bnext\b[^"']*["']/i.test(attributes)) return true;
+  if (isLikelyRequestedListPageUrl(href, pageNumber)) return true;
+
+  const text = cleanText(body) ?? "";
+  return (
+    text === String(pageNumber) ||
+    /^(?:次へ|次|NEXT|Next|next|>|＞|»|›)$/.test(text)
+  );
+}
+
+function extractNextListPageUrls(html: string, currentUrl: string, pageNumber: number): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const anchorPattern = /<a\b([^>]*href=["']([^"']+)["'][^>]*)>([\s\S]*?)<\/a>/gi;
+
+  for (const match of html.matchAll(anchorPattern)) {
+    const attributes = match[1] ?? "";
+    const rawHref = match[2] ?? "";
+    const body = match[3] ?? "";
+    const href = decodeHtml(rawHref);
+    if (!isLikelyNextAnchor(attributes, body, href, pageNumber)) continue;
+
+    const absoluteUrl = buildListAbsoluteUrl(href, currentUrl);
+    if (!absoluteUrl) continue;
+
+    const key = normalizeListPageUrlKey(absoluteUrl);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    urls.push(absoluteUrl);
+  }
+
+  return urls;
+}
+
+function appendPathPageSegment(url: string, pageNumber: number): string | undefined {
+  try {
+    const parsed = new URL(url);
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+
+    if (/\/page\/\d+\/?$/i.test(pathname)) {
+      parsed.pathname = pathname.replace(/\/page\/\d+\/?$/i, `/page/${pageNumber}`);
+    } else if (pathname.includes("/=/")) {
+      parsed.pathname = `${pathname}/page/${pageNumber}`;
+    } else {
+      parsed.pathname = `${pathname}/=/page/${pageNumber}`;
+    }
+
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function buildListPageFallbackUrls(baseUrl: string, pageNumber: number): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const push = (url: string | undefined) => {
+    if (!url) return;
+    const key = normalizeListPageUrlKey(url);
+    if (seen.has(key)) return;
+    seen.add(key);
+    urls.push(url);
+  };
+
+  push(appendPathPageSegment(baseUrl, pageNumber));
+
+  for (const queryKey of ["page", "p", "pagenum", "page_no"]) {
+    try {
+      const parsed = new URL(baseUrl);
+      parsed.searchParams.set(queryKey, String(pageNumber));
+      push(parsed.toString());
+    } catch {
+      // ignore invalid URL fallback
+    }
+  }
+
+  return urls;
+}
+
+type ListCandidateFetchResult = {
+  sourceProductIds: string[];
+  products: DiscoveredProductSource[];
+  sourceUrl?: string;
+  fetchedPageCount: number;
+};
+
+async function fetchProductIdsFromListCandidate(params: {
+  candidateUrl: string;
+  rankingType: RankingType;
+  listLimit: number;
+}): Promise<ListCandidateFetchResult> {
+  const products: DiscoveredProductSource[] = [];
+  const seenProductIds = new Set<string>();
+  const attemptedUrlKeys = new Set<string>();
+  let currentUrl: string | undefined = params.candidateUrl;
+  let firstFetchedUrl: string | undefined;
+  let fetchedPageCount = 0;
+  const maxPageCount = Math.min(MAX_LIST_PAGE_COUNT, Math.max(1, Math.ceil(params.listLimit / 10)));
+
+  for (let pageNumber = 1; currentUrl && pageNumber <= maxPageCount && products.length < params.listLimit; pageNumber += 1) {
+    const currentKey = normalizeListPageUrlKey(currentUrl);
+    if (attemptedUrlKeys.has(currentKey)) {
+      logger.warn("DLsite list page skipped because URL was already attempted", {
+        rankingType: params.rankingType,
+        pageNumber,
+        url: currentUrl,
+      });
+      break;
+    }
+    attemptedUrlKeys.add(currentKey);
+
+    let html: string;
+    try {
+      logger.info("DLsite list page fetch started", {
+        rankingType: params.rankingType,
+        pageNumber,
+        url: currentUrl,
+        listLimit: params.listLimit,
+      });
+      html = await fetchPublicHtml(currentUrl);
+    } catch (error) {
+      if (error instanceof BlockedAccessError) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      if (pageNumber === 1) {
+        throw new Error(message);
+      }
+
+      logger.warn("DLsite list page fetch failed; stop pagination for this candidate", {
+        rankingType: params.rankingType,
+        pageNumber,
+        url: currentUrl,
+        message,
+      });
+      break;
+    }
+
+    firstFetchedUrl ??= currentUrl;
+    fetchedPageCount += 1;
+
+    const pageProducts = extractProductSources(html, currentUrl);
+    let newProductCount = 0;
+    for (const product of pageProducts) {
+      if (seenProductIds.has(product.sourceProductId)) continue;
+      seenProductIds.add(product.sourceProductId);
+      products.push({
+        ...product,
+        rank: products.length + 1,
+      });
+      newProductCount += 1;
+      if (products.length >= params.listLimit) break;
+    }
+
+    logger.info("DLsite list page fetched", {
+      rankingType: params.rankingType,
+      pageNumber,
+      url: currentUrl,
+      extractedCount: pageProducts.length,
+      newCount: newProductCount,
+      totalCount: products.length,
+      listLimit: params.listLimit,
+    });
+
+    if (products.length >= params.listLimit) break;
+    if (newProductCount === 0 && pageNumber > 1) break;
+
+    const nextPageNumber = pageNumber + 1;
+    const nextUrlCandidates: string[] = [
+      ...extractNextListPageUrls(html, currentUrl, nextPageNumber),
+      ...buildListPageFallbackUrls(params.candidateUrl, nextPageNumber),
+    ];
+    currentUrl = nextUrlCandidates.find((url: string) => !attemptedUrlKeys.has(normalizeListPageUrlKey(url)));
+
+    if (!currentUrl) {
+      logger.info("DLsite list pagination finished because next page was not found", {
+        rankingType: params.rankingType,
+        pageNumber,
+        totalCount: products.length,
+      });
+    }
+  }
+
+  const limitedProducts = products.slice(0, params.listLimit);
+  return {
+    sourceProductIds: limitedProducts.map((product) => product.sourceProductId),
+    products: limitedProducts,
+    sourceUrl: firstFetchedUrl,
+    fetchedPageCount,
+  };
+}
 
 function extractAnchorTexts(html: string, hrefPattern: RegExp, limit: number): string[] {
   const values: string[] = [];
@@ -388,23 +835,24 @@ function imageSortScore(url: string): number {
 
 function canonicalImageKey(url: string, sourceProductId: string): string {
   const normalized = normalizeImageUrlForKey(url);
-  const escapedId = sourceProductId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const imageProductId = extractDlsiteImageProductId(normalized) ?? sourceProductId;
+  const escapedId = imageProductId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = normalized.match(new RegExp(`${escapedId}_img_(main|smp_?\\d+|sam_?\\d+|sample_?\\d+)`, "i"));
 
   if (match?.[1]) {
-    return `${sourceProductId}_img_${match[1].replace(/_/g, "").toLowerCase()}`;
+    return `${imageProductId}_img_${match[1].replace(/_/g, "").toLowerCase()}`;
   }
 
   return normalized.replace(/_\d+x\d+\.(?:jpg|jpeg|png|webp)$/i, "").toLowerCase();
 }
 
-function isLikelyWorkImage(url: string, sourceProductId: string): boolean {
+function extractDlsiteImageProductId(url: string): string | undefined {
   const normalized = normalizeImageUrlForKey(url);
-  const lower = normalized.toLowerCase();
+  return normalized.match(/\/(RJ\d{6,10})_img_(?:main|smp_?\d+|sam_?\d+|sample_?\d+)(?:_(?:\d+x\d+|[wh]\d+))?\.(?:jpg|jpeg|png|webp)$/i)?.[1]?.toUpperCase();
+}
 
-  if (!lower.includes(sourceProductId.toLowerCase())) {
-    return false;
-  }
+function isDlsiteWorkImageUrl(url: string): boolean {
+  const normalized = normalizeImageUrlForKey(url);
 
   if (!/\.(?:jpg|jpeg|png|webp)$/i.test(normalized)) {
     return false;
@@ -414,7 +862,29 @@ function isLikelyWorkImage(url: string, sourceProductId: string): boolean {
     return false;
   }
 
-  return true;
+  // 翻訳作品・BL作品ではページURLのproduct_idと画像URL内のRJコードが一致しないことがある。
+  // そのため、DLsiteの作品画像として十分に特徴的なパス/ファイル名なら許可する。
+  return /(?:^https?:\/\/img\.dlsite\.jp\/|\/)(?:resize|modpub)\/images2\/work\//i.test(normalized) &&
+    /\/RJ\d{6,10}_img_(?:main|smp_?\d+|sam_?\d+|sample_?\d+)(?:_(?:\d+x\d+|[wh]\d+))?\.(?:jpg|jpeg|png|webp)$/i.test(normalized);
+}
+
+function isLikelyWorkImage(url: string, sourceProductId: string): boolean {
+  const normalized = normalizeImageUrlForKey(url);
+  const lower = normalized.toLowerCase();
+
+  if (!/\.(?:jpg|jpeg|png|webp)$/i.test(normalized)) {
+    return false;
+  }
+
+  if (/logo|banner|bnr|button|icon|sprite|common|campaign|affiliate|favicon/i.test(normalized)) {
+    return false;
+  }
+
+  if (lower.includes(sourceProductId.toLowerCase())) {
+    return true;
+  }
+
+  return isDlsiteWorkImageUrl(normalized);
 }
 
 function pushImageCandidate(candidates: string[], rawValue: string | undefined | null): void {
@@ -466,20 +936,104 @@ function buildThumbnailImageUrl(url: string): string {
   return buildDisplayImageUrl(url);
 }
 
+
+function findNextIndex(html: string, startIndex: number, patterns: RegExp[]): number | undefined {
+  const foundIndexes = patterns
+    .map((pattern) => {
+      pattern.lastIndex = 0;
+      const match = html.slice(startIndex).match(pattern);
+      return match?.index === undefined ? undefined : startIndex + match.index;
+    })
+    .filter((value): value is number => value !== undefined && value > startIndex);
+
+  return foundIndexes.length > 0 ? Math.min(...foundIndexes) : undefined;
+}
+
+function uniqRawStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+
+  return result;
+}
+
+function eachRegExpMatch(html: string, pattern: RegExp): RegExpMatchArray[] {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  const globalPattern = new RegExp(pattern.source, flags);
+  return [...html.matchAll(globalPattern)];
+}
+
+function extractWorkImageHtmlFragments(html: string): string[] {
+  const fragments: string[] = [];
+  const normalizedHtml = decodeJsEscapedUrl(html);
+  const startPatterns = [
+    /<div\b[^>]*id=["']work_left["'][^>]*>/i,
+    /<div\b[^>]*class=["'][^"']*\bproduct-slider\b[^"']*["'][^>]*>/i,
+    /<div\b[^>]*class=["'][^"']*\bwork_slider\b[^"']*["'][^>]*>/i,
+    /<ul\b[^>]*class=["'][^"']*\bslider_items\b[^"']*["'][^>]*>/i,
+    /<ul\b[^>]*class=["'][^"']*\bcontroller_items\b[^"']*["'][^>]*>/i,
+    /<div\b[^>]*data-section_name=["']work[_\s-]?header["'][^>]*>/i,
+  ];
+
+  for (const pattern of startPatterns) {
+    for (const match of eachRegExpMatch(normalizedHtml, pattern)) {
+      if (match.index === undefined) continue;
+
+      const startIndex = match.index;
+      const endIndex = findNextIndex(normalizedHtml, startIndex + match[0].length, [
+        /<div\b[^>]*class=["'][^"']*\bwork_slider_comp\b[^"']*["'][^>]*>/i,
+        /<!--\s*\/work_left\s*-->/i,
+        /<div\b[^>]*id=["']work_right["'][^>]*>/i,
+        /<section\b[^>]*id=["']work_detail["'][^>]*>/i,
+        /<div\b[^>]*id=["']work_review["'][^>]*>/i,
+        /<div\b[^>]*id=["']recommend["'][^>]*>/i,
+      ]);
+
+      fragments.push(normalizedHtml.slice(startIndex, endIndex ?? Math.min(normalizedHtml.length, startIndex + 160000)));
+    }
+  }
+
+  // HTML断片の重複排除で cleanText/stripTags を使うと、
+  // picture/source/img の属性が消えて og:image しか拾えなくなる。
+  // 画像抽出ではタグと属性を保持したまま重複排除する。
+  return uniqRawStrings(fragments);
+}
+
+function extractDlsiteWorkImageCandidatesFromText(text: string): string[] {
+  const candidates: string[] = [];
+  const imageUrlPattern = /(?:(?:https?:)?\/\/img\.dlsite\.jp)?\/(?:resize|modpub)\/images2\/work\/[^"'<>\s\)\]]+\/RJ\d{6,10}_img_(?:main|smp_?\d+|sam_?\d+|sample_?\d+)(?:_(?:\d+x\d+|[wh]\d+))?\.(?:jpg|jpeg|png|webp)(?:\?[^"'<>\s\)\]]*)?/gi;
+
+  for (const match of text.matchAll(imageUrlPattern)) {
+    pushImageCandidate(candidates, match[0]);
+  }
+
+  return candidates;
+}
+
 function extractImageUrlsFromHtml(html: string, sourceProductId: string): Array<{ displayUrl: string; thumbnailUrl: string }> {
   const rawCandidates: string[] = [];
-  const escapedId = sourceProductId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedId = escapeRegExp(sourceProductId);
   const normalizedHtml = decodeJsEscapedUrl(html);
+  const scopedHtmlFragments = extractWorkImageHtmlFragments(normalizedHtml);
+  const imageSearchHtml = scopedHtmlFragments.length > 0 ? scopedHtmlFragments.join("\n") : normalizedHtml;
 
-  const ogImage = findMetaContent(html, "og:image");
+  const ogImage = findMetaContent(html, "og:image") ?? findMetaContent(html, "twitter:image:src");
   pushImageCandidate(rawCandidates, ogImage);
 
   // DLsiteの作品画像は、メイン画像だけでなく、サムネイル部の
-  // src / srcset / data-src / href に入っていることが多い。
+  // src / srcset / data-src / href / v-lazy に入っていることが多い。
+  // BL翻訳作品ではページURLのproduct_idと画像URL内RJコードが一致しないため、
+  // product-slider/work_slider周辺の実URLを直接拾う。
   // 例:
-  //   //img.dlsite.jp/resize/images2/work/doujin/RJ01638000/RJ01637636_img_smp1_100x100.webp
-  const attrPattern = /\b(?:src|data-src|data-original|data-lazy|data-srcset|srcset|href)=(['"])([\s\S]*?)\1/gi;
-  for (const match of normalizedHtml.matchAll(attrPattern)) {
+  //   //img.dlsite.jp/modpub/images2/work/doujin/RJ01514000/RJ01513001_img_smp1.jpg
+  const attrPattern = /\b(?:src|data-src|data-original|data-lazy|data-srcset|srcset|href|v-lazy)=(['"])([\s\S]*?)\1/gi;
+  for (const match of imageSearchHtml.matchAll(attrPattern)) {
     pushImageCandidate(rawCandidates, match[2]);
   }
 
@@ -487,7 +1041,7 @@ function extractImageUrlsFromHtml(html: string, sourceProductId: string): Array<
     String.raw`(?:https?:)?//[^"'<>\s\)\]]*${escapedId}[^"'<>\s\)\]]*\.(?:jpg|jpeg|png|webp)(?:\?[^"'<>\s\)\]]*)?`,
     "gi",
   );
-  for (const match of normalizedHtml.matchAll(absoluteUrlPattern)) {
+  for (const match of imageSearchHtml.matchAll(absoluteUrlPattern)) {
     pushImageCandidate(rawCandidates, match[0]);
   }
 
@@ -495,11 +1049,13 @@ function extractImageUrlsFromHtml(html: string, sourceProductId: string): Array<
     String.raw`/(?:resize|modpub)/images2/work/[^"'<>\s\)\]]*${escapedId}[^"'<>\s\)\]]*\.(?:jpg|jpeg|png|webp)(?:\?[^"'<>\s\)\]]*)?`,
     "gi",
   );
-  for (const match of normalizedHtml.matchAll(relativeUrlPattern)) {
+  for (const match of imageSearchHtml.matchAll(relativeUrlPattern)) {
     pushImageCandidate(rawCandidates, match[0]);
   }
 
-  return rawCandidates
+  rawCandidates.push(...extractDlsiteWorkImageCandidatesFromText(imageSearchHtml));
+
+  const candidatePairs = rawCandidates
     .map((rawUrl) => ({
       displayUrl: buildDisplayImageUrl(rawUrl),
       thumbnailUrl: buildThumbnailImageUrl(rawUrl),
@@ -507,6 +1063,22 @@ function extractImageUrlsFromHtml(html: string, sourceProductId: string): Array<
     .filter(({ displayUrl, thumbnailUrl }) =>
       isLikelyWorkImage(displayUrl, sourceProductId) || isLikelyWorkImage(thumbnailUrl, sourceProductId),
     );
+
+  // 念のため、scoped抽出がDLsite側のHTML差分でog:image相当しか拾えなかった場合だけ、
+  // ページ全体からDLsite作品画像URLを再探索する。通常時はproduct-slider周辺だけを見るため、
+  // 関連作品・広告画像の混入リスクを抑えられる。
+  const uniqueKeys = new Set(candidatePairs.map((pair) => canonicalImageKey(pair.displayUrl, sourceProductId)));
+  if (uniqueKeys.size <= 1 && imageSearchHtml !== normalizedHtml) {
+    for (const rawUrl of extractDlsiteWorkImageCandidatesFromText(normalizedHtml)) {
+      const displayUrl = buildDisplayImageUrl(rawUrl);
+      const thumbnailUrl = buildThumbnailImageUrl(rawUrl);
+      if (isLikelyWorkImage(displayUrl, sourceProductId) || isLikelyWorkImage(thumbnailUrl, sourceProductId)) {
+        candidatePairs.push({ displayUrl, thumbnailUrl });
+      }
+    }
+  }
+
+  return candidatePairs;
 }
 
 function mergeDlsiteAjaxInfo(base: DlsiteAjaxInfo, next: DlsiteAjaxInfo): DlsiteAjaxInfo {
@@ -1110,7 +1682,7 @@ function extractPriceCurrent(html: string, text: string): number | undefined {
   );
 }
 
-async function extractProductDetail(html: string, sourceProductId: string): Promise<RawProductDetail> {
+async function extractProductDetail(html: string, sourceProductId: string, sourceUrl = buildSourceUrl(sourceProductId)): Promise<RawProductDetail> {
   const text = stripTags(html);
   const title =
     cleanText(findMetaContent(html, "og:title")?.replace(/\s*\|\s*DLsite.*$/i, "")) ??
@@ -1120,6 +1692,17 @@ async function extractProductDetail(html: string, sourceProductId: string): Prom
   const seller = extractSeller(html);
   const ajaxInfo = await fetchProductInfoAjax(sourceProductId);
   const images = await extractImages(html, sourceProductId);
+  if (images.length === 0) {
+    logger.warn("DLsite product images not found", {
+      sourceProductId,
+      sourceUrl,
+      hasOgImage: Boolean(findMetaContent(html, "og:image")),
+      hasWorkLeft: /id=["']work_left["']/i.test(html),
+      hasProductSlider: /class=["'][^"']*\bproduct-slider\b/i.test(html),
+      hasWorkSlider: /class=["'][^"']*\bwork_slider\b/i.test(html),
+      containsSourceProductId: html.toLowerCase().includes(sourceProductId.toLowerCase()),
+    });
+  }
   const priceCurrent = ajaxInfo.priceCurrent ?? extractPriceCurrent(html, text);
   const priceOriginal =
     ajaxInfo.priceOriginal ??
@@ -1148,6 +1731,12 @@ async function extractProductDetail(html: string, sourceProductId: string): Prom
   const isAdult = /R18|18禁|成人向け|年齢確認/.test(text);
   const workTypeInfo = extractDlsiteWorkType(html, text);
   const contentTypeInfos = extractDlsiteContentTypes(html);
+  const hintedContentType = sourceProductIdContentTypeHints.get(sourceProductId);
+  const resolvedContentTypeInfos = contentTypeInfos.length > 0
+    ? contentTypeInfos
+    : hintedContentType
+      ? [{ contentType: hintedContentType, contentTypeLabel: hintedContentType === "bl" ? "BL" : "TL" }]
+      : [];
 
   return {
     sourceProductId,
@@ -1168,12 +1757,12 @@ async function extractProductDetail(html: string, sourceProductId: string): Prom
     ageRating: isAdult ? "r18" : "all",
     workType: workTypeInfo.workType,
     workTypeLabel: workTypeInfo.workTypeLabel,
-    contentTypes: contentTypeInfos.map((item) => item.contentTypeLabel),
-    contentTypeIds: contentTypeInfos.map((item) => `dlsite:${item.contentType}`),
+    contentTypes: resolvedContentTypeInfos.map((item) => item.contentTypeLabel),
+    contentTypeIds: resolvedContentTypeInfos.map((item) => `dlsite:${item.contentType}`),
     thumbnailUrl: images[0]?.url,
     mainImageUrl: images[0]?.url,
     images,
-    sourceUrl: buildSourceUrl(sourceProductId),
+    sourceUrl,
     affiliateUrl: "",
     description: cleanText(findMetaContent(html, "description"))?.slice(0, 500),
     genres,
@@ -1185,30 +1774,199 @@ async function extractProductDetail(html: string, sourceProductId: string): Prom
   };
 }
 
-async function fetchPublicHtml(url: string): Promise<string> {
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      "user-agent": USER_AGENT,
-      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "accept-language": "ja,en;q=0.8",
-    },
+function errorToDiagnostic(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+
+  const fields: string[] = [`name=${error.name}`, `message=${error.message}`];
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    fields.push(`causeName=${cause.name}`);
+    fields.push(`causeMessage=${cause.message}`);
+    const causeRecord = cause as Error & {
+      code?: unknown;
+      errno?: unknown;
+      syscall?: unknown;
+      hostname?: unknown;
+      address?: unknown;
+      port?: unknown;
+    };
+    for (const key of ["code", "errno", "syscall", "hostname", "address", "port"] as const) {
+      const value = causeRecord[key];
+      if (value !== undefined) fields.push(`cause.${key}=${String(value)}`);
+    }
+  } else if (cause !== undefined) {
+    fields.push(`cause=${String(cause)}`);
+  }
+
+  return fields.join(" ");
+}
+
+function isRetryableFetchError(error: unknown): boolean {
+  if (error instanceof BlockedAccessError) return false;
+  if (!(error instanceof Error)) return true;
+
+  const statusMatch = error.message.match(/status=(\d{3})/);
+  if (statusMatch) {
+    const status = Number(statusMatch[1]);
+    return status === 408 || status === 429 || (status >= 500 && status <= 599);
+  }
+
+  const cause = (error as { cause?: unknown }).cause as { code?: unknown } | undefined;
+  const code = typeof cause?.code === "string" ? cause.code : undefined;
+  return !code || [
+    "ECONNRESET",
+    "ETIMEDOUT",
+    "UND_ERR_CONNECT_TIMEOUT",
+    "UND_ERR_HEADERS_TIMEOUT",
+    "EAI_AGAIN",
+    "ENOTFOUND",
+    "ENETUNREACH",
+    "EHOSTUNREACH",
+  ].includes(code);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
   });
+}
 
-  if (response.status === 403 || response.status === 429) {
-    throw new BlockedAccessError(`DLsite access blocked or rate limited: status=${response.status} url=${url}`);
+async function fetchPublicHtml(url: string): Promise<string> {
+  const failures: string[] = [];
+
+  for (let attempt = 1; attempt <= FETCH_RETRY_COUNT; attempt += 1) {
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        redirect: "follow",
+        signal: abortController.signal,
+        headers: {
+          "user-agent": USER_AGENT,
+          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "accept-language": "ja,en;q=0.8",
+          "cache-control": "no-cache",
+          pragma: "no-cache",
+          referer: "https://www.dlsite.com/",
+          "upgrade-insecure-requests": "1",
+        },
+      });
+
+      if (response.status === 403 || response.status === 429) {
+        throw new BlockedAccessError(`DLsite access blocked or rate limited: status=${response.status} url=${url}`);
+      }
+
+      if (!response.ok) {
+        throw new Error(`DLsite fetch failed: status=${response.status} url=${url}`);
+      }
+
+      const html = await response.text();
+      if (/captcha|reCAPTCHA|アクセスが集中|ただいま大変混み合って/.test(html)) {
+        throw new BlockedAccessError(`DLsite returned a block/captcha-like page: url=${url}`);
+      }
+
+      return html;
+    } catch (error) {
+      const diagnostic = errorToDiagnostic(error);
+      failures.push(`attempt=${attempt} ${diagnostic}`);
+
+      if (error instanceof BlockedAccessError) {
+        throw error;
+      }
+
+      if (attempt >= FETCH_RETRY_COUNT || !isRetryableFetchError(error)) {
+        throw new Error(`DLsite fetch request failed: url=${url} failures=[${failures.join(" | ")}]`);
+      }
+
+      logger.warn("DLsite fetch attempt failed; retrying", {
+        url,
+        attempt,
+        diagnostic,
+      });
+      await delay(600 * attempt);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
-  if (!response.ok) {
-    throw new Error(`DLsite fetch failed: status=${response.status} url=${url}`);
-  }
+  throw new Error(`DLsite fetch request failed: url=${url} failures=[${failures.join(" | ")}]`);
+}
 
-  const html = await response.text();
-  if (/captcha|reCAPTCHA|アクセスが集中|ただいま大変混み合って/.test(html)) {
-    throw new BlockedAccessError(`DLsite returned a block/captcha-like page: url=${url}`);
-  }
 
-  return html;
+export type DlsiteProductDebugFloor = "auto" | "girls" | "tl" | "bl";
+
+export type DlsiteProductDebugFetchResult = {
+  sourceProductId: string;
+  requestedFloor: DlsiteProductDebugFloor;
+  selectedFloor: DlsiteFloor;
+  sourceUrl: string;
+  html: string;
+  htmlLength: number;
+  parsedImageCount: number;
+  htmlImageCandidateCount: number;
+  hasProductSlider: boolean;
+  hasWorkSlider: boolean;
+  rawProductDetail: RawProductDetail;
+};
+
+function normalizeDlsiteProductId(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  if (!/^RJ\d{6,10}$/.test(normalized)) {
+    throw new Error(`invalid DLsite productId: ${value}`);
+  }
+  return normalized;
+}
+
+function buildSourceUrlForDebugFloor(sourceProductId: string, floor: DlsiteProductDebugFloor): string {
+  if (floor === "bl") return buildBlSourceUrl(sourceProductId);
+  return buildSourceUrl(sourceProductId);
+}
+
+function selectedFloorFromUrl(url: string): DlsiteFloor {
+  return /\/bl(?:-touch)?\/work\//i.test(url) ? "bl" : "girls";
+}
+
+export async function fetchDlsiteProductDetailForDebug(params: {
+  sourceProductId: string;
+  floor?: DlsiteProductDebugFloor;
+}): Promise<DlsiteProductDebugFetchResult> {
+  const sourceProductId = normalizeDlsiteProductId(params.sourceProductId);
+  const requestedFloor = params.floor ?? "auto";
+  const candidate = requestedFloor === "auto"
+    ? await fetchBestProductDetailHtml(sourceProductId)
+    : await (async (): Promise<ProductDetailHtmlCandidate> => {
+        const url = buildSourceUrlForDebugFloor(sourceProductId, requestedFloor);
+        const html = await fetchPublicHtml(url);
+        return {
+          url,
+          html,
+          imageCount: countExtractedProductImages(html, sourceProductId),
+          hasProductSlider: /class=["'][^"']*\bproduct-slider\b/i.test(html),
+          hasWorkSlider: /class=["'][^"']*\bwork_slider\b/i.test(html),
+        };
+      })();
+
+  const selectedFloor = selectedFloorFromUrl(candidate.url);
+  sourceProductIdContentTypeHints.set(sourceProductId, selectedFloor === "bl" ? "bl" : "tl");
+
+  const rawProductDetail = await extractProductDetail(candidate.html, sourceProductId, candidate.url);
+  const rawImages = (rawProductDetail as { images?: ProductImage[] }).images ?? [];
+
+  return {
+    sourceProductId,
+    requestedFloor,
+    selectedFloor,
+    sourceUrl: candidate.url,
+    html: candidate.html,
+    htmlLength: candidate.html.length,
+    parsedImageCount: rawImages.length,
+    htmlImageCandidateCount: candidate.imageCount,
+    hasProductSlider: candidate.hasProductSlider,
+    hasWorkSlider: candidate.hasWorkSlider,
+    rawProductDetail,
+  };
 }
 
 export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
@@ -1216,49 +1974,79 @@ export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
   target,
 
   async fetchRankingWorkIds(fetchTarget, options): Promise<RankingFetchResult> {
-    const sourceUrls = listUrls[fetchTarget.rankingType] ?? listUrls.daily;
+    const sourceUrls = buildListUrls(fetchTarget);
     if (!sourceUrls || sourceUrls.length === 0) {
-      return { sourceProductIds: [], sourceUrl: undefined };
+      return { sourceProductIds: [], products: [], sourceUrl: undefined };
     }
 
+    const listLimit = getListLimit(options);
     const failedMessages: string[] = [];
-    let html: string | undefined;
-    let sourceUrl: string | undefined;
+    let bestResult: ListCandidateFetchResult | undefined;
 
     for (const candidateUrl of sourceUrls) {
       try {
-        html = await fetchPublicHtml(candidateUrl);
-        sourceUrl = candidateUrl;
-        break;
+        const result = await fetchProductIdsFromListCandidate({
+          candidateUrl,
+          rankingType: fetchTarget.rankingType,
+          listLimit,
+        });
+
+        if (!bestResult || result.sourceProductIds.length > bestResult.sourceProductIds.length) {
+          bestResult = result;
+        }
+
+        if (result.sourceProductIds.length > 0) {
+          logger.info("DLsite list candidate selected", {
+            rankingType: fetchTarget.rankingType,
+            candidateUrl,
+            fetchedPageCount: result.fetchedPageCount,
+            totalCount: result.sourceProductIds.length,
+            listLimit,
+          });
+          break;
+        }
+
+        failedMessages.push(`no product ids found: ${candidateUrl}`);
       } catch (error) {
         if (error instanceof BlockedAccessError) {
           throw error;
         }
         const message = error instanceof Error ? error.message : String(error);
-        failedMessages.push(message);
+        failedMessages.push(`${candidateUrl}: ${message}`);
       }
     }
 
-    if (!html || !sourceUrl) {
+    if (!bestResult || bestResult.sourceProductIds.length === 0) {
       throw new Error(`DLsite list fetch failed: ${fetchTarget.rankingType}: ${failedMessages.join(" / ")}`);
     }
 
-    const sourceProductIds = extractProductIds(html).slice(0, getListLimit(options));
+    const sourceProductIds = bestResult.sourceProductIds.slice(0, listLimit);
     for (const sourceProductId of sourceProductIds) {
       const hints = sourceProductIdHints.get(sourceProductId) ?? new Set<RankingType>();
       hints.add(fetchTarget.rankingType);
       sourceProductIdHints.set(sourceProductId, hints);
+      if (fetchTarget.contentType) {
+        sourceProductIdContentTypeHints.set(sourceProductId, fetchTarget.contentType);
+      }
     }
+
+    logger.info("DLsite list ids fetched", {
+      rankingType: fetchTarget.rankingType,
+      totalCount: sourceProductIds.length,
+      listLimit,
+      sourceUrl: bestResult.sourceUrl,
+    });
 
     return {
       sourceProductIds,
-      sourceUrl,
+      products: bestResult.products.slice(0, listLimit),
+      sourceUrl: bestResult.sourceUrl,
     };
   },
 
-  async fetchProductDetail(sourceProductId: string): Promise<RawProductDetail> {
-    const html = await fetchPublicHtml(buildSourceUrl(sourceProductId));
-    return await extractProductDetail(html, sourceProductId);
+  async fetchProductDetail(sourceProductId: string, options?: ProductDetailFetchOptions): Promise<RawProductDetail> {
+    const candidate = await fetchBestProductDetailHtml(sourceProductId, options?.sourceUrl);
+    return await extractProductDetail(candidate.html, sourceProductId, candidate.url);
   },
 
   normalizeProduct,

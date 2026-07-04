@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { LogoIcon, NavIcon, SearchIcon } from "@/components/icons/SiteIcons";
+import { CircleNavIcon, GenreNavIcon, LogoIcon, NewNavIcon, RankingNavIcon, SaleNavIcon, SearchIcon } from "@/components/icons/SiteIcons";
 import { CONTENT_SCOPE_OPTIONS, contentTypeParamForScope, parseContentScope, type ProductContentScope } from "@/lib/contentCategories";
 
 function buildHrefWithContentScope(basePath: string, scope: ProductContentScope): string {
@@ -77,11 +77,11 @@ export function Header() {
 
         <div className="siteHeader__bottom">
           <nav className="primaryNav" aria-label="主要メニュー">
-            <Link href={scopedHref("/dlsite/female/doujin/ranking")}><NavIcon>♕</NavIcon>ランキング</Link>
-            <Link href={scopedHref("/dlsite/female/doujin/new")}><NavIcon>◉</NavIcon>新着</Link>
-            <Link href={scopedHref("/dlsite/female/doujin/sale")}><NavIcon>◇</NavIcon>セール</Link>
-            <Link href={scopedHref("/dlsite/female/doujin/circle")}><NavIcon>♧</NavIcon>サークル</Link>
-            <Link href={scopedHref("/dlsite/female/doujin/genre")}><NavIcon>⌘</NavIcon>ジャンル</Link>
+            <Link href={scopedHref("/dlsite/female/doujin/ranking")}><RankingNavIcon />ランキング</Link>
+            <Link href={scopedHref("/dlsite/female/doujin/new")}><NewNavIcon />新着</Link>
+            <Link href={scopedHref("/dlsite/female/doujin/sale")}><SaleNavIcon />セール</Link>
+            <Link href={scopedHref("/dlsite/female/doujin/circle")}><CircleNavIcon />サークル</Link>
+            <Link href={scopedHref("/dlsite/female/doujin/genre")}><GenreNavIcon />ジャンル</Link>
           </nav>
 
           <div className="headerSwitches" aria-label="現在の対象">

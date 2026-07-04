@@ -35,8 +35,10 @@ export function buildRankingKey(target: {
   audience: string;
   category: Category;
   rankingType: RankingType;
+  contentType?: string;
 }): string {
-  return `${target.platform}_${target.audience}_${target.category}_${target.rankingType}`;
+  const contentTypeSegment = target.contentType ? `_${target.contentType}` : "";
+  return `${target.platform}_${target.audience}_${target.category}${contentTypeSegment}_${target.rankingType}`;
 }
 
 export function buildSnapshotId(date: string, rankingKey: string): string {

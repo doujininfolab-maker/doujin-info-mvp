@@ -5,7 +5,7 @@ import { ProductGrid } from "./ProductGrid";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { SectionHeader } from "./SectionHeader";
 import { ScrollRail } from "./ScrollRail";
-import { GenreIcon } from "@/components/icons/SiteIcons";
+import { AudioCategoryIcon, CgCategoryIcon, CircleHighlightSectionIcon, FeaturedGenreStatIcon, FemaleCategoryIcon, GameCategoryIcon, GenreIcon, MangaCategoryIcon, MovieCategoryIcon, NewSectionIcon, OtherCategoryIcon, PeopleCategoryIcon, ProductCountStatIcon, SaleCountStatIcon, SaleSectionIcon, TodayUpdateStatIcon } from "@/components/icons/SiteIcons";
 import { WorkTypeTabs } from "./WorkTypeTabs";
 import { WORK_TYPE_OPTIONS, buildFilterHref } from "@/lib/workTypes";
 import { CONTENT_TYPE_OPTIONS } from "@/lib/contentCategories";
@@ -19,7 +19,7 @@ type HomeStatItem = {
   label: string;
   value: string;
   suffix: string;
-  icon: string;
+  icon: React.ReactNode;
   tone: StatTone;
   href?: string;
   isGenre?: boolean;
@@ -79,25 +79,42 @@ function defaultCategorySummaries(): ProductCategorySummary[] {
   return [...contentTypeCategories, ...workTypeCategories];
 }
 
-function getGenreIcon(index: number): string {
-  return genreIcons[index % genreIcons.length];
-}
-
 function getGenreTone(index: number): GenreTone {
   return genreTones[index % genreTones.length];
+}
+
+function getCategoryIcon(category: ProductCategorySummary): React.ReactNode {
+  if (category.kind === "contentType") {
+    return category.value === "bl" ? <PeopleCategoryIcon /> : <FemaleCategoryIcon />;
+  }
+
+  switch (category.value) {
+    case "comic":
+      return <MangaCategoryIcon />;
+    case "voice":
+      return <AudioCategoryIcon />;
+    case "game":
+      return <GameCategoryIcon />;
+    case "cg":
+      return <CgCategoryIcon />;
+    case "movie":
+      return <MovieCategoryIcon />;
+    default:
+      return <OtherCategoryIcon />;
+  }
 }
 
 function HomeStatsPanel({ stats, segment, contentTypeParam }: { stats: HomeDashboardStats; segment: SiteSegment; contentTypeParam?: string }) {
   const topGenre = stats.topGenre;
   const homeStats: HomeStatItem[] = [
-    { label: "掲載作品数", value: formatNumber(stats.productCount), suffix: "作品", icon: "▣", tone: "pink" as const },
-    { label: "本日の更新", value: formatNumber(stats.todayUpdatedCount), suffix: "作品", icon: "✦", tone: "orange" as const },
-    { label: "セール件数", value: formatNumber(stats.saleCount), suffix: "件", icon: "◆", tone: "pink" as const },
+    { label: "掲載作品数", value: formatNumber(stats.productCount), suffix: "作品", icon: <ProductCountStatIcon />, tone: "pink" as const },
+    { label: "本日の更新", value: formatNumber(stats.todayUpdatedCount), suffix: "作品", icon: <TodayUpdateStatIcon />, tone: "orange" as const },
+    { label: "セール件数", value: formatNumber(stats.saleCount), suffix: "件", icon: <SaleCountStatIcon />, tone: "pink" as const },
     {
       label: "注目ジャンル",
       value: topGenre?.name ?? "取得待ち",
       suffix: topGenre ? `${formatNumber(topGenre.productCount)}作品` : "データなし",
-      icon: "●",
+      icon: <FeaturedGenreStatIcon />,
       tone: "purple" as const,
       href: topGenre ? buildFilterHref(genreHref(segment, topGenre), {}, { contentType: contentTypeParam }) : undefined,
       isGenre: true,
@@ -197,7 +214,7 @@ export function HomeDashboard({
           </section>
 
           <section className="contentSection">
-            <SectionHeader title="新着作品" href={newListHref} icon="NEW">
+            <SectionHeader title="新着作品" href={newListHref} icon={<NewSectionIcon />}>
               <div className="homeSectionControls homeSectionControls--new">
                 <WorkTypeTabs
                   basePath={pagePath}
@@ -214,7 +231,7 @@ export function HomeDashboard({
           </section>
 
           <section className="contentSection">
-            <SectionHeader title="セール・値引き中" href={buildFilterHref(`${segment.path}/sale`, {}, { contentType: contentTypeParam })} icon="◆" />
+            <SectionHeader title="セール・値引き中" href={buildFilterHref(`${segment.path}/sale`, {}, { contentType: contentTypeParam })} icon={<SaleSectionIcon />} />
             <ProductGrid products={sales} variant="sale" rail ariaLabel="セール作品の商品リスト" contentTypeParam={contentTypeParam} />
           </section>
 
@@ -228,12 +245,12 @@ export function HomeDashboard({
           <ScrollRail ariaLabel="カテゴリ一覧">
             {popularCategories.length ? popularCategories.map((category, index) => (
               <Link className="genreCard" href={categoryHref(segment, category, contentTypeParam)} key={category.categoryId}>
-                <GenreIcon tone={getGenreTone(index)}>{getGenreIcon(index)}</GenreIcon>
+                <GenreIcon tone={getGenreTone(index)}>{getCategoryIcon(category)}</GenreIcon>
                 <span><strong>{category.name}</strong><small>{formatNumber(category.productCount)}作品</small></span>
               </Link>
             )) : (
               <div className="genreCard genreCard--empty">
-                <GenreIcon tone="pink">▤</GenreIcon>
+                <GenreIcon tone="pink"><OtherCategoryIcon /></GenreIcon>
                 <span><strong>カテゴリ取得待ち</strong><small>作品データ取得後に表示</small></span>
               </div>
             )}
@@ -241,7 +258,7 @@ export function HomeDashboard({
         </section>
 
         <section className="contentSection railOnlySection dashboardFullWidthSection">
-          <SectionHeader title="注目サークル" href={buildFilterHref(`${segment.path}/circle`, {}, { contentType: contentTypeParam })} icon="♕" />
+          <SectionHeader title="注目サークル" href={buildFilterHref(`${segment.path}/circle`, {}, { contentType: contentTypeParam })} icon={<CircleHighlightSectionIcon />} />
           <ScrollRail ariaLabel="注目サークル一覧">
             {circleHighlights.length ? circleHighlights.map((circle) => (
               <Link className="circleCard" href={buildFilterHref(`${segment.path}/circle/${encodeURIComponent(circle.sellerKey)}`, {}, { contentType: contentTypeParam })} key={circle.sellerKey}>

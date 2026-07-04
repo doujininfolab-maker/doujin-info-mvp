@@ -1,6 +1,19 @@
-import Link from "next/link";
-import { contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
-import { buildFilterHref } from "@/lib/workTypes";
+import { ProductGrid } from "@/components/ProductGrid";
+import { SectionHeader } from "@/components/SectionHeader";
+import { PageSizeSelect } from "@/components/PageSizeSelect";
+import { ListPagination } from "@/components/ListPagination";
+import { WorkTypeTabs } from "@/components/WorkTypeTabs";
+import { SearchIcon } from "@/components/icons/SiteIcons";
+import { searchProductsWithTotal } from "@/lib/firebase/products";
+import { getSegment } from "@/lib/siteSegments";
+import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
+import { parsePageNumber } from "@/lib/pageSize";
+import { parseWorkType } from "@/lib/workTypes";
+import { normalizeSearchText } from "@/lib/search";
+
+export const dynamic = "force-dynamic";
+
+const SEARCH_PAGE_SIZE_OPTIONS = [30, 50, 100] as const;
 
 type SearchPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -11,28 +24,105 @@ export const metadata = {
   description: "作品名・サークル名・ジャンルで検索できます。",
 };
 
+function getFirstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function parseSearchPageSize(value: string | string[] | undefined): 30 | 50 | 100 {
+  const parsed = Number(getFirstParam(value) ?? 30);
+  if (parsed === 50 || parsed === 100) return parsed;
+  return 30;
+}
+
+function formatNumber(value: number): string {
+  return value.toLocaleString("ja-JP");
+}
+
 export default async function SearchPage({ searchParams }: SearchPageProps) {
-  const params = searchParams ? await searchParams : {};
-  const keyword = (Array.isArray(params.q) ? params.q[0] : params.q)?.trim() ?? "";
-  const contentScope = parseContentScope(params.contentType);
+  const query = searchParams ? await searchParams : {};
+  const keyword = normalizeSearchText(getFirstParam(query.q));
+  const limitCount = parseSearchPageSize(query.limit);
+  const pageNumber = parsePageNumber(query.page);
+  const offsetCount = (pageNumber - 1) * limitCount;
+  const workType = parseWorkType(query.workType);
+  const contentScope = parseContentScope(query.contentType);
+  const contentType = contentTypeForFilter(contentScope);
   const contentTypeParam = contentTypeParamForScope(contentScope);
+  const segment = getSegment("dlsite", "female", "doujin");
+
+  const searchFilter = segment && keyword
+    ? {
+        platform: segment.platform,
+        audience: segment.audience,
+        category: segment.category,
+        keyword,
+        limitCount,
+        offsetCount,
+        workType,
+        contentType,
+      }
+    : undefined;
+
+  const { products, totalCount } = searchFilter
+    ? await searchProductsWithTotal(searchFilter)
+    : { products: [], totalCount: 0 };
+
+  const hasSearched = Boolean(keyword);
+  const hasNext = offsetCount + products.length < totalCount;
 
   return (
-    <main className="staticPage">
-      <section className="staticPage__card">
-        <p className="staticPage__eyebrow">SEARCH</p>
-        <h1>検索</h1>
-        {keyword ? (
-          <p>「{keyword}」の検索機能は準備中です。まずはランキング・新着・セール・ジャンルから探してください。</p>
+    <div className="listPage listPage--wide">
+      <section className="contentSection listSection searchResultSection">
+        <SectionHeader
+          title="検索結果"
+          description={hasSearched ? `「${keyword}」の検索結果 ${formatNumber(totalCount)}件` : "作品名・サークル名・ジャンルで検索できます。"}
+          icon={<SearchIcon />}
+        >
+          <WorkTypeTabs
+            basePath="/search"
+            currentWorkType={workType}
+            currentParams={{
+              q: keyword || undefined,
+              contentType: contentTypeParam,
+              limit: String(limitCount),
+              page: "1",
+            }}
+          />
+        </SectionHeader>
+
+        <form className="searchPageForm" action="/search" method="get" role="search">
+          <input name="q" aria-label="検索キーワード" placeholder="作品名・サークル名・ジャンルで検索" defaultValue={keyword} />
+          {contentTypeParam ? <input type="hidden" name="contentType" value={contentTypeParam} /> : null}
+          {workType ? <input type="hidden" name="workType" value={workType} /> : null}
+          <input type="hidden" name="limit" value={limitCount} />
+          <button type="submit" aria-label="検索する"><SearchIcon /></button>
+        </form>
+
+        {hasSearched ? (
+          <>
+            <div className="listToolbar listToolbar--below">
+              <PageSizeSelect value={limitCount} options={SEARCH_PAGE_SIZE_OPTIONS} />
+              <ListPagination page={pageNumber} limit={limitCount} hasNext={hasNext} />
+            </div>
+
+            {products.length ? (
+              <ProductGrid products={products} variant="list" contentTypeParam={contentTypeParam} />
+            ) : (
+              <div className="searchEmptyState">
+                <strong>該当する作品が見つかりませんでした。</strong>
+                <p>キーワードを変えるか、TL / BL の切り替えやカテゴリを変更してください。</p>
+              </div>
+            )}
+
+            <ListPagination page={pageNumber} limit={limitCount} hasNext={hasNext} />
+          </>
         ) : (
-          <p>検索機能は準備中です。まずはランキング・新着・セール・ジャンルから探してください。</p>
+          <div className="searchEmptyState">
+            <strong>検索キーワードを入力してください。</strong>
+            <p>作品名・サークル名・ジャンル・RJ番号などで検索できます。</p>
+          </div>
         )}
-        <div className="staticPage__actions">
-          <Link href={buildFilterHref("/dlsite/female/doujin/ranking", {}, { contentType: contentTypeParam })}>ランキングを見る</Link>
-          <Link href={buildFilterHref("/dlsite/female/doujin/new", {}, { contentType: contentTypeParam })}>新着を見る</Link>
-          <Link href={buildFilterHref("/dlsite/female/doujin/sale", {}, { contentType: contentTypeParam })}>セールを見る</Link>
-        </div>
       </section>
-    </main>
+    </div>
   );
 }

@@ -457,6 +457,18 @@ function getSellerKey(product: Product): string | undefined {
   return product.seller?.sellerId?.trim() || product.seller?.sellerName?.trim() || undefined;
 }
 
+function normalizeSellerSearchText(value?: string): string {
+  return (value ?? "").normalize("NFKC").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function matchesSellerSummaryQuery(summary: SellerSummary, normalizedQuery: string): boolean {
+  if (!normalizedQuery) return true;
+
+  return [summary.sellerName, summary.sellerKey, summary.sellerId].some((value) =>
+    normalizeSellerSearchText(value).includes(normalizedQuery),
+  );
+}
+
 function compareDateDesc(a?: string, b?: string): number {
   return (b ?? "").localeCompare(a ?? "");
 }
@@ -542,9 +554,12 @@ export async function getSellerSummaries(
   filter: ProductListFilter & { maxProducts?: number },
 ): Promise<SellerSummary[]> {
   const products = await getProductsForSellerAggregation(filter);
-  const summaries = buildSellerSummaries(products).sort(
-    (a, b) => b.totalSalesCount - a.totalSalesCount || b.productCount - a.productCount,
-  );
+  const normalizedSellerQuery = normalizeSellerSearchText(filter.sellerQuery);
+  const summaries = buildSellerSummaries(products)
+    .filter((summary) => matchesSellerSummaryQuery(summary, normalizedSellerQuery))
+    .sort(
+      (a, b) => b.totalSalesCount - a.totalSalesCount || b.productCount - a.productCount,
+    );
 
   return summaries.slice(
     filter.offsetCount ?? 0,

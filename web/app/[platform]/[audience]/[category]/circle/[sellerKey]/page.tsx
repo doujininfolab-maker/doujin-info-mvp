@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductGrid } from "@/components/ProductGrid";
+import { ListPageInfo } from "@/components/ListPageInfo";
 import { WorkTrendCharts } from "@/components/WorkTrendCharts";
 import { getSellerSummaryByKey } from "@/lib/firebase/products";
-import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
+import { contentTypeForFilter, contentTypeParamForScope, getContentScopeLabel, parseContentScope } from "@/lib/contentCategories";
 import { buildFilterHref } from "@/lib/workTypes";
 import { formatDate, formatNumber } from "@/lib/format";
 import { getSegment, getSegmentPath } from "@/lib/siteSegments";
@@ -109,6 +110,17 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
         </div>
       </header>
 
+      <ListPageInfo
+        title="サークルの販売実績と作品傾向を確認できます"
+        description="代表作・最新作・販売数・ジャンル傾向をまとめています。下部の作品一覧は売れ筋順で表示します。"
+        items={[
+          { label: "対象", value: getContentScopeLabel(contentScope) },
+          { label: "作品数", value: `${formatNumber(summary.productCount)}件` },
+          { label: "合計販売数", value: `${formatNumber(summary.totalSalesCount)}本` },
+          { label: "配信期間", value: formatPeriod(summary.firstReleaseDate, summary.latestReleaseDate) },
+        ]}
+      />
+
       <section className="circleOverview">
         <div className="circleOverview__tableWrap">
           <dl className="circleInfoTable">
@@ -142,6 +154,7 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
 
       <section className="detailSection sameSellerSection circleWorksSection">
         <h2>「{summary.sellerName}」のサークル作品</h2>
+        <p className="circleWorksSection__lead">販売数の多い作品を中心に最大30件表示しています。</p>
         <ProductGrid products={products} variant="list" contentTypeParam={contentTypeParam} />
       </section>
     </div>

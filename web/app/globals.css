@@ -4483,3 +4483,123 @@ img {
   font-size: 13px;
   font-weight: 700;
 }
+
+/* List page guidance panels */
+.listPageInfo {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 16px;
+  align-items: stretch;
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(90deg, rgba(255, 248, 251, 0.88) 0%, rgba(255, 255, 255, 0.94) 100%);
+}
+
+.listPageInfo__text {
+  min-width: 0;
+}
+
+.listPageInfo__text strong {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.listPageInfo__text p {
+  margin: 5px 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.listPageInfo__text small {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.listPageInfo__items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  align-content: start;
+  margin: 0;
+}
+
+.listPageInfo__items div {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.listPageInfo__items dt {
+  margin: 0 0 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.listPageInfo__items dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listEmptyState {
+  display: grid;
+  gap: 6px;
+  padding: 22px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-soft);
+}
+
+.listEmptyState strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.listEmptyState p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.circleDetailPage .listPageInfo {
+  margin-top: 16px;
+}
+
+.circleWorksSection__lead {
+  margin: -8px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .listPageInfo {
+    grid-template-columns: 1fr;
+  }
+
+  .listPageInfo__items {
+    grid-template-columns: 1fr;
+  }
+}

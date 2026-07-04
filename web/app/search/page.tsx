@@ -2,13 +2,14 @@ import { ProductGrid } from "@/components/ProductGrid";
 import { SectionHeader } from "@/components/SectionHeader";
 import { PageSizeSelect } from "@/components/PageSizeSelect";
 import { ListPagination } from "@/components/ListPagination";
+import { ListPageInfo } from "@/components/ListPageInfo";
 import { WorkTypeTabs } from "@/components/WorkTypeTabs";
 import { SearchIcon } from "@/components/icons/SiteIcons";
 import { searchProductsWithTotal } from "@/lib/firebase/products";
 import { getSegment } from "@/lib/siteSegments";
-import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
+import { contentTypeForFilter, contentTypeParamForScope, getContentScopeLabel, parseContentScope } from "@/lib/contentCategories";
 import { parsePageNumber } from "@/lib/pageSize";
-import { parseWorkType } from "@/lib/workTypes";
+import { getWorkTypeLabel, parseWorkType } from "@/lib/workTypes";
 import { normalizeSearchText } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
@@ -100,6 +101,16 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
         {hasSearched ? (
           <>
+            <ListPageInfo
+              title="検索条件に合う作品を表示しています"
+              description="作品名・サークル名・ジャンル・タグ・RJ番号を対象に直接部分一致で検索しています。"
+              items={[
+                { label: "キーワード", value: `「${keyword}」` },
+                { label: "ヒット件数", value: `${formatNumber(totalCount)}件` },
+                { label: "対象", value: getContentScopeLabel(contentScope) },
+                { label: "作品形式", value: getWorkTypeLabel(workType) },
+              ]}
+            />
             <div className="listToolbar listToolbar--below">
               <PageSizeSelect value={limitCount} options={SEARCH_PAGE_SIZE_OPTIONS} />
               <ListPagination page={pageNumber} limit={limitCount} hasNext={hasNext} />

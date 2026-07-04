@@ -4,13 +4,14 @@ import { ProductGrid } from "@/components/ProductGrid";
 import { SectionHeader } from "@/components/SectionHeader";
 import { PageSizeSelect } from "@/components/PageSizeSelect";
 import { ListPagination } from "@/components/ListPagination";
+import { ListEmptyState, ListPageInfo } from "@/components/ListPageInfo";
 import { RankingModeTabs, WorkTypeTabs } from "@/components/WorkTypeTabs";
 import { parsePageNumber, parsePageSize } from "@/lib/pageSize";
 import { getSegment } from "@/lib/siteSegments";
 import { getLatestRankingProducts } from "@/lib/firebase/products";
-import { parseWorkType } from "@/lib/workTypes";
-import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
-import { parseRankingMode } from "@/lib/rankingModes";
+import { getWorkTypeLabel, parseWorkType } from "@/lib/workTypes";
+import { contentTypeForFilter, contentTypeParamForScope, getContentScopeLabel, parseContentScope } from "@/lib/contentCategories";
+import { RANKING_MODE_OPTIONS, parseRankingMode } from "@/lib/rankingModes";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,8 @@ export default async function RankingPage({ params, searchParams }: PageProps) {
   });
 
   const listRankMetric = rankingMode === "dailyRevenue" ? "revenue" : "sales";
+  const rankingModeLabel = RANKING_MODE_OPTIONS.find((option) => option.value === rankingMode)?.label ?? "日間売上";
+  const visibleRange = products.length ? `${offsetCount + 1}〜${offsetCount + products.length}件` : "0件";
 
   return (
     <div className="listPage listPage--wide">
@@ -79,11 +82,26 @@ export default async function RankingPage({ params, searchParams }: PageProps) {
             />
           </div>
         </SectionHeader>
+        <ListPageInfo
+          title="いま売れている作品を比較できます"
+          description="DLsiteの取得済みランキングと販売数をもとに、人気作品を一覧で確認できます。右端には順位と販売指標を表示します。"
+          items={[
+            { label: "対象", value: getContentScopeLabel(contentScope) },
+            { label: "作品形式", value: getWorkTypeLabel(workType) },
+            { label: "並び順", value: rankingModeLabel },
+            { label: "表示中", value: visibleRange },
+          ]}
+          note="ランキングはバッチ取得時点の情報です。DLsite公式の表示とは取得タイミングで差が出る場合があります。"
+        />
         <div className="listToolbar listToolbar--below">
           <PageSizeSelect value={limitCount} />
           <ListPagination page={pageNumber} limit={limitCount} hasNext={products.length === limitCount} />
         </div>
-        <ProductGrid products={products} showRank rankOffset={offsetCount} variant="list" listRankMetric={listRankMetric} contentTypeParam={contentTypeParam} />
+        {products.length ? (
+          <ProductGrid products={products} showRank rankOffset={offsetCount} variant="list" listRankMetric={listRankMetric} contentTypeParam={contentTypeParam} />
+        ) : (
+          <ListEmptyState title="ランキング作品が見つかりませんでした。" />
+        )}
         <ListPagination page={pageNumber} limit={limitCount} hasNext={products.length === limitCount} />
       </section>
     </div>

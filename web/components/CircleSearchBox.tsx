@@ -40,7 +40,7 @@ export function CircleSearchBox({ value = "" }: CircleSearchBoxProps) {
 
   return (
     <form
-      className="circleSearchBox"
+      className="searchBox circleSearchBox"
       role="search"
       onSubmit={(event) => {
         event.preventDefault();

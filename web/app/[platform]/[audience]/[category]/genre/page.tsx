@@ -5,13 +5,14 @@ import { GenreRankingCard } from "@/components/GenreRankingCard";
 import { SectionHeader } from "@/components/SectionHeader";
 import { PageSizeSelect } from "@/components/PageSizeSelect";
 import { ListPagination } from "@/components/ListPagination";
+import { ListEmptyState, ListPageInfo } from "@/components/ListPageInfo";
 import { WorkTypeTabs } from "@/components/WorkTypeTabs";
 import { parsePageNumber, parsePageSize } from "@/lib/pageSize";
 import { getSegment } from "@/lib/siteSegments";
 import { getGenreRankingItems } from "@/lib/firebase/products";
-import { parseWorkType } from "@/lib/workTypes";
+import { getWorkTypeLabel, parseWorkType } from "@/lib/workTypes";
 import { buildFilterHref } from "@/lib/workTypes";
-import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
+import { contentTypeForFilter, contentTypeParamForScope, getContentScopeLabel, parseContentScope } from "@/lib/contentCategories";
 import { parseRankingMode } from "@/lib/rankingModes";
 import type { ProductRankingMode } from "@/lib/types";
 
@@ -90,6 +91,8 @@ export default async function GenreRankingPage({ params, searchParams }: PagePro
     contentType,
     rankingMode,
   });
+  const rankingModeLabel = GENRE_RANKING_MODE_OPTIONS.find((option) => option.value === rankingMode)?.label ?? "日間";
+  const visibleRange = items.length ? `${offsetCount + 1}〜${offsetCount + items.length}件` : "0件";
 
   return (
     <div className="listPage listPage--wide">
@@ -118,15 +121,29 @@ export default async function GenreRankingPage({ params, searchParams }: PagePro
             />
           </div>
         </SectionHeader>
+        <ListPageInfo
+          title="人気ジャンルと代表作品をまとめて確認できます"
+          description="ジャンルごとの作品数・累計販売数・代表作品を集計し、どのジャンルが強いかを比較できます。"
+          items={[
+            { label: "対象", value: getContentScopeLabel(contentScope) },
+            { label: "作品形式", value: getWorkTypeLabel(workType) },
+            { label: "集計", value: rankingModeLabel },
+            { label: "表示中", value: visibleRange },
+          ]}
+        />
         <div className="listToolbar listToolbar--below">
           <PageSizeSelect value={limitCount} />
           <ListPagination page={pageNumber} limit={limitCount} hasNext={items.length === limitCount} />
         </div>
-        <div className="genreRankingList">
-          {items.map((item) => (
-            <GenreRankingCard item={item} segment={segment} key={item.genreId} showRevenue={rankingMode === "dailyRevenue"} contentTypeParam={contentTypeParam} />
-          ))}
-        </div>
+        {items.length ? (
+          <div className="genreRankingList">
+            {items.map((item) => (
+              <GenreRankingCard item={item} segment={segment} key={item.genreId} showRevenue={rankingMode === "dailyRevenue"} contentTypeParam={contentTypeParam} />
+            ))}
+          </div>
+        ) : (
+          <ListEmptyState title="ジャンルランキングが見つかりませんでした。" description="TL / BL や作品形式を変更して再度確認してください。" />
+        )}
         <ListPagination page={pageNumber} limit={limitCount} hasNext={items.length === limitCount} />
       </section>
     </div>

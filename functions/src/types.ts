@@ -65,6 +65,18 @@ export type Product = {
 
   salesCount?: number;
   wishlistCount?: number;
+
+  /**
+   * JST日次バッチで販売数差分を計算するための直近日次スナップショット。
+   * 通常のproducts.salesCountは最新表示用として維持し、差分計算ではこちらを使う。
+   */
+  lastDailySalesSnapshotDate?: string;
+  lastDailySalesSnapshotCount?: number;
+  lastDailySalesSnapshotFetchedAt?: Timestamp;
+  previousDailySalesSnapshotDate?: string;
+  previousDailySalesSnapshotCount?: number;
+  lastDailySalesDeltaCalculatedDate?: string;
+
   rating?: number;
   ratingAverage?: number;
   reviewCount?: number;
@@ -121,6 +133,26 @@ export type ProductDailyMetric = {
 
   salesCount?: number;
   wishlistCount?: number;
+
+  dailySalesCount?: number | null;
+  dailySalesStatus?:
+    | "pending"
+    | "calculated"
+    | "no_previous_snapshot"
+    | "sales_count_missing"
+    | "negative_delta"
+    | "multi_day_gap"
+    | "same_day_snapshot"
+    | "invalid_snapshot_date";
+  dailySalesBaseDate?: string;
+  dailySalesNextDate?: string;
+  dailySalesBaseCount?: number;
+  dailySalesNextCount?: number;
+  dailySalesRawDelta?: number;
+  dailySalesPeriodDays?: number;
+  periodSalesCount?: number;
+  dailySalesCalculatedAt?: Timestamp;
+
   rating?: number;
   ratingAverage?: number;
   reviewCount?: number;

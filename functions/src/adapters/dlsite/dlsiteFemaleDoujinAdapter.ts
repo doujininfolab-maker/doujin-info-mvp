@@ -1,5 +1,20 @@
-import type { ProductContentType, ProductImage, ProductRatingBreakdown, ProductWorkType, RawProductDetail, RankingType } from "../../types";
-import type { DiscoveredProductSource, ProductDetailFetchOptions, RankingFetchOptions, RankingFetchResult, SourceAdapter } from "../types";
+import type {
+  ProductContentType,
+  ProductImage,
+  ProductRatingBreakdown,
+  ProductWorkType,
+  RawProductDetail,
+  RankingType,
+} from "../../types";
+import type {
+  DiscoveredProductSource,
+  ProductDetailFetchOptions,
+  ProductDetailParseTiming,
+  ProductParseMode,
+  RankingFetchOptions,
+  RankingFetchResult,
+  SourceAdapter,
+} from "../types";
 import { BlockedAccessError } from "../types";
 import { normalizeProduct } from "../../normalizers/normalizeProduct";
 import { logger } from "firebase-functions";
@@ -14,6 +29,12 @@ const target = {
 
 const DLSITE_GIRLS_BASE_URL = "https://www.dlsite.com/girls";
 const DLSITE_BL_BASE_URL = "https://www.dlsite.com/bl";
+const DLSITE_GIRLS_RELEASE_OLD_LIST_URL =
+  "https://www.dlsite.com/girls/fsr/=/language/jp/sex_category[0]/female/sex_category[1]/gay/work_category[0]/doujin/order/release_d/work_type_category[0]/game/work_type_category[1]/comic/work_type_category[2]/illust/work_type_category[3]/novel/work_type_category[4]/movie/work_type_category[5]/audio/work_type_category[6]/music/work_type_category[7]/tool/work_type_category[8]/etc/options_and_or/and/options[0]/JPN/options[1]/NM/per_page/100/is_tl/1/lang_options[0]/%E6%97%A5%E6%9C%AC%E8%AA%9E/lang_options[1]/%E8%A8%80%E8%AA%9E%E4%B8%8D%E8%A6%81";
+const DLSITE_GIRLS_RELEASE_OLD_PER_PAGE = 100;
+const DLSITE_BL_RELEASE_NEW_LIST_URL =
+  "https://www.dlsite.com/bl/fsr/=/language/jp/sex_category%5B0%5D/female/sex_category%5B1%5D/gay/work_category%5B0%5D/doujin/order%5B0%5D/release_d/work_type_category%5B0%5D/game/work_type_category%5B1%5D/comic/work_type_category%5B2%5D/illust/work_type_category%5B3%5D/novel/work_type_category%5B4%5D/movie/work_type_category%5B5%5D/audio/work_type_category%5B6%5D/music/work_type_category%5B7%5D/tool/work_type_category%5B8%5D/etc/work_type_category_name%5B0%5D/%E3%82%B2%E3%83%BC%E3%83%A0/work_type_category_name%5B1%5D/%E3%83%9E%E3%83%B3%E3%82%AC/work_type_category_name%5B2%5D/CG%E3%83%BB%E3%82%A4%E3%83%A9%E3%82%B9%E3%83%88/work_type_category_name%5B3%5D/%E3%83%8E%E3%83%99%E3%83%AB/work_type_category_name%5B4%5D/%E5%8B%95%E7%94%BB/work_type_category_name%5B5%5D/%E3%83%9C%E3%82%A4%E3%82%B9%E3%83%BBASMR/work_type_category_name%5B6%5D/%E9%9F%B3%E6%A5%BD/work_type_category_name%5B7%5D/%E3%83%84%E3%83%BC%E3%83%AB%2F%E3%82%A2%E3%82%AF%E3%82%BB%E3%82%B5%E3%83%AA/work_type_category_name%5B8%5D/%E3%81%9D%E3%81%AE%E4%BB%96/options_and_or/and/options%5B0%5D/JPN/options%5B1%5D/NM/options_name%5B0%5D/%E6%97%A5%E6%9C%AC%E8%AA%9E%E4%BD%9C%E5%93%81/options_name%5B1%5D/%E8%A8%80%E8%AA%9E%E4%B8%8D%E5%95%8F%E4%BD%9C%E5%93%81/per_page/100/page/1/is_bl/1/is_gay/1/show_type/3";
+const DLSITE_BL_RELEASE_NEW_PER_PAGE = 100;
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 200;
 const MAX_LIST_PAGE_COUNT = 20;
@@ -37,12 +58,16 @@ const sourceProductIdContentTypeHints = new Map<string, ProductContentType>();
 
 type DlsiteFloor = "girls" | "bl";
 
-function getBaseUrlForContentType(contentType: ProductContentType | undefined): string {
+function getBaseUrlForContentType(
+  contentType: ProductContentType | undefined,
+): string {
   return contentType === "bl" ? DLSITE_BL_BASE_URL : DLSITE_GIRLS_BASE_URL;
 }
 
-
-function buildListUrls(fetchTarget: { rankingType: RankingType; contentType?: ProductContentType }): string[] {
+function buildListUrls(fetchTarget: {
+  rankingType: RankingType;
+  contentType?: ProductContentType;
+}): string[] {
   const baseUrl = getBaseUrlForContentType(fetchTarget.contentType);
 
   switch (fetchTarget.rankingType) {
@@ -66,13 +91,18 @@ function buildListUrls(fetchTarget: { rankingType: RankingType; contentType?: Pr
 }
 
 function getListLimit(options?: RankingFetchOptions): number {
-  const rawLimit = options?.listLimit ?? Number(process.env.DLSITE_LIST_LIMIT ?? DEFAULT_LIST_LIMIT);
+  const rawLimit =
+    options?.listLimit ??
+    Number(process.env.DLSITE_LIST_LIMIT ?? DEFAULT_LIST_LIMIT);
   const parsed = Number(rawLimit);
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_LIST_LIMIT;
   return Math.min(Math.floor(parsed), MAX_LIST_LIMIT);
 }
 
-function buildSourceUrlWithBase(baseUrl: string, sourceProductId: string): string {
+function buildSourceUrlWithBase(
+  baseUrl: string,
+  sourceProductId: string,
+): string {
   return `${baseUrl}/work/=/product_id/${sourceProductId}.html`;
 }
 
@@ -89,7 +119,8 @@ function buildAbsoluteUrl(url: string | undefined | null): string | undefined {
   const trimmed = decodeHtml(url.trim());
   if (!trimmed) return undefined;
   if (trimmed.startsWith("//")) return `https:${trimmed}`;
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://"))
+    return trimmed;
   if (trimmed.startsWith("/")) return `https://www.dlsite.com${trimmed}`;
   return new URL(trimmed, DLSITE_GIRLS_BASE_URL).toString();
 }
@@ -130,7 +161,13 @@ function toNumber(value: string | undefined | null): number | undefined {
 }
 
 function uniq(values: Array<string | undefined>): string[] {
-  return [...new Set(values.map((value) => cleanText(value)).filter((value): value is string => Boolean(value)))];
+  return [
+    ...new Set(
+      values
+        .map((value) => cleanText(value))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
 }
 
 function normalizeReleaseDate(value: string | undefined): string | undefined {
@@ -154,35 +191,66 @@ function escapeRegExp(value: string): string {
 function findMetaContent(html: string, key: string): string | undefined {
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return matchFirst(html, [
-    new RegExp(`<meta[^>]+property=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i"),
-    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${escaped}["'][^>]*>`, "i"),
-    new RegExp(`<meta[^>]+name=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i"),
-    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${escaped}["'][^>]*>`, "i"),
+    new RegExp(
+      `<meta[^>]+property=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`,
+      "i",
+    ),
+    new RegExp(
+      `<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${escaped}["'][^>]*>`,
+      "i",
+    ),
+    new RegExp(
+      `<meta[^>]+name=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`,
+      "i",
+    ),
+    new RegExp(
+      `<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${escaped}["'][^>]*>`,
+      "i",
+    ),
   ]);
 }
 
-
-function extractCanonicalProductUrl(html: string, sourceProductId: string, currentUrl?: string): string | undefined {
+function extractCanonicalProductUrl(
+  html: string,
+  sourceProductId: string,
+  currentUrl?: string,
+): string | undefined {
   const canonical = matchFirst(html, [
     /<link\b[^>]*rel=["'][^"']*\bcanonical\b[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>/i,
     /<link\b[^>]*href=["']([^"']+)["'][^>]*rel=["'][^"']*\bcanonical\b[^"']*["'][^>]*>/i,
   ]);
-  const absolute = buildListAbsoluteUrl(canonical, currentUrl ?? buildSourceUrl(sourceProductId));
+  const absolute = buildListAbsoluteUrl(
+    canonical,
+    currentUrl ?? buildSourceUrl(sourceProductId),
+  );
   if (!absolute) return undefined;
 
   const escapedId = escapeRegExp(sourceProductId);
-  if (!new RegExp(`/work/=/product_id/${escapedId}\\.html(?:[?#].*)?$`, "i").test(absolute)) {
+  if (
+    !new RegExp(`/work/=/product_id/${escapedId}\\.html(?:[?#].*)?$`, "i").test(
+      absolute,
+    )
+  ) {
     return undefined;
   }
 
   return absolute;
 }
 
-function shouldTryBlProductPage(html: string, sourceProductId: string, currentUrl: string): boolean {
+function shouldTryBlProductPage(
+  html: string,
+  sourceProductId: string,
+  currentUrl: string,
+): boolean {
   if (/\/bl(?:-touch)?\/work\//i.test(currentUrl)) return false;
 
-  const canonicalUrl = extractCanonicalProductUrl(html, sourceProductId, currentUrl);
-  if (canonicalUrl && /\/bl(?:-touch)?\/work\//i.test(canonicalUrl)) return true;
+  const canonicalUrl = extractCanonicalProductUrl(
+    html,
+    sourceProductId,
+    currentUrl,
+  );
+  if (canonicalUrl && /\/bl(?:-touch)?\/work\//i.test(canonicalUrl))
+    return true;
 
   // BL作品をgirls側URLで開くと、メタ情報だけは取れてもスライダー画像が少ないケースがある。
   // ただしページ全体には関連作品も混ざるため、meta/現在の商品属性だけでBL判定する。
@@ -193,10 +261,16 @@ function shouldTryBlProductPage(html: string, sourceProductId: string, currentUr
   if (/(?:ボーイズラブ|BL同人|BLマンガ|BL漫画)/i.test(description)) return true;
 
   const escapedId = escapeRegExp(sourceProductId);
-  return new RegExp(`data-product_id=["']${escapedId}["'][^>]+data-options=["'][^"']*(?:^|#|,)(?:BL|BL1|BLG)(?:#|,|$)`, "i").test(html);
+  return new RegExp(
+    `data-product_id=["']${escapedId}["'][^>]+data-options=["'][^"']*(?:^|#|,)(?:BL|BL1|BLG)(?:#|,|$)`,
+    "i",
+  ).test(html);
 }
 
-function countExtractedProductImages(html: string, sourceProductId: string): number {
+function countExtractedProductImages(
+  html: string,
+  sourceProductId: string,
+): number {
   const keys = new Set<string>();
   for (const pair of extractImageUrlsFromHtml(html, sourceProductId)) {
     keys.add(canonicalImageKey(pair.displayUrl, sourceProductId));
@@ -212,7 +286,9 @@ type ProductDetailHtmlCandidate = {
   hasWorkSlider: boolean;
 };
 
-function scoreProductDetailHtmlCandidate(candidate: ProductDetailHtmlCandidate): number {
+function scoreProductDetailHtmlCandidate(
+  candidate: ProductDetailHtmlCandidate,
+): number {
   return (
     candidate.imageCount * 100 +
     (candidate.hasProductSlider ? 20 : 0) +
@@ -221,13 +297,26 @@ function scoreProductDetailHtmlCandidate(candidate: ProductDetailHtmlCandidate):
   );
 }
 
-function sortProductDetailHtmlCandidates(a: ProductDetailHtmlCandidate, b: ProductDetailHtmlCandidate): number {
-  return scoreProductDetailHtmlCandidate(b) - scoreProductDetailHtmlCandidate(a);
+function sortProductDetailHtmlCandidates(
+  a: ProductDetailHtmlCandidate,
+  b: ProductDetailHtmlCandidate,
+): number {
+  return (
+    scoreProductDetailHtmlCandidate(b) - scoreProductDetailHtmlCandidate(a)
+  );
 }
 
-async function fetchBestProductDetailHtml(sourceProductId: string, preferredSourceUrl?: string): Promise<ProductDetailHtmlCandidate> {
-  const hintedContentType = sourceProductIdContentTypeHints.get(sourceProductId);
-  const initialUrl = preferredSourceUrl ?? (hintedContentType === "bl" ? buildBlSourceUrl(sourceProductId) : buildSourceUrl(sourceProductId));
+async function fetchBestProductDetailHtml(
+  sourceProductId: string,
+  preferredSourceUrl?: string,
+): Promise<ProductDetailHtmlCandidate> {
+  const hintedContentType =
+    sourceProductIdContentTypeHints.get(sourceProductId);
+  const initialUrl =
+    preferredSourceUrl ??
+    (hintedContentType === "bl"
+      ? buildBlSourceUrl(sourceProductId)
+      : buildSourceUrl(sourceProductId));
   const queue: string[] = [initialUrl];
   const queued = new Set(queue.map((url) => normalizeListPageUrlKey(url)));
   const candidates: ProductDetailHtmlCandidate[] = [];
@@ -254,10 +343,17 @@ async function fetchBestProductDetailHtml(sourceProductId: string, preferredSour
       };
       candidates.push(candidate);
 
-      const canonicalUrl = extractCanonicalProductUrl(html, sourceProductId, url);
+      const canonicalUrl = extractCanonicalProductUrl(
+        html,
+        sourceProductId,
+        url,
+      );
       enqueue(canonicalUrl);
 
-      if (candidate.imageCount <= 1 && shouldTryBlProductPage(html, sourceProductId, url)) {
+      if (
+        candidate.imageCount <= 1 &&
+        shouldTryBlProductPage(html, sourceProductId, url)
+      ) {
         enqueue(buildBlSourceUrl(sourceProductId));
       }
 
@@ -275,14 +371,20 @@ async function fetchBestProductDetailHtml(sourceProductId: string, preferredSour
 
       // 初回URLが404等で取れない場合に備え、TL/BLの反対側URLも一度だけ試す。
       if (index === 0) {
-        enqueue(hintedContentType === "bl" ? buildSourceUrl(sourceProductId) : buildBlSourceUrl(sourceProductId));
+        enqueue(
+          hintedContentType === "bl"
+            ? buildSourceUrl(sourceProductId)
+            : buildBlSourceUrl(sourceProductId),
+        );
       }
     }
   }
 
   const best = [...candidates].sort(sortProductDetailHtmlCandidates)[0];
   if (!best) {
-    throw new Error(`DLsite product detail fetch failed: ${sourceProductId}: ${failedMessages.join(" / ")}`);
+    throw new Error(
+      `DLsite product detail fetch failed: ${sourceProductId}: ${failedMessages.join(" / ")}`,
+    );
   }
 
   if (best.url !== buildSourceUrl(sourceProductId) || candidates.length > 1) {
@@ -304,17 +406,25 @@ async function fetchBestProductDetailHtml(sourceProductId: string, preferredSour
 
 function extractProductIdFromWorkUrl(url: string): string | undefined {
   const decoded = safeDecodeURIComponent(decodeHtml(url));
-  const match = decoded.match(/\/work\/=\/product_id\/(RJ\d{6,10})\.html(?:$|[?#/])/i) ??
+  const match =
+    decoded.match(/\/work\/=\/product_id\/(RJ\d{6,10})\.html(?:$|[?#/])/i) ??
     decoded.match(/product_id\/(RJ\d{6,10})\.html(?:$|[?#/])/i) ??
     decoded.match(/product_id[=/](RJ\d{6,10})(?:$|[?#/&])/i);
   return match?.[1]?.toUpperCase();
 }
 
-function extractProductSources(html: string, currentUrl: string): DiscoveredProductSource[] {
+function extractProductSources(
+  html: string,
+  currentUrl: string,
+): DiscoveredProductSource[] {
   const products: DiscoveredProductSource[] = [];
   const seenProductIds = new Set<string>();
 
-  const push = (sourceProductId: string | undefined, sourceUrl: string | undefined, listUrl = currentUrl) => {
+  const push = (
+    sourceProductId: string | undefined,
+    sourceUrl: string | undefined,
+    listUrl = currentUrl,
+  ) => {
     if (!sourceProductId) return;
     const normalizedId = sourceProductId.toUpperCase();
     if (!/^RJ\d{6,10}$/.test(normalizedId)) return;
@@ -342,21 +452,34 @@ function extractProductSources(html: string, currentUrl: string): DiscoveredProd
   // まれに一覧カードが data-product_id 中心でレンダリングされるケースへのフォールバック。
   // hrefが1件も取れない場合だけ使い、HTML全体のRJ正規表現スキャンはしない。
   if (products.length === 0) {
-    const dataProductPattern = /\bdata-product[_-]id=["'](RJ\d{6,10})["']/gi;
-    for (const match of html.matchAll(dataProductPattern)) {
-      push(match[1], undefined);
+    const fallbackPatterns = [
+      /\bdata-[\w:-]*product[_-]id=["'](RJ\d{6,10})["']/gi,
+      /\bname=["']product_attributes["'][^>]*\bid=["'](RJ\d{6,10})["']/gi,
+      /\bid=["'](RJ\d{6,10})["'][^>]*\bname=["']product_attributes["']/gi,
+    ];
+
+    for (const pattern of fallbackPatterns) {
+      for (const match of html.matchAll(pattern)) {
+        push(match[1], undefined);
+      }
+      if (products.length > 0) break;
     }
   }
 
   return products;
 }
 
-function buildListAbsoluteUrl(url: string | undefined | null, currentUrl: string): string | undefined {
+function buildListAbsoluteUrl(
+  url: string | undefined | null,
+  currentUrl: string,
+): string | undefined {
   if (!url) return undefined;
   const trimmed = decodeHtml(url.trim());
-  if (!trimmed || trimmed.startsWith("#") || /^javascript:/i.test(trimmed)) return undefined;
+  if (!trimmed || trimmed.startsWith("#") || /^javascript:/i.test(trimmed))
+    return undefined;
   if (trimmed.startsWith("//")) return `https:${trimmed}`;
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://"))
+    return trimmed;
 
   try {
     return new URL(trimmed, currentUrl).toString();
@@ -366,9 +489,7 @@ function buildListAbsoluteUrl(url: string | undefined | null, currentUrl: string
 }
 
 function normalizeListPageUrlKey(url: string): string {
-  return decodeHtml(url)
-    .replace(/#.*$/, "")
-    .replace(/\/+$/, "");
+  return decodeHtml(url).replace(/#.*$/, "").replace(/\/+$/, "");
 }
 
 function safeDecodeURIComponent(value: string): string {
@@ -379,18 +500,29 @@ function safeDecodeURIComponent(value: string): string {
   }
 }
 
-function isLikelyRequestedListPageUrl(url: string, pageNumber: number): boolean {
+function isLikelyRequestedListPageUrl(
+  url: string,
+  pageNumber: number,
+): boolean {
   const decoded = safeDecodeURIComponent(decodeHtml(url));
   const escapedPage = String(pageNumber).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
   return (
     new RegExp(`(?:^|/)page/${escapedPage}(?:/|$|[?#])`, "i").test(decoded) ||
-    new RegExp(`[?&](?:page|p|pagenum|page_no)=${escapedPage}(?:&|$)`, "i").test(decoded) ||
+    new RegExp(
+      `[?&](?:page|p|pagenum|page_no)=${escapedPage}(?:&|$)`,
+      "i",
+    ).test(decoded) ||
     new RegExp(`(?:^|/)p/${escapedPage}(?:/|$|[?#])`, "i").test(decoded)
   );
 }
 
-function isLikelyNextAnchor(attributes: string, body: string, href: string, pageNumber: number): boolean {
+function isLikelyNextAnchor(
+  attributes: string,
+  body: string,
+  href: string,
+  pageNumber: number,
+): boolean {
   if (/\brel=["'][^"']*\bnext\b[^"']*["']/i.test(attributes)) return true;
   if (isLikelyRequestedListPageUrl(href, pageNumber)) return true;
 
@@ -401,10 +533,15 @@ function isLikelyNextAnchor(attributes: string, body: string, href: string, page
   );
 }
 
-function extractNextListPageUrls(html: string, currentUrl: string, pageNumber: number): string[] {
+function extractNextListPageUrls(
+  html: string,
+  currentUrl: string,
+  pageNumber: number,
+): string[] {
   const urls: string[] = [];
   const seen = new Set<string>();
-  const anchorPattern = /<a\b([^>]*href=["']([^"']+)["'][^>]*)>([\s\S]*?)<\/a>/gi;
+  const anchorPattern =
+    /<a\b([^>]*href=["']([^"']+)["'][^>]*)>([\s\S]*?)<\/a>/gi;
 
   for (const match of html.matchAll(anchorPattern)) {
     const attributes = match[1] ?? "";
@@ -425,13 +562,19 @@ function extractNextListPageUrls(html: string, currentUrl: string, pageNumber: n
   return urls;
 }
 
-function appendPathPageSegment(url: string, pageNumber: number): string | undefined {
+function appendPathPageSegment(
+  url: string,
+  pageNumber: number,
+): string | undefined {
   try {
     const parsed = new URL(url);
     const pathname = parsed.pathname.replace(/\/+$/, "");
 
     if (/\/page\/\d+\/?$/i.test(pathname)) {
-      parsed.pathname = pathname.replace(/\/page\/\d+\/?$/i, `/page/${pageNumber}`);
+      parsed.pathname = pathname.replace(
+        /\/page\/\d+\/?$/i,
+        `/page/${pageNumber}`,
+      );
     } else if (pathname.includes("/=/")) {
       parsed.pathname = `${pathname}/page/${pageNumber}`;
     } else {
@@ -444,7 +587,10 @@ function appendPathPageSegment(url: string, pageNumber: number): string | undefi
   }
 }
 
-function buildListPageFallbackUrls(baseUrl: string, pageNumber: number): string[] {
+function buildListPageFallbackUrls(
+  baseUrl: string,
+  pageNumber: number,
+): string[] {
   const urls: string[] = [];
   const seen = new Set<string>();
   const push = (url: string | undefined) => {
@@ -477,6 +623,478 @@ type ListCandidateFetchResult = {
   fetchedPageCount: number;
 };
 
+export type DlsiteGirlsReleaseOldListPageResult = {
+  page: number;
+  url: string;
+  idsInPage: number;
+  newIdsInPage: number;
+};
+
+export type DlsiteGirlsReleaseOldListFailedPage = {
+  page: number;
+  url: string;
+  message: string;
+};
+
+export type DlsiteGirlsReleaseOldListScanOptions = {
+  maxPages?: number;
+  startPage?: number;
+  delayMs?: number;
+  contentType?: ProductContentType;
+};
+
+export type DlsiteGirlsReleaseOldListMeta = {
+  totalCount: number;
+  totalPages: number;
+  perPage: number;
+  contentType: ProductContentType;
+  sourceUrl: string;
+  firstPageHtml: string;
+  performance: {
+    totalMs: number;
+    listPageFetchTotalMs: number;
+    productIdExtractTotalMs: number;
+  };
+};
+
+export type DlsiteGirlsReleaseOldListPageRangeOptions = {
+  startPage: number;
+  pagesToFetch: number;
+  delayMs?: number;
+  contentType?: ProductContentType;
+  totalCount: number;
+  totalPages: number;
+  firstPageHtml?: string;
+  logPages?: boolean;
+};
+
+export type DlsiteGirlsReleaseOldListScanResult = {
+  totalCount: number;
+  totalPages: number;
+  perPage: number;
+  startPage: number;
+  pagesToFetch: number;
+  fetchedPageCount: number;
+  sourceUrl: string;
+  sourceProductIds: string[];
+  products: DiscoveredProductSource[];
+  pageResults: DlsiteGirlsReleaseOldListPageResult[];
+  failedPages: DlsiteGirlsReleaseOldListFailedPage[];
+  performance: {
+    totalMs: number;
+    listPageFetchTotalMs: number;
+    productIdExtractTotalMs: number;
+  };
+};
+
+type DlsiteReleaseNewListConfig = {
+  contentType: ProductContentType;
+  site: "girls" | "bl";
+  label: string;
+  baseUrl: string;
+  listUrl: string;
+  perPage: number;
+};
+
+function resolveReleaseListContentType(
+  contentType: ProductContentType | undefined,
+): ProductContentType {
+  return contentType === "bl" ? "bl" : "tl";
+}
+
+function getReleaseNewListConfig(
+  contentType: ProductContentType | undefined,
+): DlsiteReleaseNewListConfig {
+  const resolved = resolveReleaseListContentType(contentType);
+  if (resolved === "bl") {
+    return {
+      contentType: "bl",
+      site: "bl",
+      label: "bl",
+      baseUrl: DLSITE_BL_BASE_URL,
+      listUrl: DLSITE_BL_RELEASE_NEW_LIST_URL,
+      perPage: DLSITE_BL_RELEASE_NEW_PER_PAGE,
+    };
+  }
+
+  return {
+    contentType: "tl",
+    site: "girls",
+    label: "girls",
+    baseUrl: DLSITE_GIRLS_BASE_URL,
+    listUrl: DLSITE_GIRLS_RELEASE_OLD_LIST_URL,
+    perPage: DLSITE_GIRLS_RELEASE_OLD_PER_PAGE,
+  };
+}
+
+function buildGirlsReleaseOldListPageUrl(
+  pageNumber: number,
+  contentType?: ProductContentType,
+): string {
+  const safePage = Math.max(1, Math.floor(pageNumber));
+  const config = getReleaseNewListConfig(contentType);
+  if (/\/page\/\d+(?:\/|$)/i.test(config.listUrl)) {
+    return config.listUrl.replace(/\/page\/\d+(?=\/|$)/i, `/page/${safePage}`);
+  }
+
+  if (/\/per_page\/\d+(?:\/|$)/i.test(config.listUrl)) {
+    return config.listUrl.replace(
+      /\/per_page\/\d+(?=\/|$)/i,
+      `/per_page/${config.perPage}/page/${safePage}`,
+    );
+  }
+
+  return appendPathPageSegment(config.listUrl, safePage) ?? config.listUrl;
+}
+
+function extractTotalCountFromGirlsReleaseOldHtml(
+  html: string,
+): number | undefined {
+  const text = stripTags(html);
+  const normalizedText = text.replace(/[,，]/g, "").replace(/\s+/g, "");
+
+  const patterns = [
+    /(\d+)件中\d+(?:〜|～|~|-|－|―)\d+件目/,
+    /(\d+)件中\d+件目/,
+    /(?:^|[^0-9])全(\d+)件/,
+    /(?:検索結果|該当作品|作品数|該当件数)[:：]?全?(\d+)件/,
+    /\d+(?:〜|～|~|-|－|―)\d+件目[\/／]全?(\d+)件/,
+    /全?(\d+)件[\/／]\d+(?:〜|～|~|-|－|―)\d+件目/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalizedText.match(pattern);
+    if (!match?.[1]) continue;
+    const totalCount = Number(match[1]);
+    if (Number.isFinite(totalCount) && totalCount >= 0) return totalCount;
+  }
+
+  const rawPatterns = [
+    /["'](?:total|total_count|hit_count|search_result_count)["']\s*:\s*["']?([0-9,，]+)["']?/i,
+    /\bdata-[\w:-]*(?:total|count)[\w:-]*=["']([0-9,，]+)["']/i,
+  ];
+
+  for (const pattern of rawPatterns) {
+    const match = html.match(pattern);
+    if (!match?.[1]) continue;
+    const totalCount = Number(match[1].replace(/[,，]/g, ""));
+    if (Number.isFinite(totalCount) && totalCount >= 0) return totalCount;
+  }
+
+  return undefined;
+}
+
+function buildGirlsReleaseOldTotalCountDiagnostic(html: string): string {
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+  const cleanTitle = cleanText(title) ?? "unknown";
+  const productIdLikeCount =
+    html.match(/product_id\/RJ\d{6,10}\.html/gi)?.length ?? 0;
+  const textSnippet = stripTags(html).replace(/\s+/g, " ").slice(0, 300);
+
+  return `title=${cleanTitle}; productIdLikeCount=${productIdLikeCount}; snippet=${textSnippet}`;
+}
+
+async function fetchDlsiteGirlsReleaseOldListMetaInternal(
+  contentType: ProductContentType | undefined,
+): Promise<DlsiteGirlsReleaseOldListMeta> {
+  const startedAt = Date.now();
+  const listConfig = getReleaseNewListConfig(contentType);
+  const firstPageUrl = buildGirlsReleaseOldListPageUrl(
+    1,
+    listConfig.contentType,
+  );
+  const firstPageFetchStartedAt = Date.now();
+  const firstHtml = await fetchPublicHtml(firstPageUrl);
+  const listPageFetchTotalMs = Date.now() - firstPageFetchStartedAt;
+  const extractedTotalCount =
+    extractTotalCountFromGirlsReleaseOldHtml(firstHtml);
+
+  if (extractedTotalCount === undefined) {
+    throw new Error(
+      `DLsite ${listConfig.label} release-new list total count was not found in HTML: ${buildGirlsReleaseOldTotalCountDiagnostic(firstHtml)}`,
+    );
+  }
+
+  const totalCount = extractedTotalCount;
+  const totalPages = Math.max(1, Math.ceil(totalCount / listConfig.perPage));
+
+  return {
+    totalCount,
+    totalPages,
+    perPage: listConfig.perPage,
+    contentType: listConfig.contentType,
+    sourceUrl: firstPageUrl,
+    firstPageHtml: firstHtml,
+    performance: {
+      totalMs: Date.now() - startedAt,
+      listPageFetchTotalMs,
+      productIdExtractTotalMs: 0,
+    },
+  };
+}
+
+export async function fetchDlsiteGirlsReleaseOldListMeta(
+  options: Pick<DlsiteGirlsReleaseOldListScanOptions, "contentType"> = {},
+): Promise<DlsiteGirlsReleaseOldListMeta> {
+  return fetchDlsiteGirlsReleaseOldListMetaInternal(options.contentType);
+}
+
+export async function fetchDlsiteGirlsReleaseOldProductSourcesForPageRange(
+  options: DlsiteGirlsReleaseOldListPageRangeOptions,
+): Promise<DlsiteGirlsReleaseOldListScanResult> {
+  const scanStartedAt = Date.now();
+  let listPageFetchTotalMs = 0;
+  let productIdExtractTotalMs = 0;
+  const listConfig = getReleaseNewListConfig(options.contentType);
+  const startPage = Math.max(1, Math.floor(options.startPage));
+  const pagesToFetch = Math.max(0, Math.floor(options.pagesToFetch));
+  const delayMs = Math.max(0, Math.floor(options.delayMs ?? 500));
+  const endPage = startPage + pagesToFetch - 1;
+  const products: DiscoveredProductSource[] = [];
+  const seenProductIds = new Set<string>();
+  const pageResults: DlsiteGirlsReleaseOldListPageResult[] = [];
+  const failedPages: DlsiteGirlsReleaseOldListFailedPage[] = [];
+  const sourceUrl = buildGirlsReleaseOldListPageUrl(
+    startPage,
+    listConfig.contentType,
+  );
+  let fetchedPageCount = 0;
+
+  if (pagesToFetch <= 0) {
+    return {
+      totalCount: options.totalCount,
+      totalPages: options.totalPages,
+      perPage: listConfig.perPage,
+      startPage,
+      pagesToFetch: 0,
+      fetchedPageCount: 0,
+      sourceUrl,
+      sourceProductIds: [],
+      products: [],
+      pageResults: [],
+      failedPages: [],
+      performance: {
+        totalMs: Date.now() - scanStartedAt,
+        listPageFetchTotalMs,
+        productIdExtractTotalMs,
+      },
+    };
+  }
+
+  for (let page = startPage; page <= endPage; page += 1) {
+    const url = buildGirlsReleaseOldListPageUrl(page, listConfig.contentType);
+    let html: string;
+
+    try {
+      if (page === 1 && options.firstPageHtml) {
+        html = options.firstPageHtml;
+      } else {
+        if (delayMs > 0) await delay(delayMs);
+        const pageFetchStartedAt = Date.now();
+        html = await fetchPublicHtml(url);
+        listPageFetchTotalMs += Date.now() - pageFetchStartedAt;
+      }
+    } catch (error) {
+      if (error instanceof BlockedAccessError) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      failedPages.push({ page, url, message });
+      logger.warn(
+        `DLsite ${listConfig.label} release-new list page fetch failed; continue next page`,
+        {
+          page,
+          url,
+          message,
+        },
+      );
+      continue;
+    }
+
+    fetchedPageCount += 1;
+    const productIdExtractStartedAt = Date.now();
+    const pageProducts = extractProductSources(html, url);
+    productIdExtractTotalMs += Date.now() - productIdExtractStartedAt;
+    let newIdsInPage = 0;
+
+    for (const product of pageProducts) {
+      if (seenProductIds.has(product.sourceProductId)) continue;
+      seenProductIds.add(product.sourceProductId);
+      products.push({
+        ...product,
+        rank: (page - 1) * listConfig.perPage + products.length + 1,
+        listUrl: product.listUrl ?? url,
+      });
+      sourceProductIdContentTypeHints.set(
+        product.sourceProductId,
+        listConfig.contentType,
+      );
+      newIdsInPage += 1;
+    }
+
+    pageResults.push({
+      page,
+      url,
+      idsInPage: pageProducts.length,
+      newIdsInPage,
+    });
+
+    const logPayload = {
+      totalCount: options.totalCount,
+      totalPages: options.totalPages,
+      pagesToFetch,
+      currentPage: page,
+      contentType: listConfig.contentType,
+      idsInPage: pageProducts.length,
+      newIdsInPage,
+      uniqueIdsSoFar: products.length,
+      failedPages: failedPages.map((failedPage) => failedPage.page),
+    };
+
+    if (pageProducts.length === 0) {
+      logger.warn(
+        `DLsite ${listConfig.label} release-new list page had no product ids`,
+        logPayload,
+      );
+    } else if (options.logPages === true) {
+      logger.info(
+        `DLsite ${listConfig.label} release-new list page fetched`,
+        logPayload,
+      );
+    }
+  }
+
+  return {
+    totalCount: options.totalCount,
+    totalPages: options.totalPages,
+    perPage: listConfig.perPage,
+    startPage,
+    pagesToFetch,
+    fetchedPageCount,
+    sourceUrl,
+    sourceProductIds: products.map((product) => product.sourceProductId),
+    products,
+    pageResults,
+    failedPages,
+    performance: {
+      totalMs: Date.now() - scanStartedAt,
+      listPageFetchTotalMs,
+      productIdExtractTotalMs,
+    },
+  };
+}
+
+export async function fetchDlsiteGirlsReleaseOldProductSources(
+  options: DlsiteGirlsReleaseOldListScanOptions = {},
+): Promise<DlsiteGirlsReleaseOldListScanResult> {
+  const scanStartedAt = Date.now();
+  const listConfig = getReleaseNewListConfig(options.contentType);
+  const startPage = Math.max(1, Math.floor(options.startPage ?? 1));
+  const delayMs = Math.max(0, Math.floor(options.delayMs ?? 500));
+  const firstPageUrl = buildGirlsReleaseOldListPageUrl(
+    1,
+    listConfig.contentType,
+  );
+  const firstPageFetchStartedAt = Date.now();
+  const firstHtml = await fetchPublicHtml(firstPageUrl);
+  let listPageFetchTotalMs = Date.now() - firstPageFetchStartedAt;
+  let productIdExtractTotalMs = 0;
+  const extractedTotalCount =
+    extractTotalCountFromGirlsReleaseOldHtml(firstHtml);
+  const hasMaxPages =
+    typeof options.maxPages === "number" && Math.floor(options.maxPages) > 0;
+
+  if (extractedTotalCount === undefined && !hasMaxPages) {
+    throw new Error(
+      `DLsite ${listConfig.label} release-new list total count was not found in HTML: ${buildGirlsReleaseOldTotalCountDiagnostic(firstHtml)}`,
+    );
+  }
+
+  if (extractedTotalCount === undefined) {
+    logger.warn(
+      `DLsite ${listConfig.label} release-new list total count was not found; continue because maxPages is specified`,
+      {
+        maxPages: options.maxPages,
+        startPage,
+        contentType: listConfig.contentType,
+        sourceUrl: firstPageUrl,
+        diagnostic: buildGirlsReleaseOldTotalCountDiagnostic(firstHtml),
+      },
+    );
+  }
+
+  const totalCount = extractedTotalCount ?? 0;
+  const totalPages =
+    extractedTotalCount === undefined
+      ? 0
+      : Math.max(1, Math.ceil(extractedTotalCount / listConfig.perPage));
+  const requestedMaxPages =
+    typeof options.maxPages === "number"
+      ? Math.max(0, Math.floor(options.maxPages))
+      : undefined;
+  const remainingPageCount =
+    extractedTotalCount === undefined
+      ? (requestedMaxPages ?? 0)
+      : Math.max(0, totalPages - startPage + 1);
+  const pagesToFetch =
+    requestedMaxPages !== undefined
+      ? Math.min(remainingPageCount, requestedMaxPages)
+      : remainingPageCount;
+
+  logger.info(`DLsite ${listConfig.label} release-new list scan started`, {
+    totalCount,
+    totalPages,
+    perPage: listConfig.perPage,
+    maxPages: options.maxPages,
+    startPage,
+    pagesToFetch,
+    delayMs,
+    contentType: listConfig.contentType,
+    sourceUrl: firstPageUrl,
+  });
+
+  const range = await fetchDlsiteGirlsReleaseOldProductSourcesForPageRange({
+    startPage,
+    pagesToFetch,
+    delayMs,
+    contentType: listConfig.contentType,
+    totalCount,
+    totalPages,
+    firstPageHtml: startPage === 1 ? firstHtml : undefined,
+    logPages: true,
+  });
+  listPageFetchTotalMs += range.performance.listPageFetchTotalMs;
+  productIdExtractTotalMs += range.performance.productIdExtractTotalMs;
+
+  logger.info(`DLsite ${listConfig.label} release-new list scan finished`, {
+    totalCount,
+    totalPages,
+    maxPages: options.maxPages,
+    startPage,
+    pagesToFetch,
+    fetchedPageCount: range.fetchedPageCount,
+    contentType: listConfig.contentType,
+    uniqueIds: range.products.length,
+    failedPages: range.failedPages.map((failedPage) => failedPage.page),
+    performance: {
+      totalMs: Date.now() - scanStartedAt,
+      listPageFetchTotalMs,
+      productIdExtractTotalMs,
+    },
+  });
+
+  return {
+    ...range,
+    sourceUrl: firstPageUrl,
+    performance: {
+      totalMs: Date.now() - scanStartedAt,
+      listPageFetchTotalMs,
+      productIdExtractTotalMs,
+    },
+  };
+}
+
 async function fetchProductIdsFromListCandidate(params: {
   candidateUrl: string;
   rankingType: RankingType;
@@ -488,16 +1106,28 @@ async function fetchProductIdsFromListCandidate(params: {
   let currentUrl: string | undefined = params.candidateUrl;
   let firstFetchedUrl: string | undefined;
   let fetchedPageCount = 0;
-  const maxPageCount = Math.min(MAX_LIST_PAGE_COUNT, Math.max(1, Math.ceil(params.listLimit / 10)));
+  const maxPageCount = Math.min(
+    MAX_LIST_PAGE_COUNT,
+    Math.max(1, Math.ceil(params.listLimit / 10)),
+  );
 
-  for (let pageNumber = 1; currentUrl && pageNumber <= maxPageCount && products.length < params.listLimit; pageNumber += 1) {
+  for (
+    let pageNumber = 1;
+    currentUrl &&
+    pageNumber <= maxPageCount &&
+    products.length < params.listLimit;
+    pageNumber += 1
+  ) {
     const currentKey = normalizeListPageUrlKey(currentUrl);
     if (attemptedUrlKeys.has(currentKey)) {
-      logger.warn("DLsite list page skipped because URL was already attempted", {
-        rankingType: params.rankingType,
-        pageNumber,
-        url: currentUrl,
-      });
+      logger.warn(
+        "DLsite list page skipped because URL was already attempted",
+        {
+          rankingType: params.rankingType,
+          pageNumber,
+          url: currentUrl,
+        },
+      );
       break;
     }
     attemptedUrlKeys.add(currentKey);
@@ -521,12 +1151,15 @@ async function fetchProductIdsFromListCandidate(params: {
         throw new Error(message);
       }
 
-      logger.warn("DLsite list page fetch failed; stop pagination for this candidate", {
-        rankingType: params.rankingType,
-        pageNumber,
-        url: currentUrl,
-        message,
-      });
+      logger.warn(
+        "DLsite list page fetch failed; stop pagination for this candidate",
+        {
+          rankingType: params.rankingType,
+          pageNumber,
+          url: currentUrl,
+          message,
+        },
+      );
       break;
     }
 
@@ -564,14 +1197,19 @@ async function fetchProductIdsFromListCandidate(params: {
       ...extractNextListPageUrls(html, currentUrl, nextPageNumber),
       ...buildListPageFallbackUrls(params.candidateUrl, nextPageNumber),
     ];
-    currentUrl = nextUrlCandidates.find((url: string) => !attemptedUrlKeys.has(normalizeListPageUrlKey(url)));
+    currentUrl = nextUrlCandidates.find(
+      (url: string) => !attemptedUrlKeys.has(normalizeListPageUrlKey(url)),
+    );
 
     if (!currentUrl) {
-      logger.info("DLsite list pagination finished because next page was not found", {
-        rankingType: params.rankingType,
-        pageNumber,
-        totalCount: products.length,
-      });
+      logger.info(
+        "DLsite list pagination finished because next page was not found",
+        {
+          rankingType: params.rankingType,
+          pageNumber,
+          totalCount: products.length,
+        },
+      );
     }
   }
 
@@ -584,9 +1222,14 @@ async function fetchProductIdsFromListCandidate(params: {
   };
 }
 
-function extractAnchorTexts(html: string, hrefPattern: RegExp, limit: number): string[] {
+function extractAnchorTexts(
+  html: string,
+  hrefPattern: RegExp,
+  limit: number,
+): string[] {
   const values: string[] = [];
-  const anchorPattern = /<a\b([^>]*href=["']([^"']+)["'][^>]*)>([\s\S]*?)<\/a>/gi;
+  const anchorPattern =
+    /<a\b([^>]*href=["']([^"']+)["'][^>]*)>([\s\S]*?)<\/a>/gi;
 
   for (const match of html.matchAll(anchorPattern)) {
     const href = decodeHtml(match[2] ?? "");
@@ -604,10 +1247,11 @@ function extractAnchorTexts(html: string, hrefPattern: RegExp, limit: number): s
 function isDlsiteGenreNoise(value: string): boolean {
   return (
     /^\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}\s*まで$/.test(value) ||
-    /^(R18|全年齢|マンガ|漫画|コミック|JPEG|JPG|PNG|PDF|ZIP|MP3|WAV|動画|ゲーム|音声|ドラマCD|乙女向け|女性向け|男性向け|成人向け)$/i.test(value)
+    /^(R18|全年齢|マンガ|漫画|コミック|JPEG|JPG|PNG|PDF|ZIP|MP3|WAV|動画|ゲーム|音声|ドラマCD|乙女向け|女性向け|男性向け|成人向け)$/i.test(
+      value,
+    )
   );
 }
-
 
 type NormalizedWorkType = {
   workType: ProductWorkType;
@@ -635,21 +1279,37 @@ const DLSITE_WORK_TYPE_CODE_MAP: Record<string, NormalizedWorkType> = {
   QIZ: { workType: "game", workTypeLabel: "ゲーム" },
 };
 
-function normalizeWorkTypeFromText(value: string | undefined): NormalizedWorkType | undefined {
+function normalizeWorkTypeFromText(
+  value: string | undefined,
+): NormalizedWorkType | undefined {
   const text = cleanText(value)?.toLowerCase();
   if (!text) return undefined;
 
-  if (/マンガ|漫画|コミック|manga|comic/.test(text)) return { workType: "comic", workTypeLabel: "マンガ" };
-  if (/cg|イラスト|illust|画像/.test(text)) return { workType: "cg", workTypeLabel: "CG" };
-  if (/動画|ムービー|movie|video|アニメーション/.test(text)) return { workType: "movie", workTypeLabel: "動画" };
-  if (/ゲーム|game|rpg|ロールプレイング|アドベンチャー|シミュレーション|アクション|シューティング|パズル|クイズ/.test(text)) {
+  if (/マンガ|漫画|コミック|manga|comic/.test(text))
+    return { workType: "comic", workTypeLabel: "マンガ" };
+  if (/cg|イラスト|illust|画像/.test(text))
+    return { workType: "cg", workTypeLabel: "CG" };
+  if (/動画|ムービー|movie|video|アニメーション/.test(text))
+    return { workType: "movie", workTypeLabel: "動画" };
+  if (
+    /ゲーム|game|rpg|ロールプレイング|アドベンチャー|シミュレーション|アクション|シューティング|パズル|クイズ/.test(
+      text,
+    )
+  ) {
     return { workType: "game", workTypeLabel: "ゲーム" };
   }
-  if (/音声|asmr|ボイス|voice|ドラマcd|ボイスドラマ|サウンド|sound|音楽/.test(text)) return { workType: "voice", workTypeLabel: "音声" };
+  if (
+    /音声|asmr|ボイス|voice|ドラマcd|ボイスドラマ|サウンド|sound|音楽/.test(
+      text,
+    )
+  )
+    return { workType: "voice", workTypeLabel: "音声" };
   return undefined;
 }
 
-function normalizeWorkTypeFromCode(value: string | undefined): NormalizedWorkType | undefined {
+function normalizeWorkTypeFromCode(
+  value: string | undefined,
+): NormalizedWorkType | undefined {
   const code = value?.trim().toUpperCase();
   if (!code) return undefined;
   return DLSITE_WORK_TYPE_CODE_MAP[code];
@@ -668,11 +1328,15 @@ function extractDlsiteWorkType(html: string, text: string): NormalizedWorkType {
   ]);
 
   if (categoryTypeBlock) {
-    const codeFromHref = matchFirst(categoryTypeBlock, [/work_type\/([A-Za-z0-9_]+)/i]);
+    const codeFromHref = matchFirst(categoryTypeBlock, [
+      /work_type\/([A-Za-z0-9_]+)/i,
+    ]);
     const byHref = normalizeWorkTypeFromCode(codeFromHref);
     if (byHref) return byHref;
 
-    const codeFromClass = matchFirst(categoryTypeBlock, [/class=["'][^"']*\bicon\s+([A-Za-z0-9_]+)\b[^"']*["']/i]);
+    const codeFromClass = matchFirst(categoryTypeBlock, [
+      /class=["'][^"']*\bicon\s+([A-Za-z0-9_]+)\b[^"']*["']/i,
+    ]);
     const byClass = normalizeWorkTypeFromCode(codeFromClass);
     if (byClass) return byClass;
 
@@ -684,15 +1348,14 @@ function extractDlsiteWorkType(html: string, text: string): NormalizedWorkType {
     if (byText) return byText;
   }
 
-  const rowPattern = /<tr[^>]*>\s*<t[hd][^>]*>\s*(?:作品形式|作品タイプ|形式)\s*<\/t[hd]>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/i;
+  const rowPattern =
+    /<tr[^>]*>\s*<t[hd][^>]*>\s*(?:作品形式|作品タイプ|形式)\s*<\/t[hd]>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/i;
   const byRow = normalizeWorkTypeFromText(matchFirst(html, [rowPattern]));
   if (byRow) return byRow;
 
   const byFullText = normalizeWorkTypeFromText(text);
   return byFullText ?? { workType: "other", workTypeLabel: "その他" };
 }
-
-
 
 type NormalizedContentType = {
   contentType: ProductContentType;
@@ -709,18 +1372,24 @@ const DLSITE_CONTENT_TYPE_CODE_MAP: Record<string, NormalizedContentType> = {
   BLG: { contentType: "bl", contentTypeLabel: "BL" },
 };
 
-function normalizeContentTypeFromCode(value: string | undefined): NormalizedContentType | undefined {
+function normalizeContentTypeFromCode(
+  value: string | undefined,
+): NormalizedContentType | undefined {
   const code = value?.trim().toUpperCase();
   if (!code) return undefined;
   return DLSITE_CONTENT_TYPE_CODE_MAP[code];
 }
 
-function normalizeContentTypeFromText(value: string | undefined): NormalizedContentType | undefined {
+function normalizeContentTypeFromText(
+  value: string | undefined,
+): NormalizedContentType | undefined {
   const text = cleanText(value);
   if (!text) return undefined;
 
-  if (/ボーイズラブ|ＢＬ|BL/i.test(text)) return { contentType: "bl", contentTypeLabel: "BL" };
-  if (/乙女向け|ティーンズラブ|ＴＬ|TL/i.test(text)) return { contentType: "tl", contentTypeLabel: "TL" };
+  if (/ボーイズラブ|ＢＬ|BL/i.test(text))
+    return { contentType: "bl", contentTypeLabel: "BL" };
+  if (/乙女向け|ティーンズラブ|ＴＬ|TL/i.test(text))
+    return { contentType: "tl", contentTypeLabel: "TL" };
   return undefined;
 }
 
@@ -742,22 +1411,34 @@ function extractDlsiteContentTypes(html: string): NormalizedContentType[] {
   //   <a href=".../coupling_option/BL1/from/icon.work">
   //     <span class="icon BL1" title="ボーイズラブ">ボーイズラブ</span>
   //   </a>
-  const anchorPattern = /<a\b([^>]*href=["']([^"']*coupling_option\/([^\/"']+)[^"']*)["'][^>]*)>([\s\S]*?)<\/a>/gi;
+  const anchorPattern =
+    /<a\b([^>]*href=["']([^"']*coupling_option\/([^\/"']+)[^"']*)["'][^>]*)>([\s\S]*?)<\/a>/gi;
   for (const match of html.matchAll(anchorPattern)) {
     const attributes = match[1] ?? "";
     const codeFromHref = match[3];
     const body = match[4] ?? "";
-    const codeFromClass = matchFirst(body, [/class=["'][^"']*\bicon\s+([A-Za-z0-9_]+)\b[^"']*["']/i]);
-    const title = matchFirst(body, [/title=["']([^"']+)["']/i]) ?? matchFirst(attributes, [/title=["']([^"']+)["']/i]);
+    const codeFromClass = matchFirst(body, [
+      /class=["'][^"']*\bicon\s+([A-Za-z0-9_]+)\b[^"']*["']/i,
+    ]);
+    const title =
+      matchFirst(body, [/title=["']([^"']+)["']/i]) ??
+      matchFirst(attributes, [/title=["']([^"']+)["']/i]);
 
-    pushNormalizedContentType(found, normalizeContentTypeFromCode(codeFromHref));
-    pushNormalizedContentType(found, normalizeContentTypeFromCode(codeFromClass));
+    pushNormalizedContentType(
+      found,
+      normalizeContentTypeFromCode(codeFromHref),
+    );
+    pushNormalizedContentType(
+      found,
+      normalizeContentTypeFromCode(codeFromClass),
+    );
     pushNormalizedContentType(found, normalizeContentTypeFromText(title));
     pushNormalizedContentType(found, normalizeContentTypeFromText(body));
   }
 
   if (found.size === 0) {
-    const rowPattern = /<tr[^>]*>\s*<t[hd][^>]*>\s*(?:その他|カテゴリ|対象)\s*<\/t[hd]>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi;
+    const rowPattern =
+      /<tr[^>]*>\s*<t[hd][^>]*>\s*(?:その他|カテゴリ|対象)\s*<\/t[hd]>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi;
     for (const match of html.matchAll(rowPattern)) {
       pushNormalizedContentType(found, normalizeContentTypeFromText(match[1]));
     }
@@ -768,7 +1449,8 @@ function extractDlsiteContentTypes(html: string): NormalizedContentType[] {
 
 function extractDlsiteMainGenres(html: string): string[] {
   const values: string[] = [];
-  const mainGenrePattern = /<div\b[^>]*class=["'][^"']*\bmain_genre\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi;
+  const mainGenrePattern =
+    /<div\b[^>]*class=["'][^"']*\bmain_genre\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi;
 
   for (const match of html.matchAll(mainGenrePattern)) {
     values.push(...extractAnchorTexts(match[1] ?? "", /\/genre\/\d+\//i, 30));
@@ -776,7 +1458,8 @@ function extractDlsiteMainGenres(html: string): string[] {
 
   // DLsiteのテンプレート差分に備え、テーブル行の「ジャンル」欄もフォールバックで見る。
   if (values.length === 0) {
-    const rowPattern = /<tr[^>]*>\s*<t[hd][^>]*>\s*(?:ジャンル|作品ジャンル)\s*<\/t[hd]>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi;
+    const rowPattern =
+      /<tr[^>]*>\s*<t[hd][^>]*>\s*(?:ジャンル|作品ジャンル)\s*<\/t[hd]>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi;
     for (const match of html.matchAll(rowPattern)) {
       values.push(...extractAnchorTexts(match[1] ?? "", /\/genre\/\d+\//i, 30));
     }
@@ -787,8 +1470,14 @@ function extractDlsiteMainGenres(html: string): string[] {
     .slice(0, 20);
 }
 
-function extractSeller(html: string): { sellerId?: string; sellerName?: string; sellerUrl?: string } {
-  const makerMatch = html.match(/<a\b([^>]*href=["']([^"']*maker_id\/(RG\d+)[^"']*)["'][^>]*)>([\s\S]*?)<\/a>/i);
+function extractSeller(html: string): {
+  sellerId?: string;
+  sellerName?: string;
+  sellerUrl?: string;
+} {
+  const makerMatch = html.match(
+    /<a\b([^>]*href=["']([^"']*maker_id\/(RG\d+)[^"']*)["'][^>]*)>([\s\S]*?)<\/a>/i,
+  );
   if (!makerMatch) return {};
 
   return {
@@ -835,20 +1524,29 @@ function imageSortScore(url: string): number {
 
 function canonicalImageKey(url: string, sourceProductId: string): string {
   const normalized = normalizeImageUrlForKey(url);
-  const imageProductId = extractDlsiteImageProductId(normalized) ?? sourceProductId;
+  const imageProductId =
+    extractDlsiteImageProductId(normalized) ?? sourceProductId;
   const escapedId = imageProductId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = normalized.match(new RegExp(`${escapedId}_img_(main|smp_?\\d+|sam_?\\d+|sample_?\\d+)`, "i"));
+  const match = normalized.match(
+    new RegExp(`${escapedId}_img_(main|smp_?\\d+|sam_?\\d+|sample_?\\d+)`, "i"),
+  );
 
   if (match?.[1]) {
     return `${imageProductId}_img_${match[1].replace(/_/g, "").toLowerCase()}`;
   }
 
-  return normalized.replace(/_\d+x\d+\.(?:jpg|jpeg|png|webp)$/i, "").toLowerCase();
+  return normalized
+    .replace(/_\d+x\d+\.(?:jpg|jpeg|png|webp)$/i, "")
+    .toLowerCase();
 }
 
 function extractDlsiteImageProductId(url: string): string | undefined {
   const normalized = normalizeImageUrlForKey(url);
-  return normalized.match(/\/(RJ\d{6,10})_img_(?:main|smp_?\d+|sam_?\d+|sample_?\d+)(?:_(?:\d+x\d+|[wh]\d+))?\.(?:jpg|jpeg|png|webp)$/i)?.[1]?.toUpperCase();
+  return normalized
+    .match(
+      /\/(RJ\d{6,10})_img_(?:main|smp_?\d+|sam_?\d+|sample_?\d+)(?:_(?:\d+x\d+|[wh]\d+))?\.(?:jpg|jpeg|png|webp)$/i,
+    )?.[1]
+    ?.toUpperCase();
 }
 
 function isDlsiteWorkImageUrl(url: string): boolean {
@@ -858,14 +1556,24 @@ function isDlsiteWorkImageUrl(url: string): boolean {
     return false;
   }
 
-  if (/logo|banner|bnr|button|icon|sprite|common|campaign|affiliate|favicon/i.test(normalized)) {
+  if (
+    /logo|banner|bnr|button|icon|sprite|common|campaign|affiliate|favicon/i.test(
+      normalized,
+    )
+  ) {
     return false;
   }
 
   // 翻訳作品・BL作品ではページURLのproduct_idと画像URL内のRJコードが一致しないことがある。
   // そのため、DLsiteの作品画像として十分に特徴的なパス/ファイル名なら許可する。
-  return /(?:^https?:\/\/img\.dlsite\.jp\/|\/)(?:resize|modpub)\/images2\/work\//i.test(normalized) &&
-    /\/RJ\d{6,10}_img_(?:main|smp_?\d+|sam_?\d+|sample_?\d+)(?:_(?:\d+x\d+|[wh]\d+))?\.(?:jpg|jpeg|png|webp)$/i.test(normalized);
+  return (
+    /(?:^https?:\/\/img\.dlsite\.jp\/|\/)(?:resize|modpub)\/images2\/work\//i.test(
+      normalized,
+    ) &&
+    /\/RJ\d{6,10}_img_(?:main|smp_?\d+|sam_?\d+|sample_?\d+)(?:_(?:\d+x\d+|[wh]\d+))?\.(?:jpg|jpeg|png|webp)$/i.test(
+      normalized,
+    )
+  );
 }
 
 function isLikelyWorkImage(url: string, sourceProductId: string): boolean {
@@ -876,7 +1584,11 @@ function isLikelyWorkImage(url: string, sourceProductId: string): boolean {
     return false;
   }
 
-  if (/logo|banner|bnr|button|icon|sprite|common|campaign|affiliate|favicon/i.test(normalized)) {
+  if (
+    /logo|banner|bnr|button|icon|sprite|common|campaign|affiliate|favicon/i.test(
+      normalized,
+    )
+  ) {
     return false;
   }
 
@@ -887,7 +1599,10 @@ function isLikelyWorkImage(url: string, sourceProductId: string): boolean {
   return isDlsiteWorkImageUrl(normalized);
 }
 
-function pushImageCandidate(candidates: string[], rawValue: string | undefined | null): void {
+function pushImageCandidate(
+  candidates: string[],
+  rawValue: string | undefined | null,
+): void {
   if (!rawValue) return;
 
   const normalizedValue = decodeJsEscapedUrl(rawValue.trim());
@@ -916,6 +1631,51 @@ type DlsiteAjaxInfo = {
   releaseDate?: string;
 };
 
+function createProductDetailParseTiming(): Required<ProductDetailParseTiming> {
+  return {
+    cheerioLoadMs: 0,
+    parseBasicInfoMs: 0,
+    parsePriceMs: 0,
+    parseSalesMs: 0,
+    parseRatingMs: 0,
+    parseReleaseDateMs: 0,
+    parseGenresMs: 0,
+    parseImagesMs: 0,
+    parseDescriptionMs: 0,
+    normalizeProductMs: 0,
+    otherParseMs: 0,
+    ajaxInfoFetchMs: 0,
+  };
+}
+
+type ProductDetailParseTimingKey = keyof Required<ProductDetailParseTiming>;
+
+function measureParseStep<T>(
+  timing: Required<ProductDetailParseTiming>,
+  key: ProductDetailParseTimingKey,
+  action: () => T,
+): T {
+  const startedAt = Date.now();
+  try {
+    return action();
+  } finally {
+    timing[key] += Date.now() - startedAt;
+  }
+}
+
+async function measureParseStepAsync<T>(
+  timing: Required<ProductDetailParseTiming>,
+  key: ProductDetailParseTimingKey,
+  action: () => Promise<T>,
+): Promise<T> {
+  const startedAt = Date.now();
+  try {
+    return await action();
+  } finally {
+    timing[key] += Date.now() - startedAt;
+  }
+}
+
 function buildDisplayImageUrl(url: string): string {
   const normalized = normalizeImageUrlForKey(decodeJsEscapedUrl(url));
   const absolute = buildAbsoluteUrl(normalized) ?? normalized;
@@ -936,15 +1696,20 @@ function buildThumbnailImageUrl(url: string): string {
   return buildDisplayImageUrl(url);
 }
 
-
-function findNextIndex(html: string, startIndex: number, patterns: RegExp[]): number | undefined {
+function findNextIndex(
+  html: string,
+  startIndex: number,
+  patterns: RegExp[],
+): number | undefined {
   const foundIndexes = patterns
     .map((pattern) => {
       pattern.lastIndex = 0;
       const match = html.slice(startIndex).match(pattern);
       return match?.index === undefined ? undefined : startIndex + match.index;
     })
-    .filter((value): value is number => value !== undefined && value > startIndex);
+    .filter(
+      (value): value is number => value !== undefined && value > startIndex,
+    );
 
   return foundIndexes.length > 0 ? Math.min(...foundIndexes) : undefined;
 }
@@ -964,7 +1729,9 @@ function uniqRawStrings(values: string[]): string[] {
 }
 
 function eachRegExpMatch(html: string, pattern: RegExp): RegExpMatchArray[] {
-  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  const flags = pattern.flags.includes("g")
+    ? pattern.flags
+    : `${pattern.flags}g`;
   const globalPattern = new RegExp(pattern.source, flags);
   return [...html.matchAll(globalPattern)];
 }
@@ -986,16 +1753,25 @@ function extractWorkImageHtmlFragments(html: string): string[] {
       if (match.index === undefined) continue;
 
       const startIndex = match.index;
-      const endIndex = findNextIndex(normalizedHtml, startIndex + match[0].length, [
-        /<div\b[^>]*class=["'][^"']*\bwork_slider_comp\b[^"']*["'][^>]*>/i,
-        /<!--\s*\/work_left\s*-->/i,
-        /<div\b[^>]*id=["']work_right["'][^>]*>/i,
-        /<section\b[^>]*id=["']work_detail["'][^>]*>/i,
-        /<div\b[^>]*id=["']work_review["'][^>]*>/i,
-        /<div\b[^>]*id=["']recommend["'][^>]*>/i,
-      ]);
+      const endIndex = findNextIndex(
+        normalizedHtml,
+        startIndex + match[0].length,
+        [
+          /<div\b[^>]*class=["'][^"']*\bwork_slider_comp\b[^"']*["'][^>]*>/i,
+          /<!--\s*\/work_left\s*-->/i,
+          /<div\b[^>]*id=["']work_right["'][^>]*>/i,
+          /<section\b[^>]*id=["']work_detail["'][^>]*>/i,
+          /<div\b[^>]*id=["']work_review["'][^>]*>/i,
+          /<div\b[^>]*id=["']recommend["'][^>]*>/i,
+        ],
+      );
 
-      fragments.push(normalizedHtml.slice(startIndex, endIndex ?? Math.min(normalizedHtml.length, startIndex + 160000)));
+      fragments.push(
+        normalizedHtml.slice(
+          startIndex,
+          endIndex ?? Math.min(normalizedHtml.length, startIndex + 160000),
+        ),
+      );
     }
   }
 
@@ -1007,7 +1783,8 @@ function extractWorkImageHtmlFragments(html: string): string[] {
 
 function extractDlsiteWorkImageCandidatesFromText(text: string): string[] {
   const candidates: string[] = [];
-  const imageUrlPattern = /(?:(?:https?:)?\/\/img\.dlsite\.jp)?\/(?:resize|modpub)\/images2\/work\/[^"'<>\s\)\]]+\/RJ\d{6,10}_img_(?:main|smp_?\d+|sam_?\d+|sample_?\d+)(?:_(?:\d+x\d+|[wh]\d+))?\.(?:jpg|jpeg|png|webp)(?:\?[^"'<>\s\)\]]*)?/gi;
+  const imageUrlPattern =
+    /(?:(?:https?:)?\/\/img\.dlsite\.jp)?\/(?:resize|modpub)\/images2\/work\/[^"'<>\s\)\]]+\/RJ\d{6,10}_img_(?:main|smp_?\d+|sam_?\d+|sample_?\d+)(?:_(?:\d+x\d+|[wh]\d+))?\.(?:jpg|jpeg|png|webp)(?:\?[^"'<>\s\)\]]*)?/gi;
 
   for (const match of text.matchAll(imageUrlPattern)) {
     pushImageCandidate(candidates, match[0]);
@@ -1016,14 +1793,22 @@ function extractDlsiteWorkImageCandidatesFromText(text: string): string[] {
   return candidates;
 }
 
-function extractImageUrlsFromHtml(html: string, sourceProductId: string): Array<{ displayUrl: string; thumbnailUrl: string }> {
+function extractImageUrlsFromHtml(
+  html: string,
+  sourceProductId: string,
+): Array<{ displayUrl: string; thumbnailUrl: string }> {
   const rawCandidates: string[] = [];
   const escapedId = escapeRegExp(sourceProductId);
   const normalizedHtml = decodeJsEscapedUrl(html);
   const scopedHtmlFragments = extractWorkImageHtmlFragments(normalizedHtml);
-  const imageSearchHtml = scopedHtmlFragments.length > 0 ? scopedHtmlFragments.join("\n") : normalizedHtml;
+  const imageSearchHtml =
+    scopedHtmlFragments.length > 0
+      ? scopedHtmlFragments.join("\n")
+      : normalizedHtml;
 
-  const ogImage = findMetaContent(html, "og:image") ?? findMetaContent(html, "twitter:image:src");
+  const ogImage =
+    findMetaContent(html, "og:image") ??
+    findMetaContent(html, "twitter:image:src");
   pushImageCandidate(rawCandidates, ogImage);
 
   // DLsiteの作品画像は、メイン画像だけでなく、サムネイル部の
@@ -1032,7 +1817,8 @@ function extractImageUrlsFromHtml(html: string, sourceProductId: string): Array<
   // product-slider/work_slider周辺の実URLを直接拾う。
   // 例:
   //   //img.dlsite.jp/modpub/images2/work/doujin/RJ01514000/RJ01513001_img_smp1.jpg
-  const attrPattern = /\b(?:src|data-src|data-original|data-lazy|data-srcset|srcset|href|v-lazy)=(['"])([\s\S]*?)\1/gi;
+  const attrPattern =
+    /\b(?:src|data-src|data-original|data-lazy|data-srcset|srcset|href|v-lazy)=(['"])([\s\S]*?)\1/gi;
   for (const match of imageSearchHtml.matchAll(attrPattern)) {
     pushImageCandidate(rawCandidates, match[2]);
   }
@@ -1053,26 +1839,39 @@ function extractImageUrlsFromHtml(html: string, sourceProductId: string): Array<
     pushImageCandidate(rawCandidates, match[0]);
   }
 
-  rawCandidates.push(...extractDlsiteWorkImageCandidatesFromText(imageSearchHtml));
+  rawCandidates.push(
+    ...extractDlsiteWorkImageCandidatesFromText(imageSearchHtml),
+  );
 
   const candidatePairs = rawCandidates
     .map((rawUrl) => ({
       displayUrl: buildDisplayImageUrl(rawUrl),
       thumbnailUrl: buildThumbnailImageUrl(rawUrl),
     }))
-    .filter(({ displayUrl, thumbnailUrl }) =>
-      isLikelyWorkImage(displayUrl, sourceProductId) || isLikelyWorkImage(thumbnailUrl, sourceProductId),
+    .filter(
+      ({ displayUrl, thumbnailUrl }) =>
+        isLikelyWorkImage(displayUrl, sourceProductId) ||
+        isLikelyWorkImage(thumbnailUrl, sourceProductId),
     );
 
   // 念のため、scoped抽出がDLsite側のHTML差分でog:image相当しか拾えなかった場合だけ、
   // ページ全体からDLsite作品画像URLを再探索する。通常時はproduct-slider周辺だけを見るため、
   // 関連作品・広告画像の混入リスクを抑えられる。
-  const uniqueKeys = new Set(candidatePairs.map((pair) => canonicalImageKey(pair.displayUrl, sourceProductId)));
+  const uniqueKeys = new Set(
+    candidatePairs.map((pair) =>
+      canonicalImageKey(pair.displayUrl, sourceProductId),
+    ),
+  );
   if (uniqueKeys.size <= 1 && imageSearchHtml !== normalizedHtml) {
-    for (const rawUrl of extractDlsiteWorkImageCandidatesFromText(normalizedHtml)) {
+    for (const rawUrl of extractDlsiteWorkImageCandidatesFromText(
+      normalizedHtml,
+    )) {
       const displayUrl = buildDisplayImageUrl(rawUrl);
       const thumbnailUrl = buildThumbnailImageUrl(rawUrl);
-      if (isLikelyWorkImage(displayUrl, sourceProductId) || isLikelyWorkImage(thumbnailUrl, sourceProductId)) {
+      if (
+        isLikelyWorkImage(displayUrl, sourceProductId) ||
+        isLikelyWorkImage(thumbnailUrl, sourceProductId)
+      ) {
         candidatePairs.push({ displayUrl, thumbnailUrl });
       }
     }
@@ -1081,7 +1880,10 @@ function extractImageUrlsFromHtml(html: string, sourceProductId: string): Array<
   return candidatePairs;
 }
 
-function mergeDlsiteAjaxInfo(base: DlsiteAjaxInfo, next: DlsiteAjaxInfo): DlsiteAjaxInfo {
+function mergeDlsiteAjaxInfo(
+  base: DlsiteAjaxInfo,
+  next: DlsiteAjaxInfo,
+): DlsiteAjaxInfo {
   return {
     priceCurrent: base.priceCurrent ?? next.priceCurrent,
     priceOriginal: base.priceOriginal ?? next.priceOriginal,
@@ -1089,7 +1891,10 @@ function mergeDlsiteAjaxInfo(base: DlsiteAjaxInfo, next: DlsiteAjaxInfo): Dlsite
     salesCount: base.salesCount ?? next.salesCount,
     rating: base.rating ?? next.rating,
     reviewCount: base.reviewCount ?? next.reviewCount,
-    ratingBreakdown: base.ratingBreakdown && base.ratingBreakdown.length > 0 ? base.ratingBreakdown : next.ratingBreakdown,
+    ratingBreakdown:
+      base.ratingBreakdown && base.ratingBreakdown.length > 0
+        ? base.ratingBreakdown
+        : next.ratingBreakdown,
     releaseDate: base.releaseDate ?? next.releaseDate,
   };
 }
@@ -1098,22 +1903,76 @@ function parseDlsiteAjaxInfo(parsed: unknown): DlsiteAjaxInfo {
   const values = flattenJsonValues(parsed);
   const info: DlsiteAjaxInfo = {};
 
-  info.salesCount = firstNumberByKey(values, ["dl_count", "dlCount", "download_count", "downloadCount", "sales_count", "salesCount"]);
-  info.rating = firstNumberByKey(values, ["rate_average_2dp", "rateAverage2dp", "rate_average", "rateAverage", "ratingValue"]);
-  info.reviewCount = firstNumberByKey(values, ["rate_count", "rateCount", "rating_count", "ratingCount", "review_count", "reviewCount"]);
-  info.priceCurrent = firstNumberByKey(values, ["price", "priceCurrent", "price_current", "work_price"]);
-  info.priceOriginal = firstNumberByKey(values, ["official_price", "priceOriginal", "price_original", "regular_price", "base_price"]);
-  info.discountRate = firstNumberByKey(values, ["discount_rate", "discountRate", "discount"]);
-  info.releaseDate = normalizeReleaseDate(firstStringByKey(values, ["regist_date", "release_date", "releaseDate", "datePublished"]));
+  info.salesCount = firstNumberByKey(values, [
+    "dl_count",
+    "dlCount",
+    "download_count",
+    "downloadCount",
+    "sales_count",
+    "salesCount",
+  ]);
+  info.rating = firstNumberByKey(values, [
+    "rate_average_2dp",
+    "rateAverage2dp",
+    "rate_average",
+    "rateAverage",
+    "ratingValue",
+  ]);
+  info.reviewCount = firstNumberByKey(values, [
+    "rate_count",
+    "rateCount",
+    "rating_count",
+    "ratingCount",
+    "review_count",
+    "reviewCount",
+  ]);
+  info.priceCurrent = firstNumberByKey(values, [
+    "price",
+    "priceCurrent",
+    "price_current",
+    "work_price",
+  ]);
+  info.priceOriginal = firstNumberByKey(values, [
+    "official_price",
+    "priceOriginal",
+    "price_original",
+    "regular_price",
+    "base_price",
+  ]);
+  info.discountRate = firstNumberByKey(values, [
+    "discount_rate",
+    "discountRate",
+    "discount",
+  ]);
+  info.releaseDate = normalizeReleaseDate(
+    firstStringByKey(values, [
+      "regist_date",
+      "release_date",
+      "releaseDate",
+      "datePublished",
+    ]),
+  );
   info.ratingBreakdown = findRatingBreakdownInJson(parsed, info.rating);
 
   return info;
 }
 
-async function fetchProductInfoAjax(sourceProductId: string): Promise<DlsiteAjaxInfo> {
+async function fetchProductInfoAjax(
+  sourceProductId: string,
+  options?: { parseMode?: ProductParseMode; sourceUrl?: string },
+): Promise<DlsiteAjaxInfo> {
+  const parseMode = options?.parseMode ?? "full";
+  const ajaxBaseUrl = /\/bl(?:-touch)?\//i.test(options?.sourceUrl ?? "")
+    ? DLSITE_BL_BASE_URL
+    : DLSITE_GIRLS_BASE_URL;
+  const referer =
+    options?.sourceUrl ??
+    (ajaxBaseUrl === DLSITE_BL_BASE_URL
+      ? buildBlSourceUrl(sourceProductId)
+      : buildSourceUrl(sourceProductId));
   const urls = [
-    `${DLSITE_GIRLS_BASE_URL}/product/info/ajax?product_id=${sourceProductId}`,
-    `${DLSITE_GIRLS_BASE_URL}/product/info/ajax?product_id[]=${sourceProductId}`,
+    `${ajaxBaseUrl}/product/info/ajax?product_id=${sourceProductId}`,
+    `${ajaxBaseUrl}/product/info/ajax?product_id[]=${sourceProductId}`,
   ];
 
   let merged: DlsiteAjaxInfo = {};
@@ -1126,7 +1985,7 @@ async function fetchProductInfoAjax(sourceProductId: string): Promise<DlsiteAjax
           "user-agent": USER_AGENT,
           accept: "application/json,text/javascript,*/*;q=0.8",
           "accept-language": "ja,en;q=0.8",
-          referer: buildSourceUrl(sourceProductId),
+          referer,
         },
       });
       if (!response.ok) continue;
@@ -1134,6 +1993,12 @@ async function fetchProductInfoAjax(sourceProductId: string): Promise<DlsiteAjax
       const text = await response.text();
       const parsed = JSON.parse(text) as unknown;
       merged = mergeDlsiteAjaxInfo(merged, parseDlsiteAjaxInfo(parsed));
+
+      // fastでは初回全量取得向けに、追加のAjax補完を行わない。
+      // sales/price/ratingなどの主要項目は最初に成功したレスポンスとHTMLフォールバックで取得する。
+      if (parseMode === "fast") {
+        return merged;
+      }
 
       // product_id と product_id[] で返る項目が微妙に違うことがある。
       // 評価内訳が取れた時点では十分だが、取れない場合は次のURLも試す。
@@ -1153,7 +2018,10 @@ function flattenJsonValues(value: unknown, prefix = ""): Map<string, unknown> {
 
   if (Array.isArray(value)) {
     value.forEach((item, index) => {
-      for (const [key, childValue] of flattenJsonValues(item, `${prefix}${index}.`)) {
+      for (const [key, childValue] of flattenJsonValues(
+        item,
+        `${prefix}${index}.`,
+      )) {
         result.set(key, childValue);
       }
     });
@@ -1161,9 +2029,14 @@ function flattenJsonValues(value: unknown, prefix = ""): Map<string, unknown> {
   }
 
   if (value && typeof value === "object") {
-    for (const [key, childValue] of Object.entries(value as Record<string, unknown>)) {
+    for (const [key, childValue] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
       result.set(key, childValue);
-      for (const [childKey, grandChildValue] of flattenJsonValues(childValue, `${prefix}${key}.`)) {
+      for (const [childKey, grandChildValue] of flattenJsonValues(
+        childValue,
+        `${prefix}${key}.`,
+      )) {
         result.set(childKey, grandChildValue);
       }
     }
@@ -1172,7 +2045,10 @@ function flattenJsonValues(value: unknown, prefix = ""): Map<string, unknown> {
   return result;
 }
 
-function firstNumberByKey(values: Map<string, unknown>, keys: string[]): number | undefined {
+function firstNumberByKey(
+  values: Map<string, unknown>,
+  keys: string[],
+): number | undefined {
   for (const key of keys) {
     const value = values.get(key);
     if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -1184,7 +2060,10 @@ function firstNumberByKey(values: Map<string, unknown>, keys: string[]): number 
   return undefined;
 }
 
-function firstStringByKey(values: Map<string, unknown>, keys: string[]): string | undefined {
+function firstStringByKey(
+  values: Map<string, unknown>,
+  keys: string[],
+): string | undefined {
   for (const key of keys) {
     const value = values.get(key);
     if (typeof value === "string" && value.trim()) return value;
@@ -1192,7 +2071,10 @@ function firstStringByKey(values: Map<string, unknown>, keys: string[]): string 
   return undefined;
 }
 
-async function extractImages(html: string, sourceProductId: string): Promise<ProductImage[]> {
+async function extractImages(
+  html: string,
+  sourceProductId: string,
+): Promise<ProductImage[]> {
   // v6では smp1..smp16 を推測してHEAD確認していたが、
   // DLsite側へのリクエスト数が増えてFunctionが遅くなるため廃止。
   // v7ではページHTML内に実際に出ている main/smp サムネイルURLを直接拾い、
@@ -1200,7 +2082,9 @@ async function extractImages(html: string, sourceProductId: string): Promise<Pro
   const pairs = extractImageUrlsFromHtml(html, sourceProductId);
 
   const byKey = new Map<string, { displayUrl: string; thumbnailUrl: string }>();
-  const sortedPairs = pairs.sort((a, b) => imageSortScore(a.displayUrl) - imageSortScore(b.displayUrl));
+  const sortedPairs = pairs.sort(
+    (a, b) => imageSortScore(a.displayUrl) - imageSortScore(b.displayUrl),
+  );
 
   for (const pair of sortedPairs) {
     const key = canonicalImageKey(pair.displayUrl, sourceProductId);
@@ -1213,8 +2097,12 @@ async function extractImages(html: string, sourceProductId: string): Promise<Pro
     }
 
     byKey.set(key, {
-      displayUrl: existing.displayUrl.includes("/resize/") ? pair.displayUrl : existing.displayUrl,
-      thumbnailUrl: pair.thumbnailUrl.includes("/resize/") ? pair.thumbnailUrl : existing.thumbnailUrl,
+      displayUrl: existing.displayUrl.includes("/resize/")
+        ? pair.displayUrl
+        : existing.displayUrl,
+      thumbnailUrl: pair.thumbnailUrl.includes("/resize/")
+        ? pair.thumbnailUrl
+        : existing.thumbnailUrl,
     });
   }
 
@@ -1230,13 +2118,19 @@ async function extractImages(html: string, sourceProductId: string): Promise<Pro
   }));
 }
 
-function extractJsonLikeNumber(html: string, keys: string[]): number | undefined {
+function extractJsonLikeNumber(
+  html: string,
+  keys: string[],
+): number | undefined {
   for (const key of keys) {
     const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const value = matchFirst(html, [
       new RegExp(`["']${escaped}["']\\s*:\\s*["']?([0-9][0-9,.]*)`, "i"),
       new RegExp(`\\b${escaped}\\b\\s*[:=]\\s*["']?([0-9][0-9,.]*)`, "i"),
-      new RegExp(`data-${escaped.replace(/_/g, "-")}=["']([0-9][0-9,.]*)["']`, "i"),
+      new RegExp(
+        `data-${escaped.replace(/_/g, "-")}=["']([0-9][0-9,.]*)["']`,
+        "i",
+      ),
     ]);
     const parsed = toNumber(value);
     if (parsed !== undefined) return parsed;
@@ -1247,11 +2141,13 @@ function extractJsonLikeNumber(html: string, keys: string[]): number | undefined
 
 function extractRating(html: string, text: string): number | undefined {
   return (
-    toNumber(matchFirst(html, [
-      /itemprop=["']ratingValue["'][^>]+content=["']([^"']+)["']/i,
-      /content=["']([^"']+)["'][^>]+itemprop=["']ratingValue["']/i,
-      /data-(?:rating|rate|score)=["']([0-9.]+)["']/i,
-    ])) ??
+    toNumber(
+      matchFirst(html, [
+        /itemprop=["']ratingValue["'][^>]+content=["']([^"']+)["']/i,
+        /content=["']([^"']+)["'][^>]+itemprop=["']ratingValue["']/i,
+        /data-(?:rating|rate|score)=["']([0-9.]+)["']/i,
+      ]),
+    ) ??
     extractJsonLikeNumber(html, [
       "rate_average_2dp",
       "rateAverage2dp",
@@ -1267,7 +2163,10 @@ function extractRating(html: string, text: string): number | undefined {
   );
 }
 
-function extractEvaluationCount(html: string, text: string): number | undefined {
+function extractEvaluationCount(
+  html: string,
+  text: string,
+): number | undefined {
   return (
     extractJsonLikeNumber(html, [
       "ratingCount",
@@ -1279,11 +2178,15 @@ function extractEvaluationCount(html: string, text: string): number | undefined 
       "reviewCount",
       "review_count",
     ]) ??
-    toNumber(matchFirst(html, [
-      /itemprop=["']reviewCount["'][^>]+content=["']([^"']+)["']/i,
-      /content=["']([^"']+)["'][^>]+itemprop=["']reviewCount["']/i,
-    ])) ??
-    toNumber(text.match(/評価\s*[:：]?\s*[0-9.]+[\s\S]{0,120}?\(([0-9,]+)\)/)?.[1]) ??
+    toNumber(
+      matchFirst(html, [
+        /itemprop=["']reviewCount["'][^>]+content=["']([^"']+)["']/i,
+        /content=["']([^"']+)["'][^>]+itemprop=["']reviewCount["']/i,
+      ]),
+    ) ??
+    toNumber(
+      text.match(/評価\s*[:：]?\s*[0-9.]+[\s\S]{0,120}?\(([0-9,]+)\)/)?.[1],
+    ) ??
     toNumber(text.match(/評価数\s*[:：]?\s*([0-9,]+)/)?.[1]) ??
     toNumber(text.match(/評価(?:件数)?\s*[:：]?\s*([0-9,]+)\s*件/)?.[1]) ??
     toNumber(text.match(/([0-9,]+)\s*件の評価/)?.[1]) ??
@@ -1292,32 +2195,44 @@ function extractEvaluationCount(html: string, text: string): number | undefined 
   );
 }
 
-
 function normalizeRatingBreakdown(
   counts: number[],
   rating?: number,
 ): ProductRatingBreakdown[] | undefined {
   if (counts.length < 5) return undefined;
 
-  const firstFive = counts.slice(0, 5).map((count) => Math.max(0, Math.floor(count || 0)));
+  const firstFive = counts
+    .slice(0, 5)
+    .map((count) => Math.max(0, Math.floor(count || 0)));
   if (firstFive.every((count) => count === 0)) return undefined;
 
-  const ascending = firstFive.map((count, index) => ({ star: (index + 1) as 1 | 2 | 3 | 4 | 5, count }));
-  const descending = firstFive.map((count, index) => ({ star: (5 - index) as 1 | 2 | 3 | 4 | 5, count }));
+  const ascending = firstFive.map((count, index) => ({
+    star: (index + 1) as 1 | 2 | 3 | 4 | 5,
+    count,
+  }));
+  const descending = firstFive.map((count, index) => ({
+    star: (5 - index) as 1 | 2 | 3 | 4 | 5,
+    count,
+  }));
 
   if (rating !== undefined && rating > 0) {
     const score = (items: ProductRatingBreakdown[]) => {
       const total = items.reduce((sum, item) => sum + item.count, 0);
       if (total <= 0) return Number.MAX_SAFE_INTEGER;
-      const average = items.reduce((sum, item) => sum + item.star * item.count, 0) / total;
+      const average =
+        items.reduce((sum, item) => sum + item.star * item.count, 0) / total;
       return Math.abs(average - rating);
     };
 
     return score(descending) < score(ascending) ? descending : ascending;
   }
 
-  const averageAscending = ascending.reduce((sum, item) => sum + item.star * item.count, 0) / firstFive.reduce((sum, count) => sum + count, 0);
-  const averageDescending = descending.reduce((sum, item) => sum + item.star * item.count, 0) / firstFive.reduce((sum, count) => sum + count, 0);
+  const averageAscending =
+    ascending.reduce((sum, item) => sum + item.star * item.count, 0) /
+    firstFive.reduce((sum, count) => sum + count, 0);
+  const averageDescending =
+    descending.reduce((sum, item) => sum + item.star * item.count, 0) /
+    firstFive.reduce((sum, count) => sum + count, 0);
   return averageDescending >= averageAscending ? descending : ascending;
 }
 
@@ -1338,22 +2253,33 @@ function setRatingBreakdownCount(
   star: number | undefined,
   count: number | undefined,
 ): void {
-  if (star !== 1 && star !== 2 && star !== 3 && star !== 4 && star !== 5) return;
+  if (star !== 1 && star !== 2 && star !== 3 && star !== 4 && star !== 5)
+    return;
   if (count === undefined || !Number.isFinite(count) || count < 0) return;
   byStar[star] = Math.max(0, Math.floor(count));
 }
 
-function findStarCountInObject(record: Record<string, unknown>): { star?: number; count?: number } {
+function findStarCountInObject(record: Record<string, unknown>): {
+  star?: number;
+  count?: number;
+} {
   let star: number | undefined;
   let count: number | undefined;
 
   for (const [key, rawValue] of Object.entries(record)) {
     const lowerKey = key.toLowerCase();
-    const numberValue = typeof rawValue === "number" ? rawValue : typeof rawValue === "string" ? toNumber(rawValue) : undefined;
+    const numberValue =
+      typeof rawValue === "number"
+        ? rawValue
+        : typeof rawValue === "string"
+          ? toNumber(rawValue)
+          : undefined;
 
     if (numberValue === undefined) continue;
 
-    if (/^(?:star|stars|rate|rating|score|level|rank|評価|星)$/i.test(lowerKey)) {
+    if (
+      /^(?:star|stars|rate|rating|score|level|rank|評価|星)$/i.test(lowerKey)
+    ) {
       star = numberValue;
       continue;
     }
@@ -1377,7 +2303,9 @@ function extractRatingBreakdownFromObject(
 
     for (const item of value) {
       if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-      const { star, count } = findStarCountInObject(item as Record<string, unknown>);
+      const { star, count } = findStarCountInObject(
+        item as Record<string, unknown>,
+      );
       setRatingBreakdownCount(byStar, star, count);
     }
 
@@ -1385,7 +2313,13 @@ function extractRatingBreakdownFromObject(
     if (explicit) return explicit;
 
     const counts = value
-      .map((item) => (typeof item === "number" ? item : typeof item === "string" ? toNumber(item) : undefined))
+      .map((item) =>
+        typeof item === "number"
+          ? item
+          : typeof item === "string"
+            ? toNumber(item)
+            : undefined,
+      )
       .filter((item): item is number => item !== undefined);
     return normalizeRatingBreakdown(counts, rating);
   }
@@ -1395,11 +2329,18 @@ function extractRatingBreakdownFromObject(
 
   for (const [key, rawValue] of Object.entries(record)) {
     const starMatch =
-      key.match(/(?:star|stars|rate|rating|score|評価|星)[_-]?([1-5])(?:[_-]?(?:count|num|total|件数))?$/i) ??
+      key.match(
+        /(?:star|stars|rate|rating|score|評価|星)[_-]?([1-5])(?:[_-]?(?:count|num|total|件数))?$/i,
+      ) ??
       key.match(/(?:count|num|total|件数)[_-]?([1-5])$/i) ??
       key.match(/^([1-5])$/);
     if (!starMatch?.[1]) continue;
-    const count = typeof rawValue === "number" ? rawValue : typeof rawValue === "string" ? toNumber(rawValue) : undefined;
+    const count =
+      typeof rawValue === "number"
+        ? rawValue
+        : typeof rawValue === "string"
+          ? toNumber(rawValue)
+          : undefined;
     setRatingBreakdownCount(byStar, Number(starMatch[1]), count);
   }
 
@@ -1432,9 +2373,13 @@ function findRatingBreakdownInJson(
     const lowerKey = key.toLowerCase();
     if (
       /(?:rate|rating|review|evaluation|star|score)/.test(lowerKey) &&
-      /(?:breakdown|detail|star|distribution|count|histogram|summary)/.test(lowerKey)
+      /(?:breakdown|detail|star|distribution|count|histogram|summary)/.test(
+        lowerKey,
+      )
     ) {
-      const found = extractRatingBreakdownFromObject(childValue, rating) ?? findRatingBreakdownInJson(childValue, rating, depth + 1);
+      const found =
+        extractRatingBreakdownFromObject(childValue, rating) ??
+        findRatingBreakdownInJson(childValue, rating, depth + 1);
       if (found) return found;
     }
   }
@@ -1447,15 +2392,25 @@ function findRatingBreakdownInJson(
   return undefined;
 }
 
-function extractRatingBreakdownFromText(text: string): ProductRatingBreakdown[] | undefined {
+function extractRatingBreakdownFromText(
+  text: string,
+): ProductRatingBreakdown[] | undefined {
   const byStar: Partial<Record<1 | 2 | 3 | 4 | 5, number>> = {};
-  const normalizedText = decodeHtml(text).replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
+  const normalizedText = decodeHtml(text)
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ");
 
   for (const star of [5, 4, 3, 2, 1] as const) {
     const patterns = [
-      new RegExp(`星\\s*${star}\\s*つ?[\\s\\S]{0,120}?[（(]\\s*([0-9][0-9,]*)\\s*[)）]`, "i"),
+      new RegExp(
+        `星\\s*${star}\\s*つ?[\\s\\S]{0,120}?[（(]\\s*([0-9][0-9,]*)\\s*[)）]`,
+        "i",
+      ),
       new RegExp(`星\\s*${star}\\s*つ?[\\s\\S]{0,60}?([0-9][0-9,]*)`, "i"),
-      new RegExp(`${star}\\s*つ星[\\s\\S]{0,120}?[（(]\\s*([0-9][0-9,]*)\\s*[)）]`, "i"),
+      new RegExp(
+        `${star}\\s*つ星[\\s\\S]{0,120}?[（(]\\s*([0-9][0-9,]*)\\s*[)）]`,
+        "i",
+      ),
       new RegExp(`${star}\\s*つ星[\\s\\S]{0,60}?([0-9][0-9,]*)`, "i"),
       new RegExp(`★\\s*${star}[\\s\\S]{0,60}?([0-9][0-9,]*)`, "i"),
     ];
@@ -1473,14 +2428,17 @@ function extractRatingBreakdownFromText(text: string): ProductRatingBreakdown[] 
   return normalizeExplicitRatingBreakdown(byStar);
 }
 
-function extractRatingBreakdownFromDlsiteRatingMap(html: string): ProductRatingBreakdown[] | undefined {
+function extractRatingBreakdownFromDlsiteRatingMap(
+  html: string,
+): ProductRatingBreakdown[] | undefined {
   const normalizedHtml = decodeHtml(decodeJsEscapedUrl(html));
   const byStar: Partial<Record<1 | 2 | 3 | 4 | 5, number>> = {};
 
   // DLsiteのhover後DOMは概ね以下の形。
   //   <dt class="rating_map_label"><p>星5つ</p></dt> ... <dd>(403)</dd>
   // タグの入れ子が崩れていても拾えるよう、rating_map_label から次の count dd を短い範囲で探す。
-  const labelPattern = /class=["'][^"']*\brating_map_label\b[^"']*["'][\s\S]{0,240}?星\s*([1-5])\s*つ?[\s\S]{0,900}?[（(]\s*([0-9][0-9,]*)\s*[)）]/gi;
+  const labelPattern =
+    /class=["'][^"']*\brating_map_label\b[^"']*["'][\s\S]{0,240}?星\s*([1-5])\s*つ?[\s\S]{0,900}?[（(]\s*([0-9][0-9,]*)\s*[)）]/gi;
   for (const match of normalizedHtml.matchAll(labelPattern)) {
     setRatingBreakdownCount(byStar, Number(match[1]), toNumber(match[2]));
   }
@@ -1490,33 +2448,51 @@ function extractRatingBreakdownFromDlsiteRatingMap(html: string): ProductRatingB
 
   // class名が削られた断片にも対応。星ラベルの直後、次の星ラベルまでの最後の括弧数字を件数とする。
   for (const star of [5, 4, 3, 2, 1] as const) {
-    const startMatch = normalizedHtml.match(new RegExp(`星\\s*${star}\\s*つ?`, "i"));
+    const startMatch = normalizedHtml.match(
+      new RegExp(`星\\s*${star}\\s*つ?`, "i"),
+    );
     if (!startMatch || startMatch.index === undefined) continue;
 
     const startIndex = startMatch.index + startMatch[0].length;
     const nextStars = ([5, 4, 3, 2, 1] as const)
       .filter((nextStar) => nextStar !== star)
-      .map((nextStar) => normalizedHtml.slice(startIndex).search(new RegExp(`星\\s*${nextStar}\\s*つ?`, "i")))
+      .map((nextStar) =>
+        normalizedHtml
+          .slice(startIndex)
+          .search(new RegExp(`星\\s*${nextStar}\\s*つ?`, "i")),
+      )
       .filter((index) => index >= 0);
-    const endIndex = nextStars.length > 0 ? startIndex + Math.min(...nextStars) : Math.min(normalizedHtml.length, startIndex + 1200);
+    const endIndex =
+      nextStars.length > 0
+        ? startIndex + Math.min(...nextStars)
+        : Math.min(normalizedHtml.length, startIndex + 1200);
     const chunk = stripTags(normalizedHtml.slice(startIndex, endIndex));
     const parenNumbers = [...chunk.matchAll(/[（(]\s*([0-9][0-9,]*)\s*[)）]/g)]
       .map((match) => toNumber(match[1]))
       .filter((value): value is number => value !== undefined);
 
     if (parenNumbers.length > 0) {
-      byStar[star] = Math.max(0, Math.floor(parenNumbers[parenNumbers.length - 1]));
+      byStar[star] = Math.max(
+        0,
+        Math.floor(parenNumbers[parenNumbers.length - 1]),
+      );
     }
   }
 
   return normalizeExplicitRatingBreakdown(byStar);
 }
 
-function extractRatingBreakdownFromRatingRows(html: string): ProductRatingBreakdown[] | undefined {
+function extractRatingBreakdownFromRatingRows(
+  html: string,
+): ProductRatingBreakdown[] | undefined {
   return extractRatingBreakdownFromDlsiteRatingMap(html);
 }
 
-function findClosingTagEnd(html: string, startIndex: number, tagName: string): number | undefined {
+function findClosingTagEnd(
+  html: string,
+  startIndex: number,
+  tagName: string,
+): number | undefined {
   const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const tagPattern = new RegExp(`</?${escapedTag}\\b[^>]*>`, "gi");
   tagPattern.lastIndex = startIndex;
@@ -1536,15 +2512,20 @@ function findClosingTagEnd(html: string, startIndex: number, tagName: string): n
   return undefined;
 }
 
-function extractRatingBreakdownFromRatingPopup(html: string): ProductRatingBreakdown[] | undefined {
+function extractRatingBreakdownFromRatingPopup(
+  html: string,
+): ProductRatingBreakdown[] | undefined {
   const normalizedHtml = decodeHtml(decodeJsEscapedUrl(html));
-  const popupPattern = /<([a-z][a-z0-9]*)\b[^>]*(?:(?:class|id)=['"][^'"]*\brating_popup\b[^'"]*['"])[^>]*>/gi;
+  const popupPattern =
+    /<([a-z][a-z0-9]*)\b[^>]*(?:(?:class|id)=['"][^'"]*\brating_popup\b[^'"]*['"])[^>]*>/gi;
 
   for (const match of normalizedHtml.matchAll(popupPattern)) {
     const tagName = match[1];
     if (!tagName) continue;
     const startIndex = match.index ?? 0;
-    const endIndex = findClosingTagEnd(normalizedHtml, startIndex, tagName) ?? Math.min(normalizedHtml.length, startIndex + 8000);
+    const endIndex =
+      findClosingTagEnd(normalizedHtml, startIndex, tagName) ??
+      Math.min(normalizedHtml.length, startIndex + 8000);
     const popupHtml = normalizedHtml.slice(startIndex, endIndex);
     const popupText = stripTags(popupHtml);
 
@@ -1561,12 +2542,18 @@ function extractRatingBreakdownFromRatingPopup(html: string): ProductRatingBreak
   return undefined;
 }
 
-function extractRatingBreakdownFromEmbeddedRatingPopupFragments(html: string): ProductRatingBreakdown[] | undefined {
+function extractRatingBreakdownFromEmbeddedRatingPopupFragments(
+  html: string,
+): ProductRatingBreakdown[] | undefined {
   const normalizedHtml = decodeHtml(decodeJsEscapedUrl(html));
 
   // hover時にDOMへ挿入されるHTMLが、script内の文字列/templateとして埋まっているケース用。
   // rating_popup / rating_map を含む周辺だけを切り出して、同じパーサにかける。
-  const markerPatterns = [/rating_popup/gi, /rating_map_label/gi, /rating_map_body/gi];
+  const markerPatterns = [
+    /rating_popup/gi,
+    /rating_map_label/gi,
+    /rating_map_body/gi,
+  ];
   for (const markerPattern of markerPatterns) {
     for (const match of normalizedHtml.matchAll(markerPattern)) {
       const markerIndex = match.index ?? 0;
@@ -1585,8 +2572,9 @@ function extractRatingBreakdownFromEmbeddedRatingPopupFragments(html: string): P
   return undefined;
 }
 
-
-function extractRatingBreakdownFromHtmlAttributes(html: string): ProductRatingBreakdown[] | undefined {
+function extractRatingBreakdownFromHtmlAttributes(
+  html: string,
+): ProductRatingBreakdown[] | undefined {
   const byStar: Partial<Record<1 | 2 | 3 | 4 | 5, number>> = {};
   const normalizedHtml = decodeHtml(decodeJsEscapedUrl(html));
 
@@ -1614,7 +2602,11 @@ function extractRatingBreakdownFromHtmlAttributes(html: string): ProductRatingBr
   return normalizeExplicitRatingBreakdown(byStar);
 }
 
-function extractRatingBreakdown(html: string, text: string, rating?: number): ProductRatingBreakdown[] | undefined {
+function extractRatingBreakdown(
+  html: string,
+  text: string,
+  rating?: number,
+): ProductRatingBreakdown[] | undefined {
   const normalizedHtml = decodeHtml(decodeJsEscapedUrl(html));
   const jsonPatterns = [
     /(?:rate|rating|review|evaluation)[_-]?(?:count)?[_-]?(?:detail|breakdown|distribution|histogram)\s*[=:]\s*(\[[\s\S]*?\]|\{[\s\S]*?\})/gi,
@@ -1626,7 +2618,9 @@ function extractRatingBreakdown(html: string, text: string, rating?: number): Pr
       const rawJson = match[1];
       if (!rawJson) continue;
       try {
-        const parsed = JSON.parse(decodeJsEscapedUrl(rawJson).replace(/'/g, '"')) as unknown;
+        const parsed = JSON.parse(
+          decodeJsEscapedUrl(rawJson).replace(/'/g, '"'),
+        ) as unknown;
         const found = extractRatingBreakdownFromObject(parsed, rating);
         if (found) return found;
       } catch {
@@ -1635,7 +2629,8 @@ function extractRatingBreakdown(html: string, text: string, rating?: number): Pr
     }
   }
 
-  const scriptPattern = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  const scriptPattern =
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   for (const match of normalizedHtml.matchAll(scriptPattern)) {
     try {
       const parsed = JSON.parse(decodeHtml(match[1] ?? "")) as unknown;
@@ -1666,32 +2661,93 @@ function extractSalesCount(html: string, text: string): number | undefined {
       "work_dl_count",
       "workDlCount",
     ]) ??
-    toNumber(text.match(/(?:販売数|販売本数|DL数|ダウンロード数)\s*[:：]?\s*([0-9,]+)/)?.[1]) ??
+    toNumber(
+      text.match(
+        /(?:販売数|販売本数|DL数|ダウンロード数)\s*[:：]?\s*([0-9,]+)/,
+      )?.[1],
+    ) ??
     toNumber(text.match(/([0-9,]+)\s*(?:DL|ダウンロード)/i)?.[1])
   );
 }
 
 function extractPriceCurrent(html: string, text: string): number | undefined {
   return (
-    toNumber(matchFirst(html, [
-      /class=["'][^"']*(?:work_price|discount_price|price)[^"']*["'][^>]*>([\s\S]*?)<\//i,
-      /itemprop=["']price["'][^>]+content=["']([^"']+)["']/i,
-    ])) ??
+    toNumber(
+      matchFirst(html, [
+        /class=["'][^"']*(?:work_price|discount_price|price)[^"']*["'][^>]*>([\s\S]*?)<\//i,
+        /itemprop=["']price["'][^>]+content=["']([^"']+)["']/i,
+      ]),
+    ) ??
     toNumber(text.match(/(?:販売価格|価格)\s*[:：]?\s*([0-9,]+)\s*円/)?.[1]) ??
     toNumber(text.match(/([0-9,]+)\s*円/)?.[1])
   );
 }
 
-async function extractProductDetail(html: string, sourceProductId: string, sourceUrl = buildSourceUrl(sourceProductId)): Promise<RawProductDetail> {
-  const text = stripTags(html);
-  const title =
-    cleanText(findMetaContent(html, "og:title")?.replace(/\s*\|\s*DLsite.*$/i, "")) ??
-    cleanText(matchFirst(html, [/<h1[^>]*id=["']work_name["'][^>]*>([\s\S]*?)<\/h1>/i, /<h1[^>]*>([\s\S]*?)<\/h1>/i])) ??
-    sourceProductId;
+async function extractProductDetail(
+  html: string,
+  sourceProductId: string,
+  sourceUrl = buildSourceUrl(sourceProductId),
+  options?: {
+    parseMode?: ProductParseMode;
+    onParseTiming?: (timing: ProductDetailParseTiming) => void;
+  },
+): Promise<RawProductDetail> {
+  const parseMode = options?.parseMode ?? "full";
+  const timing = createProductDetailParseTiming();
 
-  const seller = extractSeller(html);
-  const ajaxInfo = await fetchProductInfoAjax(sourceProductId);
-  const images = await extractImages(html, sourceProductId);
+  const text = measureParseStep(timing, "parseBasicInfoMs", () =>
+    stripTags(html),
+  );
+  const basicInfo = measureParseStep(timing, "parseBasicInfoMs", () => {
+    const title =
+      cleanText(
+        findMetaContent(html, "og:title")?.replace(/\s*\|\s*DLsite.*$/i, ""),
+      ) ??
+      cleanText(
+        matchFirst(html, [
+          /<h1[^>]*id=["']work_name["'][^>]*>([\s\S]*?)<\/h1>/i,
+          /<h1[^>]*>([\s\S]*?)<\/h1>/i,
+        ]),
+      ) ??
+      sourceProductId;
+
+    const seller = extractSeller(html);
+    const hintTypes =
+      sourceProductIdHints.get(sourceProductId) ?? new Set<RankingType>();
+    const isAdult = /R18|18禁|成人向け|年齢確認/.test(text);
+    const workTypeInfo = extractDlsiteWorkType(html, text);
+    const contentTypeInfos = extractDlsiteContentTypes(html);
+    const hintedContentType =
+      sourceProductIdContentTypeHints.get(sourceProductId);
+    const resolvedContentTypeInfos =
+      contentTypeInfos.length > 0
+        ? contentTypeInfos
+        : hintedContentType
+          ? [
+              {
+                contentType: hintedContentType,
+                contentTypeLabel: hintedContentType === "bl" ? "BL" : "TL",
+              },
+            ]
+          : [];
+
+    return {
+      title,
+      seller,
+      hintTypes,
+      isAdult,
+      workTypeInfo,
+      resolvedContentTypeInfos,
+    };
+  });
+
+  const ajaxInfo = await measureParseStepAsync(timing, "ajaxInfoFetchMs", () =>
+    fetchProductInfoAjax(sourceProductId, { parseMode, sourceUrl }),
+  );
+
+  const images = await measureParseStepAsync(timing, "parseImagesMs", () =>
+    extractImages(html, sourceProductId),
+  );
   if (images.length === 0) {
     logger.warn("DLsite product images not found", {
       sourceProductId,
@@ -1700,80 +2756,124 @@ async function extractProductDetail(html: string, sourceProductId: string, sourc
       hasWorkLeft: /id=["']work_left["']/i.test(html),
       hasProductSlider: /class=["'][^"']*\bproduct-slider\b/i.test(html),
       hasWorkSlider: /class=["'][^"']*\bwork_slider\b/i.test(html),
-      containsSourceProductId: html.toLowerCase().includes(sourceProductId.toLowerCase()),
+      containsSourceProductId: html
+        .toLowerCase()
+        .includes(sourceProductId.toLowerCase()),
     });
   }
-  const priceCurrent = ajaxInfo.priceCurrent ?? extractPriceCurrent(html, text);
-  const priceOriginal =
-    ajaxInfo.priceOriginal ??
-    toNumber(matchFirst(html, [/class=["'][^"']*(?:base_price|default_price|strike|regular_price)[^"']*["'][^>]*>([\s\S]*?)<\//i])) ??
-    toNumber(text.match(/(?:通常価格|定価)\s*[:：]?\s*([0-9,]+)\s*円/)?.[1]);
-  const discountRate =
-    ajaxInfo.discountRate ??
-    toNumber(text.match(/([0-9]{1,2})\s*%\s*OFF/i)?.[1]) ??
-    toNumber(text.match(/([0-9]{1,2})\s*％\s*OFF/i)?.[1]);
-  const salesCount = ajaxInfo.salesCount ?? extractSalesCount(html, text);
-  // DLsiteでは「レビュー本文数」よりも「評価数」が表示・取得しやすいケースが多いため、
-  // MVPでは reviewCount に評価数を入れて画面表示する。
-  const reviewCount = ajaxInfo.reviewCount ?? extractEvaluationCount(html, text);
-  const rating = ajaxInfo.rating ?? extractRating(html, text);
-  const ratingBreakdown = ajaxInfo.ratingBreakdown ?? extractRatingBreakdown(html, text, rating) ?? [];
-  const releaseDate = ajaxInfo.releaseDate ?? normalizeReleaseDate(
-    text.match(/(?:販売日|発売日)\s*[:：]?\s*(\d{4}[/.年-]\d{1,2}[/.月-]\d{1,2})/)?.[1] ??
-      matchFirst(html, [/itemprop=["']datePublished["'][^>]+content=["']([^"']+)["']/i]),
+
+  const priceInfo = measureParseStep(timing, "parsePriceMs", () => {
+    const priceCurrent =
+      ajaxInfo.priceCurrent ?? extractPriceCurrent(html, text);
+    const priceOriginal =
+      ajaxInfo.priceOriginal ??
+      toNumber(
+        matchFirst(html, [
+          /class=["'][^"']*(?:base_price|default_price|strike|regular_price)[^"']*["'][^>]*>([\s\S]*?)<\//i,
+        ]),
+      ) ??
+      toNumber(text.match(/(?:通常価格|定価)\s*[:：]?\s*([0-9,]+)\s*円/)?.[1]);
+    const discountRate =
+      ajaxInfo.discountRate ??
+      toNumber(text.match(/([0-9]{1,2})\s*%\s*OFF/i)?.[1]) ??
+      toNumber(text.match(/([0-9]{1,2})\s*％\s*OFF/i)?.[1]);
+
+    return { priceCurrent, priceOriginal, discountRate };
+  });
+
+  const salesCount = measureParseStep(
+    timing,
+    "parseSalesMs",
+    () => ajaxInfo.salesCount ?? extractSalesCount(html, text),
   );
-  const genres = extractDlsiteMainGenres(html);
+
+  const ratingInfo = measureParseStep(timing, "parseRatingMs", () => {
+    // DLsiteの評価内訳はpopup/template/埋め込み断片を広く走査するため重い。
+    // 画面からは評価内訳を外しているため、初回全量取得向けfastでは平均評価・評価数までに留める。
+    const reviewCount =
+      ajaxInfo.reviewCount ?? extractEvaluationCount(html, text);
+    const rating = ajaxInfo.rating ?? extractRating(html, text);
+    const ratingBreakdown =
+      parseMode === "fast"
+        ? []
+        : (ajaxInfo.ratingBreakdown ??
+          extractRatingBreakdown(html, text, rating) ??
+          []);
+
+    return { reviewCount, rating, ratingBreakdown };
+  });
+
+  const releaseDate = measureParseStep(
+    timing,
+    "parseReleaseDateMs",
+    () =>
+      ajaxInfo.releaseDate ??
+      normalizeReleaseDate(
+        text.match(
+          /(?:販売日|発売日)\s*[:：]?\s*(\d{4}[/.年-]\d{1,2}[/.月-]\d{1,2})/,
+        )?.[1] ??
+          matchFirst(html, [
+            /itemprop=["']datePublished["'][^>]+content=["']([^"']+)["']/i,
+          ]),
+      ),
+  );
+
+  const genres = measureParseStep(timing, "parseGenresMs", () =>
+    extractDlsiteMainGenres(html),
+  );
   // DLsiteの keyword/tag/options 系リンクは「作品をもっと見る」「PDF同梱」など
   // 作品分類として使いづらいノイズが混ざりやすいため、MVPでは取得しない。
   // ジャンル導線は main_genre 由来の genres / genreIds に一本化する。
   const tags: string[] = [];
-  const hintTypes = sourceProductIdHints.get(sourceProductId) ?? new Set<RankingType>();
-  const isAdult = /R18|18禁|成人向け|年齢確認/.test(text);
-  const workTypeInfo = extractDlsiteWorkType(html, text);
-  const contentTypeInfos = extractDlsiteContentTypes(html);
-  const hintedContentType = sourceProductIdContentTypeHints.get(sourceProductId);
-  const resolvedContentTypeInfos = contentTypeInfos.length > 0
-    ? contentTypeInfos
-    : hintedContentType
-      ? [{ contentType: hintedContentType, contentTypeLabel: hintedContentType === "bl" ? "BL" : "TL" }]
-      : [];
 
-  return {
+  const description = measureParseStep(timing, "parseDescriptionMs", () =>
+    cleanText(findMetaContent(html, "description"))?.slice(0, 500),
+  );
+
+  const detail: RawProductDetail = {
     sourceProductId,
-    title,
-    sellerId: seller.sellerId,
-    sellerName: seller.sellerName,
+    title: basicInfo.title,
+    sellerId: basicInfo.seller.sellerId,
+    sellerName: basicInfo.seller.sellerName,
     sellerType: "circle",
-    sellerUrl: seller.sellerUrl,
-    priceCurrent,
-    priceOriginal,
-    discountRate,
+    sellerUrl: basicInfo.seller.sellerUrl,
+    priceCurrent: priceInfo.priceCurrent,
+    priceOriginal: priceInfo.priceOriginal,
+    discountRate: priceInfo.discountRate,
     salesCount,
-    rating,
-    ratingAverage: rating,
-    reviewCount,
-    ratingBreakdown,
+    rating: ratingInfo.rating,
+    ratingAverage: ratingInfo.rating,
+    reviewCount: ratingInfo.reviewCount,
+    ratingBreakdown: ratingInfo.ratingBreakdown,
     releaseDate,
-    ageRating: isAdult ? "r18" : "all",
-    workType: workTypeInfo.workType,
-    workTypeLabel: workTypeInfo.workTypeLabel,
-    contentTypes: resolvedContentTypeInfos.map((item) => item.contentTypeLabel),
-    contentTypeIds: resolvedContentTypeInfos.map((item) => `dlsite:${item.contentType}`),
+    ageRating: basicInfo.isAdult ? "r18" : "all",
+    workType: basicInfo.workTypeInfo.workType,
+    workTypeLabel: basicInfo.workTypeInfo.workTypeLabel,
+    contentTypes: basicInfo.resolvedContentTypeInfos.map(
+      (item) => item.contentTypeLabel,
+    ),
+    contentTypeIds: basicInfo.resolvedContentTypeInfos.map(
+      (item) => `dlsite:${item.contentType}`,
+    ),
     thumbnailUrl: images[0]?.url,
     mainImageUrl: images[0]?.url,
     images,
     sourceUrl,
     affiliateUrl: "",
-    description: cleanText(findMetaContent(html, "description"))?.slice(0, 500),
+    description,
     genres,
     tags,
     genreIds: genres.map((genre) => `dlsite:${genre.toLowerCase()}`),
     tagIds: [],
-    isNew: hintTypes.has("new"),
-    isOnSale: hintTypes.has("sale") || Boolean(discountRate && discountRate > 0),
+    isNew: basicInfo.hintTypes.has("new"),
+    isOnSale:
+      basicInfo.hintTypes.has("sale") ||
+      Boolean(priceInfo.discountRate && priceInfo.discountRate > 0),
   };
-}
 
+  options?.onParseTiming?.(timing);
+  return detail;
+}
 function errorToDiagnostic(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
 
@@ -1790,7 +2890,14 @@ function errorToDiagnostic(error: unknown): string {
       address?: unknown;
       port?: unknown;
     };
-    for (const key of ["code", "errno", "syscall", "hostname", "address", "port"] as const) {
+    for (const key of [
+      "code",
+      "errno",
+      "syscall",
+      "hostname",
+      "address",
+      "port",
+    ] as const) {
       const value = causeRecord[key];
       if (value !== undefined) fields.push(`cause.${key}=${String(value)}`);
     }
@@ -1811,18 +2918,22 @@ function isRetryableFetchError(error: unknown): boolean {
     return status === 408 || status === 429 || (status >= 500 && status <= 599);
   }
 
-  const cause = (error as { cause?: unknown }).cause as { code?: unknown } | undefined;
+  const cause = (error as { cause?: unknown }).cause as
+    { code?: unknown } | undefined;
   const code = typeof cause?.code === "string" ? cause.code : undefined;
-  return !code || [
-    "ECONNRESET",
-    "ETIMEDOUT",
-    "UND_ERR_CONNECT_TIMEOUT",
-    "UND_ERR_HEADERS_TIMEOUT",
-    "EAI_AGAIN",
-    "ENOTFOUND",
-    "ENETUNREACH",
-    "EHOSTUNREACH",
-  ].includes(code);
+  return (
+    !code ||
+    [
+      "ECONNRESET",
+      "ETIMEDOUT",
+      "UND_ERR_CONNECT_TIMEOUT",
+      "UND_ERR_HEADERS_TIMEOUT",
+      "EAI_AGAIN",
+      "ENOTFOUND",
+      "ENETUNREACH",
+      "EHOSTUNREACH",
+    ].includes(code)
+  );
 }
 
 function delay(ms: number): Promise<void> {
@@ -1845,7 +2956,8 @@ async function fetchPublicHtml(url: string): Promise<string> {
         signal: abortController.signal,
         headers: {
           "user-agent": USER_AGENT,
-          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "accept-language": "ja,en;q=0.8",
           "cache-control": "no-cache",
           pragma: "no-cache",
@@ -1855,16 +2967,24 @@ async function fetchPublicHtml(url: string): Promise<string> {
       });
 
       if (response.status === 403 || response.status === 429) {
-        throw new BlockedAccessError(`DLsite access blocked or rate limited: status=${response.status} url=${url}`);
+        throw new BlockedAccessError(
+          `DLsite access blocked or rate limited: status=${response.status} url=${url}`,
+        );
       }
 
       if (!response.ok) {
-        throw new Error(`DLsite fetch failed: status=${response.status} url=${url}`);
+        throw new Error(
+          `DLsite fetch failed: status=${response.status} url=${url}`,
+        );
       }
 
       const html = await response.text();
-      if (/captcha|reCAPTCHA|アクセスが集中|ただいま大変混み合って/.test(html)) {
-        throw new BlockedAccessError(`DLsite returned a block/captcha-like page: url=${url}`);
+      if (
+        /captcha|reCAPTCHA|アクセスが集中|ただいま大変混み合って/.test(html)
+      ) {
+        throw new BlockedAccessError(
+          `DLsite returned a block/captcha-like page: url=${url}`,
+        );
       }
 
       return html;
@@ -1877,7 +2997,9 @@ async function fetchPublicHtml(url: string): Promise<string> {
       }
 
       if (attempt >= FETCH_RETRY_COUNT || !isRetryableFetchError(error)) {
-        throw new Error(`DLsite fetch request failed: url=${url} failures=[${failures.join(" | ")}]`);
+        throw new Error(
+          `DLsite fetch request failed: url=${url} failures=[${failures.join(" | ")}]`,
+        );
       }
 
       logger.warn("DLsite fetch attempt failed; retrying", {
@@ -1891,9 +3013,10 @@ async function fetchPublicHtml(url: string): Promise<string> {
     }
   }
 
-  throw new Error(`DLsite fetch request failed: url=${url} failures=[${failures.join(" | ")}]`);
+  throw new Error(
+    `DLsite fetch request failed: url=${url} failures=[${failures.join(" | ")}]`,
+  );
 }
-
 
 export type DlsiteProductDebugFloor = "auto" | "girls" | "tl" | "bl";
 
@@ -1919,7 +3042,10 @@ function normalizeDlsiteProductId(value: string): string {
   return normalized;
 }
 
-function buildSourceUrlForDebugFloor(sourceProductId: string, floor: DlsiteProductDebugFloor): string {
+function buildSourceUrlForDebugFloor(
+  sourceProductId: string,
+  floor: DlsiteProductDebugFloor,
+): string {
   if (floor === "bl") return buildBlSourceUrl(sourceProductId);
   return buildSourceUrl(sourceProductId);
 }
@@ -1934,25 +3060,37 @@ export async function fetchDlsiteProductDetailForDebug(params: {
 }): Promise<DlsiteProductDebugFetchResult> {
   const sourceProductId = normalizeDlsiteProductId(params.sourceProductId);
   const requestedFloor = params.floor ?? "auto";
-  const candidate = requestedFloor === "auto"
-    ? await fetchBestProductDetailHtml(sourceProductId)
-    : await (async (): Promise<ProductDetailHtmlCandidate> => {
-        const url = buildSourceUrlForDebugFloor(sourceProductId, requestedFloor);
-        const html = await fetchPublicHtml(url);
-        return {
-          url,
-          html,
-          imageCount: countExtractedProductImages(html, sourceProductId),
-          hasProductSlider: /class=["'][^"']*\bproduct-slider\b/i.test(html),
-          hasWorkSlider: /class=["'][^"']*\bwork_slider\b/i.test(html),
-        };
-      })();
+  const candidate =
+    requestedFloor === "auto"
+      ? await fetchBestProductDetailHtml(sourceProductId)
+      : await (async (): Promise<ProductDetailHtmlCandidate> => {
+          const url = buildSourceUrlForDebugFloor(
+            sourceProductId,
+            requestedFloor,
+          );
+          const html = await fetchPublicHtml(url);
+          return {
+            url,
+            html,
+            imageCount: countExtractedProductImages(html, sourceProductId),
+            hasProductSlider: /class=["'][^"']*\bproduct-slider\b/i.test(html),
+            hasWorkSlider: /class=["'][^"']*\bwork_slider\b/i.test(html),
+          };
+        })();
 
   const selectedFloor = selectedFloorFromUrl(candidate.url);
-  sourceProductIdContentTypeHints.set(sourceProductId, selectedFloor === "bl" ? "bl" : "tl");
+  sourceProductIdContentTypeHints.set(
+    sourceProductId,
+    selectedFloor === "bl" ? "bl" : "tl",
+  );
 
-  const rawProductDetail = await extractProductDetail(candidate.html, sourceProductId, candidate.url);
-  const rawImages = (rawProductDetail as { images?: ProductImage[] }).images ?? [];
+  const rawProductDetail = await extractProductDetail(
+    candidate.html,
+    sourceProductId,
+    candidate.url,
+  );
+  const rawImages =
+    (rawProductDetail as { images?: ProductImage[] }).images ?? [];
 
   return {
     sourceProductId,
@@ -1991,7 +3129,10 @@ export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
           listLimit,
         });
 
-        if (!bestResult || result.sourceProductIds.length > bestResult.sourceProductIds.length) {
+        if (
+          !bestResult ||
+          result.sourceProductIds.length > bestResult.sourceProductIds.length
+        ) {
           bestResult = result;
         }
 
@@ -2017,16 +3158,22 @@ export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
     }
 
     if (!bestResult || bestResult.sourceProductIds.length === 0) {
-      throw new Error(`DLsite list fetch failed: ${fetchTarget.rankingType}: ${failedMessages.join(" / ")}`);
+      throw new Error(
+        `DLsite list fetch failed: ${fetchTarget.rankingType}: ${failedMessages.join(" / ")}`,
+      );
     }
 
     const sourceProductIds = bestResult.sourceProductIds.slice(0, listLimit);
     for (const sourceProductId of sourceProductIds) {
-      const hints = sourceProductIdHints.get(sourceProductId) ?? new Set<RankingType>();
+      const hints =
+        sourceProductIdHints.get(sourceProductId) ?? new Set<RankingType>();
       hints.add(fetchTarget.rankingType);
       sourceProductIdHints.set(sourceProductId, hints);
       if (fetchTarget.contentType) {
-        sourceProductIdContentTypeHints.set(sourceProductId, fetchTarget.contentType);
+        sourceProductIdContentTypeHints.set(
+          sourceProductId,
+          fetchTarget.contentType,
+        );
       }
     }
 
@@ -2044,9 +3191,41 @@ export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
     };
   },
 
-  async fetchProductDetail(sourceProductId: string, options?: ProductDetailFetchOptions): Promise<RawProductDetail> {
-    const candidate = await fetchBestProductDetailHtml(sourceProductId, options?.sourceUrl);
-    return await extractProductDetail(candidate.html, sourceProductId, candidate.url);
+  async fetchProductDetail(
+    sourceProductId: string,
+    options?: ProductDetailFetchOptions,
+  ): Promise<RawProductDetail> {
+    const fetchHtmlStartedAt = Date.now();
+    const candidate = await fetchBestProductDetailHtml(
+      sourceProductId,
+      options?.sourceUrl,
+    );
+    const fetchHtmlMs = Date.now() - fetchHtmlStartedAt;
+
+    let parseTiming: ProductDetailParseTiming | undefined;
+    const parseHtmlStartedAt = Date.now();
+    const detail = await extractProductDetail(
+      candidate.html,
+      sourceProductId,
+      candidate.url,
+      {
+        parseMode: options?.parseMode,
+        onParseTiming: (timing) => {
+          parseTiming = timing;
+        },
+      },
+    );
+    const parseHtmlMs = Date.now() - parseHtmlStartedAt;
+
+    options?.onTiming?.({
+      fetchHtmlMs,
+      parseHtmlMs,
+      selectedUrl: candidate.url,
+      htmlLength: candidate.html.length,
+      parse: parseTiming,
+    });
+
+    return detail;
   },
 
   normalizeProduct,

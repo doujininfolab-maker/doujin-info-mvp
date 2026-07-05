@@ -6,9 +6,10 @@ import { parseWorkType } from "@/lib/workTypes";
 import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
 import {
   getHomeDashboardData,
+  getHomeRandomNewProducts,
+  getHomeRandomSaleProducts,
   getLatestRankingProducts,
   getNewProducts,
-  getSaleProducts,
 } from "@/lib/firebase/products";
 
 export const dynamic = "force-dynamic";
@@ -53,10 +54,10 @@ export default async function SegmentTopPage({ params, searchParams }: PageProps
 
   const [rankingProducts, newProducts, recentProducts, saleProducts, homeData] = await Promise.all([
     getLatestRankingProducts({ ...filter, limitCount: 10, workType: rankingWorkType, contentType }),
-    getNewProducts({ ...filter, limitCount: 10, workType: newWorkType, contentType }),
-    getNewProducts({ ...filter, limitCount: 8, contentType }),
-    getSaleProducts({ ...filter, limitCount: 10, contentType }),
-    getHomeDashboardData({ ...filter, limitCount: 8, contentType }),
+    getHomeRandomNewProducts({ ...filter, limitCount: 10, workType: newWorkType, contentType }),
+    getNewProducts({ ...filter, limitCount: 10, contentType }),
+    getHomeRandomSaleProducts({ ...filter, limitCount: 10, contentType }),
+    getHomeDashboardData({ ...filter, limitCount: 10, contentType }),
   ]);
   const { stats, circleHighlights } = homeData;
 

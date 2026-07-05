@@ -35,7 +35,7 @@ export function DashboardSidebar({
   segment: SiteSegment;
   contentTypeParam?: string;
 }) {
-  const recentItems = recentProducts.slice(0, 3);
+  const recentItems = recentProducts.slice(0, 5);
   const genreItems = popularGenres.slice(0, 10);
 
   return (

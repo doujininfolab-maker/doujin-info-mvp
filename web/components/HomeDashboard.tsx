@@ -177,14 +177,14 @@ export function HomeDashboard({
   stats: HomeDashboardStats;
   circleHighlights: SellerSummary[];
 }) {
-  const ranking = fillProducts(rankingProducts, 6);
-  const newest = fillProducts(newProducts, 8);
-  const sales = fillProducts(saleProducts, 8).map((product, index) => ({
+  const ranking = fillProducts(rankingProducts, 10);
+  const newest = fillProducts(newProducts, 10);
+  const sales = fillProducts(saleProducts, 10).map((product, index) => ({
     ...product,
     isDiscounted: product.isDiscounted ?? true,
     discountRate: product.discountRate ?? (index % 3 === 0 ? 30 : 20),
   }));
-  const popularGenres = stats.popularGenres.slice(0, 12);
+  const popularGenres = stats.popularGenres.slice(0, 10);
   const popularCategories = (stats.popularCategories.length ? stats.popularCategories : defaultCategorySummaries()).slice(0, 12);
   const rankingListHref = buildFilterHref(`${segment.path}/ranking`, {}, {
     workType: rankingWorkType,
@@ -260,7 +260,7 @@ export function HomeDashboard({
         <section className="contentSection railOnlySection dashboardFullWidthSection">
           <SectionHeader title="注目サークル" href={buildFilterHref(`${segment.path}/circle`, {}, { contentType: contentTypeParam })} icon={<CircleHighlightSectionIcon />} />
           <ScrollRail ariaLabel="注目サークル一覧">
-            {circleHighlights.length ? circleHighlights.map((circle) => (
+            {circleHighlights.length ? circleHighlights.slice(0, 10).map((circle) => (
               <Link className="circleCard" href={buildFilterHref(`${segment.path}/circle/${encodeURIComponent(circle.sellerKey)}`, {}, { contentType: contentTypeParam })} key={circle.sellerKey}>
                 <img src={getProductImage(circle.topProduct ?? circle.latestProduct)} alt="" loading="lazy" />
                 <span><strong>{circle.sellerName}</strong><small>作品 {formatNumber(circle.productCount)} / 販売 {formatNumber(circle.totalSalesCount)}</small></span>

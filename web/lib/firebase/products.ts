@@ -105,6 +105,21 @@ function sortProductsBySales(products: Product[]): Product[] {
   });
 }
 
+function shuffleProducts(products: Product[]): Product[] {
+  const shuffled = [...products];
+
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  return shuffled;
+}
+
+function pickRandomTopSalesProducts(products: Product[], filter: ProductListFilter, topSalesLimit = 30): Product[] {
+  return shuffleProducts(sortProductsBySales(products).slice(0, topSalesLimit)).slice(0, filter.limitCount ?? 10);
+}
+
 function rankingTypeForMode(mode?: ProductRankingMode): RankingType | undefined {
   if (mode === "weekly") return "weekly";
   if (mode === "monthly") return "monthly";
@@ -208,6 +223,53 @@ export async function getSaleProducts(
   const products = snapshot.docs.map((doc) => toProduct(doc.id, doc.data()));
 
   return needsPostFilter ? postFilterProducts(products, filter) : products;
+}
+
+export async function getHomeRandomNewProducts(
+  filter: ProductListFilter & { candidateLimit?: number; topSalesLimit?: number },
+): Promise<Product[]> {
+  const db = getAdminDb();
+  const candidateLimit = filter.candidateLimit ?? 300;
+
+  const snapshot = await db
+    .collection(PRODUCTS_COLLECTION)
+    .where("platform", "==", filter.platform)
+    .where("audience", "==", filter.audience)
+    .where("category", "==", filter.category)
+    .where("isActive", "==", true)
+    .orderBy("releaseDate", "desc")
+    .limit(queryLimitForFilter(filter, candidateLimit))
+    .get();
+
+  const products = snapshot.docs
+    .map((doc) => toProduct(doc.id, doc.data()))
+    .filter((product) => matchesProductListFilter(product, filter));
+
+  return pickRandomTopSalesProducts(products, filter, filter.topSalesLimit ?? 30);
+}
+
+export async function getHomeRandomSaleProducts(
+  filter: ProductListFilter & { candidateLimit?: number; topSalesLimit?: number },
+): Promise<Product[]> {
+  const db = getAdminDb();
+  const candidateLimit = filter.candidateLimit ?? 300;
+
+  const snapshot = await db
+    .collection(PRODUCTS_COLLECTION)
+    .where("platform", "==", filter.platform)
+    .where("audience", "==", filter.audience)
+    .where("category", "==", filter.category)
+    .where("isActive", "==", true)
+    .where("isDiscounted", "==", true)
+    .orderBy("releaseDate", "desc")
+    .limit(queryLimitForFilter(filter, candidateLimit))
+    .get();
+
+  const products = snapshot.docs
+    .map((doc) => toProduct(doc.id, doc.data()))
+    .filter((product) => matchesProductListFilter(product, filter));
+
+  return pickRandomTopSalesProducts(products, filter, filter.topSalesLimit ?? 30);
 }
 
 export async function getProductsByGenre(

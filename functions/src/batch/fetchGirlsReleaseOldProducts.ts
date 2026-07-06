@@ -77,6 +77,7 @@ export type FetchGirlsReleaseOldProductsOptions = {
   saveDailySalesDelta?: boolean;
   progressLogEvery?: number;
   parseMode?: ProductParseMode;
+  htmlOnlyProbe?: boolean;
   contentType?: ProductContentType;
   pageChunkSize?: number;
 };
@@ -91,6 +92,22 @@ type PerformanceStats = {
   discoverySaveTotalMs: number;
   detailHtmlFetchTotalMs: number;
   detailHtmlParseTotalMs: number;
+  detailHtmlParseIncludingAjaxTotalMs: number;
+  detailHtmlFetchSamplesMs: number[];
+  ajaxInfoFetchSamplesMs: number[];
+  detailHtmlRequestCount: number;
+  detailHtmlRetryCount: number;
+  detailHtmlRetryBackoffMs: number;
+  detailHtmlCandidateUrlCount: number;
+  detailHtmlCandidateFetchFailedCount: number;
+  detailHtmlStatusCounts: Record<string, number>;
+  ajaxRequestCount: number;
+  ajaxSuccessCount: number;
+  ajaxNonOkCount: number;
+  ajaxErrorCount: number;
+  ajaxSecondUrlTriedCount: number;
+  ajaxFirstUrlSucceededCount: number;
+  ajaxStatusCounts: Record<string, number>;
   cheerioLoadTotalMs: number;
   parseBasicInfoTotalMs: number;
   parsePriceTotalMs: number;
@@ -102,6 +119,30 @@ type PerformanceStats = {
   parseDescriptionTotalMs: number;
   normalizeProductTotalMs: number;
   ajaxInfoFetchTotalMs: number;
+  htmlOnlyProbeTotalMs: number;
+  htmlOnlyProbeExecutedCount: number;
+  htmlPriceFoundCount: number;
+  htmlOfficialPriceFoundCount: number;
+  htmlDiscountRateFoundCount: number;
+  htmlSalesCountFoundCount: number;
+  htmlSalesCountMissingCount: number;
+  htmlRatingFoundCount: number;
+  htmlRatingCountFoundCount: number;
+  htmlReleaseDateFoundCount: number;
+  htmlSalesCountAjaxComparedCount: number;
+  htmlSalesCountAjaxMatchCount: number;
+  htmlSalesCountAjaxMismatchCount: number;
+  htmlSalesCountAjaxHtmlMissingCount: number;
+  htmlSalesCountAjaxAjaxMissingCount: number;
+  htmlSalesCountAjaxBothMissingCount: number;
+  htmlSalesCountAjaxMismatchExamples: Array<{
+    sourceProductId: string;
+    sourceUrl?: string;
+    htmlSalesCount?: number;
+    ajaxSalesCount?: number;
+  }>;
+  ajaxRequiredCount: number;
+  ajaxSkippedCandidateCount: number;
   otherParseTotalMs: number;
   productExistingReadTotalMs: number;
   dailySalesExistingProductReadTotalMs: number;
@@ -109,7 +150,12 @@ type PerformanceStats = {
   productAndMetricSaveTotalMs: number;
   firestoreBatchCommitTotalMs: number;
   firestoreBatchCommitCount: number;
+  firestoreAutoFlushTotalMs: number;
+  firestoreAutoFlushCount: number;
+  firestoreChunkFlushTotalMs: number;
+  firestoreChunkFlushCount: number;
   firestoreWriteOperationCount: number;
+  firestorePendingWriteCount: number;
   batchRunsUpdateTotalMs: number;
   delayTotalMs: number;
   productExistingReadCount: number;
@@ -129,6 +175,49 @@ type PerformanceStats = {
   batchRunWriteCount: number;
 };
 
+type LatencySummary = {
+  count: number;
+  totalMs: number;
+  avgMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  maxMs: number;
+};
+
+type MemoryUsageSummary = {
+  rssMb: number;
+  heapUsedMb: number;
+  heapTotalMb: number;
+  externalMb: number;
+};
+
+type PerformanceWindowSnapshot = {
+  elapsedMs: number;
+  detailHtmlFetchSamplesLength: number;
+  ajaxInfoFetchSamplesLength: number;
+  detailHtmlRequestCount: number;
+  detailHtmlRetryCount: number;
+  ajaxRequestCount: number;
+  ajaxSuccessCount: number;
+  ajaxNonOkCount: number;
+  ajaxErrorCount: number;
+  processedDetailCount: number;
+};
+
+type PerformanceWindowSummary = {
+  elapsedMs: number;
+  processedDetailCount: number;
+  avgMsPerProcessedDetail: number;
+  detailHtmlFetch: LatencySummary;
+  ajaxInfoFetch: LatencySummary;
+  detailHtmlRequestCount: number;
+  detailHtmlRetryCount: number;
+  ajaxRequestCount: number;
+  ajaxSuccessCount: number;
+  ajaxNonOkCount: number;
+  ajaxErrorCount: number;
+};
+
 type PerformanceSummary = {
   totalElapsedMs: number;
   listScanTotalMs: number;
@@ -139,6 +228,7 @@ type PerformanceSummary = {
   discoverySaveTotalMs: number;
   detailHtmlFetchTotalMs: number;
   detailHtmlParseTotalMs: number;
+  detailHtmlParseIncludingAjaxTotalMs: number;
   cheerioLoadTotalMs: number;
   parseBasicInfoTotalMs: number;
   parsePriceTotalMs: number;
@@ -150,6 +240,47 @@ type PerformanceSummary = {
   parseDescriptionTotalMs: number;
   normalizeProductTotalMs: number;
   ajaxInfoFetchTotalMs: number;
+  http: {
+    detailHtmlFetch: LatencySummary;
+    ajaxInfoFetch: LatencySummary;
+    detailHtmlRequestCount: number;
+    detailHtmlRetryCount: number;
+    detailHtmlRetryBackoffMs: number;
+    detailHtmlCandidateUrlCount: number;
+    detailHtmlCandidateFetchFailedCount: number;
+    detailHtmlStatusCounts: Record<string, number>;
+    ajaxRequestCount: number;
+    ajaxSuccessCount: number;
+    ajaxNonOkCount: number;
+    ajaxErrorCount: number;
+    ajaxSecondUrlTriedCount: number;
+    ajaxFirstUrlSucceededCount: number;
+    ajaxStatusCounts: Record<string, number>;
+  };
+  htmlOnlyProbeTotalMs: number;
+  htmlOnlyProbeExecutedCount: number;
+  htmlPriceFoundCount: number;
+  htmlOfficialPriceFoundCount: number;
+  htmlDiscountRateFoundCount: number;
+  htmlSalesCountFoundCount: number;
+  htmlSalesCountMissingCount: number;
+  htmlRatingFoundCount: number;
+  htmlRatingCountFoundCount: number;
+  htmlReleaseDateFoundCount: number;
+  htmlSalesCountAjaxComparedCount: number;
+  htmlSalesCountAjaxMatchCount: number;
+  htmlSalesCountAjaxMismatchCount: number;
+  htmlSalesCountAjaxHtmlMissingCount: number;
+  htmlSalesCountAjaxAjaxMissingCount: number;
+  htmlSalesCountAjaxBothMissingCount: number;
+  htmlSalesCountAjaxMismatchExamples: Array<{
+    sourceProductId: string;
+    sourceUrl?: string;
+    htmlSalesCount?: number;
+    ajaxSalesCount?: number;
+  }>;
+  ajaxRequiredCount: number;
+  ajaxSkippedCandidateCount: number;
   otherParseTotalMs: number;
   productExistingReadTotalMs: number;
   dailySalesExistingProductReadTotalMs: number;
@@ -157,11 +288,18 @@ type PerformanceSummary = {
   productAndMetricSaveTotalMs: number;
   firestoreBatchCommitTotalMs: number;
   firestoreBatchCommitCount: number;
+  firestoreAutoFlushTotalMs: number;
+  firestoreAutoFlushCount: number;
+  firestoreChunkFlushTotalMs: number;
+  firestoreChunkFlushCount: number;
   firestoreWriteOperationCount: number;
+  firestorePendingWriteCount: number;
   batchRunsUpdateTotalMs: number;
   delayTotalMs: number;
   processedDetailCount: number;
   avgMsPerProcessedDetail: number;
+  memory: MemoryUsageSummary;
+  performanceJsonBytes: number;
   firestore: {
     productExistingReadCount: number;
     dailySalesExistingProductReadCount: number;
@@ -255,6 +393,9 @@ type SaveProductAndMetricResult = {
   dailySalesPreviousMetricWriteCount: number;
   dailySalesDeltaStats: DailySalesDeltaStats;
   dailySalesDeltaCalcElapsedMs: number;
+  firestoreAutoFlushElapsedMs: number;
+  firestoreAutoFlushCount: number;
+  writeBufferPendingWriteCount: number;
   elapsedMs: number;
 };
 
@@ -530,6 +671,19 @@ function buildMetric(
     ...patch,
   };
 }
+function buildProductForSave(product: Product): Product {
+  const productForSave = { ...product };
+
+  // salesCountは日次差分・ランキング表示の重要項目。
+  // Ajax取得失敗などで今回値が取れなかった場合は、merge保存で既存値を壊さないよう
+  // 明示的に保存対象から外す。0は「販売数0」の有効値なので残す。
+  if (!isFiniteNumber(productForSave.salesCount)) {
+    delete productForSave.salesCount;
+  }
+
+  return productForSave;
+}
+
 
 class FirestoreWriteBuffer {
   private batch = db.batch();
@@ -541,24 +695,30 @@ class FirestoreWriteBuffer {
 
   constructor(private readonly maxWritesPerCommit = FIRESTORE_BATCH_LIMIT) {}
 
+  getPendingWriteCount(): number {
+    return this.pendingWriteCount;
+  }
+
   async set(
     ref: FirebaseFirestore.DocumentReference,
     data: FirebaseFirestore.WithFieldValue<FirebaseFirestore.DocumentData>,
     options: FirebaseFirestore.SetOptions,
-  ): Promise<number> {
-    let flushedMs = 0;
+  ): Promise<{ flushed: boolean; elapsedMs: number }> {
+    let flushResult = { flushed: false, elapsedMs: 0 };
     if (this.pendingWriteCount + 1 > this.maxWritesPerCommit) {
-      flushedMs += await this.flush();
+      flushResult = await this.flush();
     }
 
     this.batch.set(ref, data, options);
     this.pendingWriteCount += 1;
     this.writeOperationCount += 1;
-    return flushedMs;
+    return flushResult;
   }
 
-  async flush(): Promise<number> {
-    if (this.pendingWriteCount <= 0) return 0;
+  async flush(): Promise<{ flushed: boolean; elapsedMs: number }> {
+    if (this.pendingWriteCount <= 0) {
+      return { flushed: false, elapsedMs: 0 };
+    }
 
     const startedAt = Date.now();
     await this.batch.commit();
@@ -567,7 +727,7 @@ class FirestoreWriteBuffer {
     this.commitCount += 1;
     this.batch = db.batch();
     this.pendingWriteCount = 0;
-    return elapsedMs;
+    return { flushed: true, elapsedMs };
   }
 }
 
@@ -580,19 +740,34 @@ async function enqueueProductAndMetricWrites(
   const startedAt = Date.now();
   const productRef = db.collection("products").doc(product.productId);
   const emptyStats = createEmptyDailySalesDeltaStats();
-  let commitElapsedMs = 0;
+  let firestoreAutoFlushElapsedMs = 0;
+  let firestoreAutoFlushCount = 0;
+
+  const addAutoFlushResult = (result: {
+    flushed: boolean;
+    elapsedMs: number;
+  }) => {
+    if (!result.flushed) return;
+    firestoreAutoFlushElapsedMs += result.elapsedMs;
+    firestoreAutoFlushCount += 1;
+  };
 
   if (!options.saveDailyMetrics) {
-    commitElapsedMs += await writeBuffer.set(productRef, product, {
-      merge: true,
-    });
+    addAutoFlushResult(
+      await writeBuffer.set(productRef, buildProductForSave(product), {
+        merge: true,
+      }),
+    );
     return {
       writeCount: 1,
       dailyMetricWriteCount: 0,
       dailySalesPreviousMetricWriteCount: 0,
       dailySalesDeltaStats: emptyStats,
       dailySalesDeltaCalcElapsedMs: 0,
-      elapsedMs: Date.now() - startedAt + commitElapsedMs,
+      firestoreAutoFlushElapsedMs,
+      firestoreAutoFlushCount,
+      writeBufferPendingWriteCount: writeBuffer.getPendingWriteCount(),
+      elapsedMs: Date.now() - startedAt,
     };
   }
 
@@ -608,17 +783,21 @@ async function enqueueProductAndMetricWrites(
         })
       : undefined;
   const dailySalesDeltaCalcElapsedMs = Date.now() - deltaCalcStartedAt;
-  const productToSave = dailySalesDelta
-    ? { ...product, ...dailySalesDelta.productPatch }
-    : product;
+  const productToSave = buildProductForSave(
+    dailySalesDelta ? { ...product, ...dailySalesDelta.productPatch } : product,
+  );
 
-  commitElapsedMs += await writeBuffer.set(productRef, productToSave, {
-    merge: true,
-  });
-  commitElapsedMs += await writeBuffer.set(
-    productRef.collection("dailyMetrics").doc(date),
-    buildMetric(product, date, dailySalesDelta?.currentMetricPatch),
-    { merge: true },
+  addAutoFlushResult(
+    await writeBuffer.set(productRef, productToSave, {
+      merge: true,
+    }),
+  );
+  addAutoFlushResult(
+    await writeBuffer.set(
+      productRef.collection("dailyMetrics").doc(date),
+      buildMetric(product, date, dailySalesDelta?.currentMetricPatch),
+      { merge: true },
+    ),
   );
 
   let previousMetricWriteCount = 0;
@@ -626,12 +805,14 @@ async function enqueueProductAndMetricWrites(
     dailySalesDelta?.previousMetricDate &&
     dailySalesDelta.previousMetricPatch
   ) {
-    commitElapsedMs += await writeBuffer.set(
-      productRef
-        .collection("dailyMetrics")
-        .doc(dailySalesDelta.previousMetricDate),
-      dailySalesDelta.previousMetricPatch,
-      { merge: true },
+    addAutoFlushResult(
+      await writeBuffer.set(
+        productRef
+          .collection("dailyMetrics")
+          .doc(dailySalesDelta.previousMetricDate),
+        dailySalesDelta.previousMetricPatch,
+        { merge: true },
+      ),
     );
     previousMetricWriteCount = 1;
   }
@@ -642,7 +823,10 @@ async function enqueueProductAndMetricWrites(
     dailySalesPreviousMetricWriteCount: previousMetricWriteCount,
     dailySalesDeltaStats: dailySalesDelta?.stats ?? emptyStats,
     dailySalesDeltaCalcElapsedMs,
-    elapsedMs: Date.now() - startedAt + commitElapsedMs,
+    firestoreAutoFlushElapsedMs,
+    firestoreAutoFlushCount,
+    writeBufferPendingWriteCount: writeBuffer.getPendingWriteCount(),
+    elapsedMs: Date.now() - startedAt,
   };
 }
 
@@ -816,6 +1000,22 @@ function createPerformanceStats(): PerformanceStats {
     discoverySaveTotalMs: 0,
     detailHtmlFetchTotalMs: 0,
     detailHtmlParseTotalMs: 0,
+    detailHtmlParseIncludingAjaxTotalMs: 0,
+    detailHtmlFetchSamplesMs: [],
+    ajaxInfoFetchSamplesMs: [],
+    detailHtmlRequestCount: 0,
+    detailHtmlRetryCount: 0,
+    detailHtmlRetryBackoffMs: 0,
+    detailHtmlCandidateUrlCount: 0,
+    detailHtmlCandidateFetchFailedCount: 0,
+    detailHtmlStatusCounts: {},
+    ajaxRequestCount: 0,
+    ajaxSuccessCount: 0,
+    ajaxNonOkCount: 0,
+    ajaxErrorCount: 0,
+    ajaxSecondUrlTriedCount: 0,
+    ajaxFirstUrlSucceededCount: 0,
+    ajaxStatusCounts: {},
     cheerioLoadTotalMs: 0,
     parseBasicInfoTotalMs: 0,
     parsePriceTotalMs: 0,
@@ -827,6 +1027,25 @@ function createPerformanceStats(): PerformanceStats {
     parseDescriptionTotalMs: 0,
     normalizeProductTotalMs: 0,
     ajaxInfoFetchTotalMs: 0,
+    htmlOnlyProbeTotalMs: 0,
+    htmlOnlyProbeExecutedCount: 0,
+    htmlPriceFoundCount: 0,
+    htmlOfficialPriceFoundCount: 0,
+    htmlDiscountRateFoundCount: 0,
+    htmlSalesCountFoundCount: 0,
+    htmlSalesCountMissingCount: 0,
+    htmlRatingFoundCount: 0,
+    htmlRatingCountFoundCount: 0,
+    htmlReleaseDateFoundCount: 0,
+    htmlSalesCountAjaxComparedCount: 0,
+    htmlSalesCountAjaxMatchCount: 0,
+    htmlSalesCountAjaxMismatchCount: 0,
+    htmlSalesCountAjaxHtmlMissingCount: 0,
+    htmlSalesCountAjaxAjaxMissingCount: 0,
+    htmlSalesCountAjaxBothMissingCount: 0,
+    htmlSalesCountAjaxMismatchExamples: [],
+    ajaxRequiredCount: 0,
+    ajaxSkippedCandidateCount: 0,
     otherParseTotalMs: 0,
     productExistingReadTotalMs: 0,
     dailySalesExistingProductReadTotalMs: 0,
@@ -834,7 +1053,12 @@ function createPerformanceStats(): PerformanceStats {
     productAndMetricSaveTotalMs: 0,
     firestoreBatchCommitTotalMs: 0,
     firestoreBatchCommitCount: 0,
+    firestoreAutoFlushTotalMs: 0,
+    firestoreAutoFlushCount: 0,
+    firestoreChunkFlushTotalMs: 0,
+    firestoreChunkFlushCount: 0,
     firestoreWriteOperationCount: 0,
+    firestorePendingWriteCount: 0,
     batchRunsUpdateTotalMs: 0,
     delayTotalMs: 0,
     productExistingReadCount: 0,
@@ -859,12 +1083,129 @@ function roundMs(value: number): number {
   return Math.round(value);
 }
 
+function roundMb(value: number): number {
+  return Math.round((value / 1024 / 1024) * 10) / 10;
+}
+
+function summarizeLatencySamples(samples: number[]): LatencySummary {
+  if (samples.length <= 0) {
+    return {
+      count: 0,
+      totalMs: 0,
+      avgMs: 0,
+      p50Ms: 0,
+      p95Ms: 0,
+      maxMs: 0,
+    };
+  }
+
+  const sorted = [...samples].sort((a, b) => a - b);
+  const totalMs = samples.reduce((sum, value) => sum + value, 0);
+  const percentile = (rate: number) => {
+    const index = Math.min(
+      sorted.length - 1,
+      Math.max(0, Math.ceil(sorted.length * rate) - 1),
+    );
+    return roundMs(sorted[index]);
+  };
+
+  return {
+    count: samples.length,
+    totalMs: roundMs(totalMs),
+    avgMs: roundMs(totalMs / samples.length),
+    p50Ms: percentile(0.5),
+    p95Ms: percentile(0.95),
+    maxMs: roundMs(sorted[sorted.length - 1]),
+  };
+}
+
+function getMemoryUsageSummary(): MemoryUsageSummary {
+  const memory = process.memoryUsage();
+  return {
+    rssMb: roundMb(memory.rss),
+    heapUsedMb: roundMb(memory.heapUsed),
+    heapTotalMb: roundMb(memory.heapTotal),
+    externalMb: roundMb(memory.external),
+  };
+}
+
+function estimateJsonBytes(value: unknown): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), "utf8");
+  } catch {
+    return 0;
+  }
+}
+
+function mergeCountRecord(
+  target: Record<string, number>,
+  source: Record<string, number> | undefined,
+): void {
+  if (!source) return;
+  for (const [key, value] of Object.entries(source)) {
+    target[key] = (target[key] ?? 0) + value;
+  }
+}
+
+function createPerformanceWindowSnapshot(
+  stats: PerformanceStats,
+  processedDetailCount: number,
+): PerformanceWindowSnapshot {
+  return {
+    elapsedMs: Date.now() - stats.startedAtMs,
+    detailHtmlFetchSamplesLength: stats.detailHtmlFetchSamplesMs.length,
+    ajaxInfoFetchSamplesLength: stats.ajaxInfoFetchSamplesMs.length,
+    detailHtmlRequestCount: stats.detailHtmlRequestCount,
+    detailHtmlRetryCount: stats.detailHtmlRetryCount,
+    ajaxRequestCount: stats.ajaxRequestCount,
+    ajaxSuccessCount: stats.ajaxSuccessCount,
+    ajaxNonOkCount: stats.ajaxNonOkCount,
+    ajaxErrorCount: stats.ajaxErrorCount,
+    processedDetailCount,
+  };
+}
+
+function buildPerformanceWindowSummary(
+  stats: PerformanceStats,
+  snapshot: PerformanceWindowSnapshot,
+  processedDetailCount: number,
+): PerformanceWindowSummary {
+  const elapsedMs = Date.now() - stats.startedAtMs - snapshot.elapsedMs;
+  const processedDelta = Math.max(
+    0,
+    processedDetailCount - snapshot.processedDetailCount,
+  );
+
+  return {
+    elapsedMs: roundMs(elapsedMs),
+    processedDetailCount: processedDelta,
+    avgMsPerProcessedDetail:
+      processedDelta > 0 ? roundMs(elapsedMs / processedDelta) : 0,
+    detailHtmlFetch: summarizeLatencySamples(
+      stats.detailHtmlFetchSamplesMs.slice(
+        snapshot.detailHtmlFetchSamplesLength,
+      ),
+    ),
+    ajaxInfoFetch: summarizeLatencySamples(
+      stats.ajaxInfoFetchSamplesMs.slice(snapshot.ajaxInfoFetchSamplesLength),
+    ),
+    detailHtmlRequestCount:
+      stats.detailHtmlRequestCount - snapshot.detailHtmlRequestCount,
+    detailHtmlRetryCount:
+      stats.detailHtmlRetryCount - snapshot.detailHtmlRetryCount,
+    ajaxRequestCount: stats.ajaxRequestCount - snapshot.ajaxRequestCount,
+    ajaxSuccessCount: stats.ajaxSuccessCount - snapshot.ajaxSuccessCount,
+    ajaxNonOkCount: stats.ajaxNonOkCount - snapshot.ajaxNonOkCount,
+    ajaxErrorCount: stats.ajaxErrorCount - snapshot.ajaxErrorCount,
+  };
+}
+
 function buildPerformanceSummary(
   stats: PerformanceStats,
   processedDetailCount: number,
 ): PerformanceSummary {
   const totalElapsedMs = Date.now() - stats.startedAtMs;
-  return {
+  const summary: PerformanceSummary = {
     totalElapsedMs: roundMs(totalElapsedMs),
     listScanTotalMs: roundMs(stats.listScanTotalMs),
     listChunkCount: stats.listChunkCount,
@@ -874,6 +1215,9 @@ function buildPerformanceSummary(
     discoverySaveTotalMs: roundMs(stats.discoverySaveTotalMs),
     detailHtmlFetchTotalMs: roundMs(stats.detailHtmlFetchTotalMs),
     detailHtmlParseTotalMs: roundMs(stats.detailHtmlParseTotalMs),
+    detailHtmlParseIncludingAjaxTotalMs: roundMs(
+      stats.detailHtmlParseIncludingAjaxTotalMs,
+    ),
     cheerioLoadTotalMs: roundMs(stats.cheerioLoadTotalMs),
     parseBasicInfoTotalMs: roundMs(stats.parseBasicInfoTotalMs),
     parsePriceTotalMs: roundMs(stats.parsePriceTotalMs),
@@ -885,6 +1229,44 @@ function buildPerformanceSummary(
     parseDescriptionTotalMs: roundMs(stats.parseDescriptionTotalMs),
     normalizeProductTotalMs: roundMs(stats.normalizeProductTotalMs),
     ajaxInfoFetchTotalMs: roundMs(stats.ajaxInfoFetchTotalMs),
+    http: {
+      detailHtmlFetch: summarizeLatencySamples(stats.detailHtmlFetchSamplesMs),
+      ajaxInfoFetch: summarizeLatencySamples(stats.ajaxInfoFetchSamplesMs),
+      detailHtmlRequestCount: stats.detailHtmlRequestCount,
+      detailHtmlRetryCount: stats.detailHtmlRetryCount,
+      detailHtmlRetryBackoffMs: roundMs(stats.detailHtmlRetryBackoffMs),
+      detailHtmlCandidateUrlCount: stats.detailHtmlCandidateUrlCount,
+      detailHtmlCandidateFetchFailedCount:
+        stats.detailHtmlCandidateFetchFailedCount,
+      detailHtmlStatusCounts: stats.detailHtmlStatusCounts,
+      ajaxRequestCount: stats.ajaxRequestCount,
+      ajaxSuccessCount: stats.ajaxSuccessCount,
+      ajaxNonOkCount: stats.ajaxNonOkCount,
+      ajaxErrorCount: stats.ajaxErrorCount,
+      ajaxSecondUrlTriedCount: stats.ajaxSecondUrlTriedCount,
+      ajaxFirstUrlSucceededCount: stats.ajaxFirstUrlSucceededCount,
+      ajaxStatusCounts: stats.ajaxStatusCounts,
+    },
+    htmlOnlyProbeTotalMs: roundMs(stats.htmlOnlyProbeTotalMs),
+    htmlOnlyProbeExecutedCount: stats.htmlOnlyProbeExecutedCount,
+    htmlPriceFoundCount: stats.htmlPriceFoundCount,
+    htmlOfficialPriceFoundCount: stats.htmlOfficialPriceFoundCount,
+    htmlDiscountRateFoundCount: stats.htmlDiscountRateFoundCount,
+    htmlSalesCountFoundCount: stats.htmlSalesCountFoundCount,
+    htmlSalesCountMissingCount: stats.htmlSalesCountMissingCount,
+    htmlRatingFoundCount: stats.htmlRatingFoundCount,
+    htmlRatingCountFoundCount: stats.htmlRatingCountFoundCount,
+    htmlReleaseDateFoundCount: stats.htmlReleaseDateFoundCount,
+    htmlSalesCountAjaxComparedCount: stats.htmlSalesCountAjaxComparedCount,
+    htmlSalesCountAjaxMatchCount: stats.htmlSalesCountAjaxMatchCount,
+    htmlSalesCountAjaxMismatchCount: stats.htmlSalesCountAjaxMismatchCount,
+    htmlSalesCountAjaxHtmlMissingCount: stats.htmlSalesCountAjaxHtmlMissingCount,
+    htmlSalesCountAjaxAjaxMissingCount: stats.htmlSalesCountAjaxAjaxMissingCount,
+    htmlSalesCountAjaxBothMissingCount: stats.htmlSalesCountAjaxBothMissingCount,
+    htmlSalesCountAjaxMismatchExamples:
+      stats.htmlSalesCountAjaxMismatchExamples.slice(0, 10),
+    ajaxRequiredCount: stats.ajaxRequiredCount,
+    ajaxSkippedCandidateCount: stats.ajaxSkippedCandidateCount,
     otherParseTotalMs: roundMs(stats.otherParseTotalMs),
     productExistingReadTotalMs: roundMs(stats.productExistingReadTotalMs),
     dailySalesExistingProductReadTotalMs: roundMs(
@@ -894,7 +1276,12 @@ function buildPerformanceSummary(
     productAndMetricSaveTotalMs: roundMs(stats.productAndMetricSaveTotalMs),
     firestoreBatchCommitTotalMs: roundMs(stats.firestoreBatchCommitTotalMs),
     firestoreBatchCommitCount: stats.firestoreBatchCommitCount,
+    firestoreAutoFlushTotalMs: roundMs(stats.firestoreAutoFlushTotalMs),
+    firestoreAutoFlushCount: stats.firestoreAutoFlushCount,
+    firestoreChunkFlushTotalMs: roundMs(stats.firestoreChunkFlushTotalMs),
+    firestoreChunkFlushCount: stats.firestoreChunkFlushCount,
     firestoreWriteOperationCount: stats.firestoreWriteOperationCount,
+    firestorePendingWriteCount: stats.firestorePendingWriteCount,
     batchRunsUpdateTotalMs: roundMs(stats.batchRunsUpdateTotalMs),
     delayTotalMs: roundMs(stats.delayTotalMs),
     processedDetailCount,
@@ -902,6 +1289,8 @@ function buildPerformanceSummary(
       processedDetailCount > 0
         ? roundMs(totalElapsedMs / processedDetailCount)
         : 0,
+    memory: getMemoryUsageSummary(),
+    performanceJsonBytes: 0,
     firestore: {
       productExistingReadCount: stats.productExistingReadCount,
       dailySalesExistingProductReadCount:
@@ -924,6 +1313,8 @@ function buildPerformanceSummary(
       batchRunWriteCount: stats.batchRunWriteCount,
     },
   };
+  summary.performanceJsonBytes = estimateJsonBytes(summary);
+  return summary;
 }
 
 function addParseTimingToPerformance(
@@ -943,7 +1334,96 @@ function addParseTimingToPerformance(
   stats.parseDescriptionTotalMs += timing.parseDescriptionMs ?? 0;
   stats.normalizeProductTotalMs += timing.normalizeProductMs ?? 0;
   stats.ajaxInfoFetchTotalMs += timing.ajaxInfoFetchMs ?? 0;
+  const htmlProbeExecuted = timing.htmlProbeExecuted ?? 0;
+  const htmlSalesCountFound = timing.htmlProbeSalesCountFound ?? 0;
+  stats.htmlOnlyProbeTotalMs += timing.htmlOnlyProbeMs ?? 0;
+  stats.htmlOnlyProbeExecutedCount += htmlProbeExecuted;
+  stats.htmlPriceFoundCount += timing.htmlProbePriceCurrentFound ?? 0;
+  stats.htmlOfficialPriceFoundCount += timing.htmlProbePriceOriginalFound ?? 0;
+  stats.htmlDiscountRateFoundCount += timing.htmlProbeDiscountRateFound ?? 0;
+  stats.htmlSalesCountFoundCount += htmlSalesCountFound;
+  stats.htmlSalesCountMissingCount += Math.max(
+    0,
+    htmlProbeExecuted - htmlSalesCountFound,
+  );
+  stats.htmlRatingFoundCount += timing.htmlProbeRatingFound ?? 0;
+  stats.htmlRatingCountFoundCount += timing.htmlProbeReviewCountFound ?? 0;
+  stats.htmlReleaseDateFoundCount += timing.htmlProbeReleaseDateFound ?? 0;
+  stats.htmlSalesCountAjaxComparedCount +=
+    timing.htmlProbeSalesCountAjaxCompared ?? 0;
+  stats.htmlSalesCountAjaxMatchCount +=
+    timing.htmlProbeSalesCountAjaxMatch ?? 0;
+  stats.htmlSalesCountAjaxMismatchCount +=
+    timing.htmlProbeSalesCountAjaxMismatch ?? 0;
+  stats.htmlSalesCountAjaxHtmlMissingCount +=
+    timing.htmlProbeSalesCountAjaxHtmlMissing ?? 0;
+  stats.htmlSalesCountAjaxAjaxMissingCount +=
+    timing.htmlProbeSalesCountAjaxAjaxMissing ?? 0;
+  stats.htmlSalesCountAjaxBothMissingCount +=
+    timing.htmlProbeSalesCountAjaxBothMissing ?? 0;
+  stats.ajaxRequiredCount += Math.max(0, htmlProbeExecuted - htmlSalesCountFound);
+  stats.ajaxSkippedCandidateCount += htmlSalesCountFound;
+
   stats.otherParseTotalMs += timing.otherParseMs ?? 0;
+}
+
+function addProductDetailTimingToPerformance(
+  stats: PerformanceStats,
+  timing: ProductDetailTiming | undefined,
+): void {
+  if (!timing) return;
+
+  if (timing.fetchHtmlMs !== undefined) {
+    stats.detailHtmlFetchTotalMs += timing.fetchHtmlMs;
+    stats.detailHtmlFetchSamplesMs.push(timing.fetchHtmlMs);
+  }
+  if (timing.parseHtmlMs !== undefined) {
+    stats.detailHtmlParseTotalMs += timing.parseHtmlMs;
+  }
+  if (timing.parseHtmlTotalMs !== undefined) {
+    stats.detailHtmlParseIncludingAjaxTotalMs += timing.parseHtmlTotalMs;
+  }
+
+  const ajaxInfoFetchMs = timing.parse?.ajaxInfoFetchMs;
+  if (ajaxInfoFetchMs !== undefined) {
+    stats.ajaxInfoFetchSamplesMs.push(ajaxInfoFetchMs);
+  }
+
+  stats.detailHtmlRequestCount += timing.detailHtmlRequestCount ?? 0;
+  stats.detailHtmlRetryCount += timing.detailHtmlRetryCount ?? 0;
+  stats.detailHtmlRetryBackoffMs += timing.detailHtmlRetryBackoffMs ?? 0;
+  stats.detailHtmlCandidateUrlCount +=
+    timing.detailHtmlCandidateUrlCount ?? 0;
+  stats.detailHtmlCandidateFetchFailedCount +=
+    timing.detailHtmlCandidateFetchFailedCount ?? 0;
+  mergeCountRecord(stats.detailHtmlStatusCounts, timing.detailHtmlStatusCounts);
+
+  stats.ajaxRequestCount += timing.ajaxRequestCount ?? 0;
+  stats.ajaxSuccessCount += timing.ajaxSuccessCount ?? 0;
+  stats.ajaxNonOkCount += timing.ajaxNonOkCount ?? 0;
+  stats.ajaxErrorCount += timing.ajaxErrorCount ?? 0;
+  stats.ajaxSecondUrlTriedCount += timing.ajaxSecondUrlTriedCount ?? 0;
+  stats.ajaxFirstUrlSucceededCount +=
+    timing.ajaxFirstUrlSucceededCount ?? 0;
+  mergeCountRecord(stats.ajaxStatusCounts, timing.ajaxStatusCounts);
+}
+
+function addHtmlSalesCountAjaxMismatchExample(
+  stats: PerformanceStats,
+  timing: ProductDetailTiming | undefined,
+  sourceProductId: string,
+  sourceUrl: string | undefined,
+): void {
+  const comparison = timing?.htmlSalesCountAjaxComparison;
+  if (!comparison || comparison.status !== "mismatch") return;
+  if (stats.htmlSalesCountAjaxMismatchExamples.length >= 10) return;
+
+  stats.htmlSalesCountAjaxMismatchExamples.push({
+    sourceProductId,
+    sourceUrl,
+    htmlSalesCount: comparison.htmlSalesCount,
+    ajaxSalesCount: comparison.ajaxSalesCount,
+  });
 }
 
 function buildRunOptions(
@@ -957,6 +1437,7 @@ function buildRunOptions(
     saveDailySalesDelta: boolean;
     progressLogEvery: number;
     parseMode: ProductParseMode;
+    htmlOnlyProbe: boolean;
     contentType: ProductContentType;
     pageChunkSize: number;
   },
@@ -971,6 +1452,7 @@ function buildRunOptions(
     saveDailySalesDelta: resolved.saveDailySalesDelta,
     progressLogEvery: resolved.progressLogEvery,
     parseMode: resolved.parseMode,
+    htmlOnlyProbe: resolved.htmlOnlyProbe,
     contentType: resolved.contentType,
     pageChunkSize: resolved.pageChunkSize,
   };
@@ -999,6 +1481,7 @@ export async function fetchGirlsReleaseOldProducts(
   );
   const parseMode: ProductParseMode =
     options.parseMode === "fast" ? "fast" : "full";
+  const htmlOnlyProbe = options.htmlOnlyProbe === true;
   const pageChunkSize = Math.min(
     MAX_PAGE_CHUNK_SIZE,
     Math.max(1, Math.floor(options.pageChunkSize ?? DEFAULT_PAGE_CHUNK_SIZE)),
@@ -1019,6 +1502,7 @@ export async function fetchGirlsReleaseOldProducts(
       saveDailySalesDelta,
       progressLogEvery,
       parseMode,
+      htmlOnlyProbe,
       contentType,
       pageChunkSize,
     });
@@ -1093,6 +1577,10 @@ export async function fetchGirlsReleaseOldProducts(
     });
 
     const writeBuffer = new FirestoreWriteBuffer(FIRESTORE_BATCH_LIMIT);
+    let progressSnapshot = createPerformanceWindowSnapshot(
+      perf,
+      processedDetailCount,
+    );
     let remainingDetailLimit =
       typeof options.detailLimit === "number"
         ? Math.max(0, options.detailLimit)
@@ -1248,6 +1736,11 @@ export async function fetchGirlsReleaseOldProducts(
               progressLogEvery > 0 &&
               processedDetailCount % progressLogEvery === 0
             ) {
+              const recentPerformance = buildPerformanceWindowSummary(
+                perf,
+                progressSnapshot,
+                processedDetailCount,
+              );
               logger.info(`${logLabel} detail fetch progress`, {
                 runId,
                 contentType,
@@ -1261,7 +1754,12 @@ export async function fetchGirlsReleaseOldProducts(
                   perf,
                   processedDetailCount,
                 ),
+                recentPerformance,
               });
+              progressSnapshot = createPerformanceWindowSnapshot(
+                perf,
+                processedDetailCount,
+              );
             }
             continue;
           }
@@ -1278,16 +1776,20 @@ export async function fetchGirlsReleaseOldProducts(
             {
               sourceUrl: discovered.sourceUrl,
               parseMode,
+              htmlOnlyProbe,
               onTiming: (timing) => {
                 detailTiming = timing;
               },
             },
           );
-          if (detailTiming?.fetchHtmlMs !== undefined)
-            perf.detailHtmlFetchTotalMs += detailTiming.fetchHtmlMs;
-          if (detailTiming?.parseHtmlMs !== undefined)
-            perf.detailHtmlParseTotalMs += detailTiming.parseHtmlMs;
+          addProductDetailTimingToPerformance(perf, detailTiming);
           addParseTimingToPerformance(perf, detailTiming?.parse);
+          addHtmlSalesCountAjaxMismatchExample(
+            perf,
+            detailTiming,
+            discovered.sourceProductId,
+            discovered.sourceUrl,
+          );
 
           const normalizeStartedAt = Date.now();
           const product = dlsiteFemaleDoujinAdapter.normalizeProduct(
@@ -1314,6 +1816,11 @@ export async function fetchGirlsReleaseOldProducts(
             },
           );
           perf.productAndMetricSaveTotalMs += saveResult.elapsedMs;
+          perf.firestoreBatchCommitTotalMs +=
+            saveResult.firestoreAutoFlushElapsedMs;
+          perf.firestoreAutoFlushTotalMs +=
+            saveResult.firestoreAutoFlushElapsedMs;
+          perf.firestoreAutoFlushCount += saveResult.firestoreAutoFlushCount;
           perf.dailySalesDeltaCalcTotalMs +=
             saveResult.dailySalesDeltaCalcElapsedMs;
           perf.productWriteCount += saveResult.writeCount;
@@ -1324,6 +1831,10 @@ export async function fetchGirlsReleaseOldProducts(
             perf,
             saveResult.dailySalesDeltaStats,
           );
+          perf.firestoreBatchCommitCount = writeBuffer.commitCount;
+          perf.firestoreWriteOperationCount = writeBuffer.writeOperationCount;
+          perf.firestorePendingWriteCount =
+            saveResult.writeBufferPendingWriteCount;
           fetchedProductCount += 1;
           updatedProductCount += 1;
           processedDetailCount += 1;
@@ -1332,6 +1843,11 @@ export async function fetchGirlsReleaseOldProducts(
             progressLogEvery > 0 &&
             processedDetailCount % progressLogEvery === 0
           ) {
+            const recentPerformance = buildPerformanceWindowSummary(
+              perf,
+              progressSnapshot,
+              processedDetailCount,
+            );
             logger.info(`${logLabel} detail fetch progress`, {
               runId,
               contentType,
@@ -1342,7 +1858,12 @@ export async function fetchGirlsReleaseOldProducts(
               skippedProductCount,
               failedProductCount,
               performance: buildPerformanceSummary(perf, processedDetailCount),
+              recentPerformance,
             });
+            progressSnapshot = createPerformanceWindowSnapshot(
+              perf,
+              processedDetailCount,
+            );
           }
         } catch (error) {
           if (error instanceof BlockedAccessError) {
@@ -1392,12 +1913,17 @@ export async function fetchGirlsReleaseOldProducts(
       }
 
       const flushStartedAt = Date.now();
-      const flushElapsedMs = await writeBuffer.flush();
+      const flushResult = await writeBuffer.flush();
       const flushTotalMs = Date.now() - flushStartedAt;
       perf.productAndMetricSaveTotalMs += flushTotalMs;
-      perf.firestoreBatchCommitTotalMs += flushElapsedMs;
+      perf.firestoreBatchCommitTotalMs += flushResult.elapsedMs;
+      if (flushResult.flushed) {
+        perf.firestoreChunkFlushTotalMs += flushResult.elapsedMs;
+        perf.firestoreChunkFlushCount += 1;
+      }
       perf.firestoreBatchCommitCount = writeBuffer.commitCount;
       perf.firestoreWriteOperationCount = writeBuffer.writeOperationCount;
+      perf.firestorePendingWriteCount = writeBuffer.getPendingWriteCount();
 
       if (progressLogEvery > 0 && chunkDetailTargets.length > 0) {
         logger.info(`${logLabel} chunk finished`, {

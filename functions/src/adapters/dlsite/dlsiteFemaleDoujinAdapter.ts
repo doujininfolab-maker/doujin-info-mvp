@@ -8,7 +8,9 @@ import type {
 } from "../../types";
 import type {
   DiscoveredProductSource,
+  HtmlSalesCountAjaxComparison,
   ProductDetailFetchOptions,
+  ProductDetailTiming,
   ProductDetailParseTiming,
   ProductParseMode,
   RankingFetchOptions,
@@ -57,6 +59,32 @@ const sourceProductIdHints = new Map<string, Set<RankingType>>();
 const sourceProductIdContentTypeHints = new Map<string, ProductContentType>();
 
 type DlsiteFloor = "girls" | "bl";
+
+function incrementTimingCount(
+  timing: ProductDetailTiming | undefined,
+  key: keyof ProductDetailTiming,
+  amount = 1,
+): void {
+  if (!timing) return;
+  const current = timing[key];
+  if (typeof current !== "number") {
+    (timing as Record<string, unknown>)[key] = amount;
+    return;
+  }
+  (timing as Record<string, unknown>)[key] = current + amount;
+}
+
+function incrementTimingStatusCount(
+  timing: ProductDetailTiming | undefined,
+  key: "detailHtmlStatusCounts" | "ajaxStatusCounts",
+  status: number | string,
+): void {
+  if (!timing) return;
+  const statusKey = String(status);
+  const counts = timing[key] ?? {};
+  counts[statusKey] = (counts[statusKey] ?? 0) + 1;
+  timing[key] = counts;
+}
 
 function getBaseUrlForContentType(
   contentType: ProductContentType | undefined,
@@ -309,6 +337,7 @@ function sortProductDetailHtmlCandidates(
 async function fetchBestProductDetailHtml(
   sourceProductId: string,
   preferredSourceUrl?: string,
+  timing?: ProductDetailTiming,
 ): Promise<ProductDetailHtmlCandidate> {
   const hintedContentType =
     sourceProductIdContentTypeHints.get(sourceProductId);
@@ -328,12 +357,19 @@ async function fetchBestProductDetailHtml(
     if (queued.has(key)) return;
     queued.add(key);
     queue.push(url);
+    if (timing) {
+      timing.detailHtmlCandidateUrlCount = queued.size;
+    }
   };
+
+  if (timing) {
+    timing.detailHtmlCandidateUrlCount = queued.size;
+  }
 
   for (let index = 0; index < queue.length; index += 1) {
     const url = queue[index];
     try {
-      const html = await fetchPublicHtml(url);
+      const html = await fetchPublicHtml(url, timing);
       const candidate: ProductDetailHtmlCandidate = {
         url,
         html,
@@ -368,6 +404,7 @@ async function fetchBestProductDetailHtml(
 
       const message = error instanceof Error ? error.message : String(error);
       failedMessages.push(`${url}: ${message}`);
+      incrementTimingCount(timing, "detailHtmlCandidateFetchFailedCount");
 
       // 初回URLが404等で取れない場合に備え、TL/BLの反対側URLも一度だけ試す。
       if (index === 0) {
@@ -387,11 +424,20 @@ async function fetchBestProductDetailHtml(
     );
   }
 
-  if (best.url !== buildSourceUrl(sourceProductId) || candidates.length > 1) {
+  const normalizedBestUrl = normalizeListPageUrlKey(best.url);
+  const normalizedInitialUrl = normalizeListPageUrlKey(initialUrl);
+  const shouldLogSelectedSource =
+    normalizedBestUrl !== normalizedInitialUrl ||
+    candidates.length > 1 ||
+    failedMessages.length > 0;
+
+  if (shouldLogSelectedSource) {
     logger.info("DLsite product detail source selected", {
       sourceProductId,
+      initialUrl,
       selectedUrl: best.url,
       selectedImageCount: best.imageCount,
+      failedCandidateCount: failedMessages.length,
       candidates: candidates.map((candidate) => ({
         url: candidate.url,
         imageCount: candidate.imageCount,
@@ -399,6 +445,11 @@ async function fetchBestProductDetailHtml(
         hasWorkSlider: candidate.hasWorkSlider,
       })),
     });
+  }
+
+  if (timing) {
+    timing.detailHtmlCandidateUrlCount = queued.size;
+    timing.selectedImageCount = best.imageCount;
   }
 
   return best;
@@ -1633,6 +1684,21 @@ type DlsiteAjaxInfo = {
 
 function createProductDetailParseTiming(): Required<ProductDetailParseTiming> {
   return {
+    htmlOnlyProbeMs: 0,
+    htmlProbeExecuted: 0,
+    htmlProbePriceCurrentFound: 0,
+    htmlProbePriceOriginalFound: 0,
+    htmlProbeDiscountRateFound: 0,
+    htmlProbeSalesCountFound: 0,
+    htmlProbeRatingFound: 0,
+    htmlProbeReviewCountFound: 0,
+    htmlProbeReleaseDateFound: 0,
+    htmlProbeSalesCountAjaxCompared: 0,
+    htmlProbeSalesCountAjaxMatch: 0,
+    htmlProbeSalesCountAjaxMismatch: 0,
+    htmlProbeSalesCountAjaxHtmlMissing: 0,
+    htmlProbeSalesCountAjaxAjaxMissing: 0,
+    htmlProbeSalesCountAjaxBothMissing: 0,
     cheerioLoadMs: 0,
     parseBasicInfoMs: 0,
     parsePriceMs: 0,
@@ -1959,7 +2025,11 @@ function parseDlsiteAjaxInfo(parsed: unknown): DlsiteAjaxInfo {
 
 async function fetchProductInfoAjax(
   sourceProductId: string,
-  options?: { parseMode?: ProductParseMode; sourceUrl?: string },
+  options?: {
+    parseMode?: ProductParseMode;
+    sourceUrl?: string;
+    timing?: ProductDetailTiming;
+  },
 ): Promise<DlsiteAjaxInfo> {
   const parseMode = options?.parseMode ?? "full";
   const ajaxBaseUrl = /\/bl(?:-touch)?\//i.test(options?.sourceUrl ?? "")
@@ -1977,8 +2047,12 @@ async function fetchProductInfoAjax(
 
   let merged: DlsiteAjaxInfo = {};
 
-  for (const url of urls) {
+  for (const [index, url] of urls.entries()) {
     try {
+      incrementTimingCount(options?.timing, "ajaxRequestCount");
+      if (index > 0) {
+        incrementTimingCount(options?.timing, "ajaxSecondUrlTriedCount");
+      }
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -1988,11 +2062,19 @@ async function fetchProductInfoAjax(
           referer,
         },
       });
-      if (!response.ok) continue;
+      incrementTimingStatusCount(options?.timing, "ajaxStatusCounts", response.status);
+      if (!response.ok) {
+        incrementTimingCount(options?.timing, "ajaxNonOkCount");
+        continue;
+      }
 
       const text = await response.text();
       const parsed = JSON.parse(text) as unknown;
       merged = mergeDlsiteAjaxInfo(merged, parseDlsiteAjaxInfo(parsed));
+      incrementTimingCount(options?.timing, "ajaxSuccessCount");
+      if (index === 0) {
+        incrementTimingCount(options?.timing, "ajaxFirstUrlSucceededCount");
+      }
 
       // fastでは初回全量取得向けに、追加のAjax補完を行わない。
       // sales/price/ratingなどの主要項目は最初に成功したレスポンスとHTMLフォールバックで取得する。
@@ -2006,6 +2088,7 @@ async function fetchProductInfoAjax(
         return merged;
       }
     } catch {
+      incrementTimingCount(options?.timing, "ajaxErrorCount");
       // 公開ページHTMLのパース結果を優先して処理継続する。
     }
   }
@@ -2649,24 +2732,44 @@ function extractRatingBreakdown(
   );
 }
 
+function extractLabeledSalesCountFromHtml(html: string): number | undefined {
+  const normalizedHtml = decodeHtml(html);
+
+  // 販売数はDLsiteのVue/JSテンプレート内に似たキーが多く、ページ全体をJSON風に拾うと
+  // 別の数値を販売数として誤検知しやすい。
+  // ここでは「販売数/DL数」ラベルの直後に表示されている数値だけをHTML fallbackとして採用する。
+  const labelThenValuePatterns = [
+    /<(?:th|dt|span|div|li)[^>]*>\s*(?:販売数|販売本数|DL数|ダウンロード数)\s*<\/(?:th|dt|span|div|li)>[\s\S]{0,300}?<(?:td|dd|span|div|li)[^>]*>\s*([0-9][0-9,]*)\s*(?:本|DL|ダウンロード)?\s*<\/(?:td|dd|span|div|li)>/i,
+    /(?:販売数|販売本数|DL数|ダウンロード数)\s*[:：]\s*(?:<[^>]+>\s*){0,6}([0-9][0-9,]*)\s*(?:本|DL|ダウンロード)?/i,
+  ];
+
+  for (const pattern of labelThenValuePatterns) {
+    const value = toNumber(normalizedHtml.match(pattern)?.[1]);
+    if (value !== undefined) return value;
+  }
+
+  return undefined;
+}
+
+function extractLabeledSalesCountFromText(text: string): number | undefined {
+  const normalizedText = text.replace(/\s+/g, " ").trim();
+  const patterns = [
+    /(?:販売数|販売本数|DL数|ダウンロード数)\s*[:：]\s*([0-9][0-9,]*)\s*(?:本|DL|ダウンロード)?/i,
+    /(?:販売数|販売本数|DL数|ダウンロード数)\s+([0-9][0-9,]*)\s*(?:本|DL|ダウンロード)?/i,
+  ];
+
+  for (const pattern of patterns) {
+    const value = toNumber(normalizedText.match(pattern)?.[1]);
+    if (value !== undefined) return value;
+  }
+
+  return undefined;
+}
+
 function extractSalesCount(html: string, text: string): number | undefined {
   return (
-    extractJsonLikeNumber(html, [
-      "dl_count",
-      "dlCount",
-      "download_count",
-      "downloadCount",
-      "sales_count",
-      "salesCount",
-      "work_dl_count",
-      "workDlCount",
-    ]) ??
-    toNumber(
-      text.match(
-        /(?:販売数|販売本数|DL数|ダウンロード数)\s*[:：]?\s*([0-9,]+)/,
-      )?.[1],
-    ) ??
-    toNumber(text.match(/([0-9,]+)\s*(?:DL|ダウンロード)/i)?.[1])
+    extractLabeledSalesCountFromHtml(html) ??
+    extractLabeledSalesCountFromText(text)
   );
 }
 
@@ -2683,13 +2786,126 @@ function extractPriceCurrent(html: string, text: string): number | undefined {
   );
 }
 
+type HtmlOnlyProbeResult = {
+  priceCurrentFound: boolean;
+  priceOriginalFound: boolean;
+  discountRateFound: boolean;
+  salesCountFound: boolean;
+  salesCount?: number;
+  ratingFound: boolean;
+  reviewCountFound: boolean;
+  releaseDateFound: boolean;
+};
+
+function buildHtmlOnlyProbeResult(
+  html: string,
+  text: string,
+): HtmlOnlyProbeResult {
+  const priceCurrent = extractPriceCurrent(html, text);
+  const priceOriginal =
+    toNumber(
+      matchFirst(html, [
+        /class=["'][^"']*(?:base_price|default_price|strike|regular_price)[^"']*["'][^>]*>([\s\S]*?)<\//i,
+      ]),
+    ) ??
+    toNumber(text.match(/(?:通常価格|定価)\s*[:：]?\s*([0-9,]+)\s*円/)?.[1]);
+  const discountRate =
+    toNumber(text.match(/([0-9]{1,2})\s*%\s*OFF/i)?.[1]) ??
+    toNumber(text.match(/([0-9]{1,2})\s*％\s*OFF/i)?.[1]);
+  const salesCount = extractSalesCount(html, text);
+  const rating = extractRating(html, text);
+  const reviewCount = extractEvaluationCount(html, text);
+  const releaseDate = normalizeReleaseDate(
+    text.match(
+      /(?:販売日|発売日)\s*[:：]?\s*(\d{4}[/.年-]\d{1,2}[/.月-]\d{1,2})/,
+    )?.[1] ??
+      matchFirst(html, [
+        /itemprop=["']datePublished["'][^>]+content=["']([^"']+)["']/i,
+      ]),
+  );
+
+  return {
+    priceCurrentFound: priceCurrent !== undefined,
+    priceOriginalFound: priceOriginal !== undefined,
+    discountRateFound: discountRate !== undefined,
+    salesCountFound: salesCount !== undefined,
+    salesCount,
+    ratingFound: rating !== undefined,
+    reviewCountFound: reviewCount !== undefined,
+    releaseDateFound: releaseDate !== undefined,
+  };
+}
+
+function addHtmlOnlyProbeResultToTiming(
+  timing: Required<ProductDetailParseTiming>,
+  probe: HtmlOnlyProbeResult,
+): void {
+  timing.htmlProbeExecuted += 1;
+  timing.htmlProbePriceCurrentFound += probe.priceCurrentFound ? 1 : 0;
+  timing.htmlProbePriceOriginalFound += probe.priceOriginalFound ? 1 : 0;
+  timing.htmlProbeDiscountRateFound += probe.discountRateFound ? 1 : 0;
+  timing.htmlProbeSalesCountFound += probe.salesCountFound ? 1 : 0;
+  timing.htmlProbeRatingFound += probe.ratingFound ? 1 : 0;
+  timing.htmlProbeReviewCountFound += probe.reviewCountFound ? 1 : 0;
+  timing.htmlProbeReleaseDateFound += probe.releaseDateFound ? 1 : 0;
+}
+
+function buildHtmlSalesCountAjaxComparison(
+  htmlSalesCount: number | undefined,
+  ajaxSalesCount: number | undefined,
+): HtmlSalesCountAjaxComparison {
+  if (htmlSalesCount === undefined && ajaxSalesCount === undefined) {
+    return { status: "both_missing" };
+  }
+  if (htmlSalesCount === undefined) {
+    return { status: "html_missing", ajaxSalesCount };
+  }
+  if (ajaxSalesCount === undefined) {
+    return { status: "ajax_missing", htmlSalesCount };
+  }
+  return {
+    status: htmlSalesCount === ajaxSalesCount ? "match" : "mismatch",
+    htmlSalesCount,
+    ajaxSalesCount,
+  };
+}
+
+function addHtmlSalesCountAjaxComparisonToTiming(
+  timing: Required<ProductDetailParseTiming>,
+  comparison: HtmlSalesCountAjaxComparison,
+): void {
+  timing.htmlProbeSalesCountAjaxCompared += 1;
+  switch (comparison.status) {
+    case "match":
+      timing.htmlProbeSalesCountAjaxMatch += 1;
+      return;
+    case "mismatch":
+      timing.htmlProbeSalesCountAjaxMismatch += 1;
+      return;
+    case "html_missing":
+      timing.htmlProbeSalesCountAjaxHtmlMissing += 1;
+      return;
+    case "ajax_missing":
+      timing.htmlProbeSalesCountAjaxAjaxMissing += 1;
+      return;
+    case "both_missing":
+      timing.htmlProbeSalesCountAjaxBothMissing += 1;
+      return;
+  }
+}
+
 async function extractProductDetail(
   html: string,
   sourceProductId: string,
   sourceUrl = buildSourceUrl(sourceProductId),
   options?: {
     parseMode?: ProductParseMode;
+    htmlOnlyProbe?: boolean;
+    detailTiming?: ProductDetailTiming;
     onParseTiming?: (timing: ProductDetailParseTiming) => void;
+    onHtmlSalesCountAjaxComparison?: (
+      comparison: HtmlSalesCountAjaxComparison,
+    ) => void;
   },
 ): Promise<RawProductDetail> {
   const parseMode = options?.parseMode ?? "full";
@@ -2741,9 +2957,31 @@ async function extractProductDetail(
     };
   });
 
+  let htmlOnlyProbeSalesCount: number | undefined;
+  if (options?.htmlOnlyProbe) {
+    const probe = measureParseStep(timing, "htmlOnlyProbeMs", () =>
+      buildHtmlOnlyProbeResult(html, text),
+    );
+    htmlOnlyProbeSalesCount = probe.salesCount;
+    addHtmlOnlyProbeResultToTiming(timing, probe);
+  }
+
   const ajaxInfo = await measureParseStepAsync(timing, "ajaxInfoFetchMs", () =>
-    fetchProductInfoAjax(sourceProductId, { parseMode, sourceUrl }),
+    fetchProductInfoAjax(sourceProductId, {
+      parseMode,
+      sourceUrl,
+      timing: options?.detailTiming,
+    }),
   );
+
+  if (options?.htmlOnlyProbe) {
+    const comparison = buildHtmlSalesCountAjaxComparison(
+      htmlOnlyProbeSalesCount,
+      ajaxInfo.salesCount,
+    );
+    addHtmlSalesCountAjaxComparisonToTiming(timing, comparison);
+    options.onHtmlSalesCountAjaxComparison?.(comparison);
+  }
 
   const images = await measureParseStepAsync(timing, "parseImagesMs", () =>
     extractImages(html, sourceProductId),
@@ -2942,7 +3180,10 @@ function delay(ms: number): Promise<void> {
   });
 }
 
-async function fetchPublicHtml(url: string): Promise<string> {
+async function fetchPublicHtml(
+  url: string,
+  timing?: ProductDetailTiming,
+): Promise<string> {
   const failures: string[] = [];
 
   for (let attempt = 1; attempt <= FETCH_RETRY_COUNT; attempt += 1) {
@@ -2950,6 +3191,7 @@ async function fetchPublicHtml(url: string): Promise<string> {
     const timeout = setTimeout(() => abortController.abort(), FETCH_TIMEOUT_MS);
 
     try {
+      incrementTimingCount(timing, "detailHtmlRequestCount");
       const response = await fetch(url, {
         method: "GET",
         redirect: "follow",
@@ -2965,6 +3207,7 @@ async function fetchPublicHtml(url: string): Promise<string> {
           "upgrade-insecure-requests": "1",
         },
       });
+      incrementTimingStatusCount(timing, "detailHtmlStatusCounts", response.status);
 
       if (response.status === 403 || response.status === 429) {
         throw new BlockedAccessError(
@@ -3007,7 +3250,10 @@ async function fetchPublicHtml(url: string): Promise<string> {
         attempt,
         diagnostic,
       });
-      await delay(600 * attempt);
+      const backoffMs = 600 * attempt;
+      incrementTimingCount(timing, "detailHtmlRetryCount");
+      incrementTimingCount(timing, "detailHtmlRetryBackoffMs", backoffMs);
+      await delay(backoffMs);
     } finally {
       clearTimeout(timeout);
     }
@@ -3195,14 +3441,17 @@ export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
     sourceProductId: string,
     options?: ProductDetailFetchOptions,
   ): Promise<RawProductDetail> {
+    const timing: ProductDetailTiming = {};
     const fetchHtmlStartedAt = Date.now();
     const candidate = await fetchBestProductDetailHtml(
       sourceProductId,
       options?.sourceUrl,
+      timing,
     );
     const fetchHtmlMs = Date.now() - fetchHtmlStartedAt;
 
     let parseTiming: ProductDetailParseTiming | undefined;
+    let htmlSalesCountAjaxComparison: HtmlSalesCountAjaxComparison | undefined;
     const parseHtmlStartedAt = Date.now();
     const detail = await extractProductDetail(
       candidate.html,
@@ -3210,19 +3459,29 @@ export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
       candidate.url,
       {
         parseMode: options?.parseMode,
+        htmlOnlyProbe: options?.htmlOnlyProbe,
+        detailTiming: timing,
         onParseTiming: (timing) => {
           parseTiming = timing;
         },
+        onHtmlSalesCountAjaxComparison: (comparison) => {
+          htmlSalesCountAjaxComparison = comparison;
+        },
       },
     );
-    const parseHtmlMs = Date.now() - parseHtmlStartedAt;
+    const parseHtmlTotalMs = Date.now() - parseHtmlStartedAt;
+    const ajaxInfoFetchMs = parseTiming?.ajaxInfoFetchMs ?? 0;
+    const parseHtmlMs = Math.max(0, parseHtmlTotalMs - ajaxInfoFetchMs);
 
     options?.onTiming?.({
+      ...timing,
       fetchHtmlMs,
       parseHtmlMs,
+      parseHtmlTotalMs,
       selectedUrl: candidate.url,
       htmlLength: candidate.html.length,
       parse: parseTiming,
+      htmlSalesCountAjaxComparison,
     });
 
     return detail;

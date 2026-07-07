@@ -125,9 +125,30 @@ export type ProductDailyMetric = {
   priceOriginal?: number;
   discountRate?: number;
   isDiscounted?: boolean;
+  isOnSale?: boolean;
 
   salesCount?: number;
   wishlistCount?: number;
+
+  dailySalesCount?: number | null;
+  dailySalesStatus?:
+    | "pending"
+    | "calculated"
+    | "no_previous_snapshot"
+    | "sales_count_missing"
+    | "negative_delta"
+    | "multi_day_gap"
+    | "same_day_snapshot"
+    | "invalid_snapshot_date";
+  dailySalesBaseDate?: string;
+  dailySalesNextDate?: string;
+  dailySalesBaseCount?: number;
+  dailySalesNextCount?: number;
+  dailySalesRawDelta?: number;
+  dailySalesPeriodDays?: number;
+  periodSalesCount?: number;
+  dailySalesCalculatedAt?: FirestoreTimestampLike | string;
+
   rating?: number;
   ratingAverage?: number;
   reviewCount?: number;
@@ -139,6 +160,13 @@ export type ProductDailyMetric = {
   contentTypeIds?: string[];
 
   fetchedAt: FirestoreTimestampLike | string;
+};
+
+export type ProductTrendPoint = {
+  date: string;
+  sales: number;
+  revenue: number;
+  price: number;
 };
 
 export type RankingSnapshot = {

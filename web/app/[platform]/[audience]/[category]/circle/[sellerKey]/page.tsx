@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ProductGrid } from "@/components/ProductGrid";
 import { ListPageInfo } from "@/components/ListPageInfo";
 import { WorkTrendCharts } from "@/components/WorkTrendCharts";
-import { getSellerSummaryByKey } from "@/lib/firebase/products";
+import { getAggregateTrendPointsForProducts, getSellerSummaryByKey, hasRecentProductTrendData } from "@/lib/firebase/products";
 import { contentTypeForFilter, contentTypeParamForScope, getContentScopeLabel, parseContentScope } from "@/lib/contentCategories";
 import { buildFilterHref } from "@/lib/workTypes";
 import { formatDate, formatNumber } from "@/lib/format";
@@ -83,9 +83,17 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
   const segmentPath = getSegmentPath(summary.platform, summary.audience, summary.category);
   const imageUrl = getSellerImage(summary);
   const months = getMonthsBetween(summary.firstReleaseDate, summary.latestReleaseDate);
-  const products = (summary.products ?? []).slice(0, 30);
-  const graphPrice = summary.averagePrice || products.find((product) => product.priceCurrent)?.priceCurrent || 1000;
-  const circleSalesCount = summary.products?.reduce((sum, product) => sum + (product.salesCount ?? 0), 0) ?? summary.totalSalesCount;
+  const sellerProducts = summary.products ?? [];
+  const products = [...sellerProducts].sort((a, b) => {
+    const releaseDateDiff = (b.releaseDate ?? "").localeCompare(a.releaseDate ?? "");
+    if (releaseDateDiff !== 0) return releaseDateDiff;
+
+    return (a.title ?? "").localeCompare(b.title ?? "", "ja");
+  });
+  const graphPrice = summary.averagePrice || sellerProducts.find((product) => product.priceCurrent)?.priceCurrent || 1000;
+  const circleSalesCount = sellerProducts.reduce((sum, product) => sum + (product.salesCount ?? 0), 0) || summary.totalSalesCount;
+  const trendPoints = await getAggregateTrendPointsForProducts(sellerProducts);
+  const showTrendCharts = hasRecentProductTrendData(trendPoints);
 
   return (
     <div className="circleDetailPage">
@@ -112,7 +120,7 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
 
       <ListPageInfo
         title="サークルの販売実績と作品傾向を確認できます"
-        description="代表作・最新作・販売数・ジャンル傾向をまとめています。下部の作品一覧は売れ筋順で表示します。"
+        description="代表作・最新作・販売数・ジャンル傾向をまとめています。下部の作品一覧は発売日が新しい順で表示します。"
         items={[
           { label: "対象", value: getContentScopeLabel(contentScope) },
           { label: "作品数", value: `${formatNumber(summary.productCount)}件` },
@@ -144,17 +152,20 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
 
       </section>
 
-      <div className="circleSalesTrendOnly">
-        <WorkTrendCharts
-          priceCurrent={graphPrice}
-          priceOriginal={graphPrice}
-          salesCount={circleSalesCount}
-        />
-      </div>
+      {showTrendCharts ? (
+        <div className="circleSalesTrendOnly">
+          <WorkTrendCharts
+            priceCurrent={graphPrice}
+            priceOriginal={graphPrice}
+            salesCount={circleSalesCount}
+            trendPoints={trendPoints}
+          />
+        </div>
+      ) : null}
 
       <section className="detailSection sameSellerSection circleWorksSection">
         <h2>「{summary.sellerName}」のサークル作品</h2>
-        <p className="circleWorksSection__lead">販売数の多い作品を中心に最大30件表示しています。</p>
+        <p className="circleWorksSection__lead">発売日が新しい順で表示しています。</p>
         <ProductGrid products={products} variant="list" contentTypeParam={contentTypeParam} />
       </section>
     </div>

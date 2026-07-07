@@ -159,6 +159,51 @@ function cleanText(value: string | undefined | null): string | undefined {
   return cleaned || undefined;
 }
 
+function cleanOgTitle(value: string | undefined | null): string | undefined {
+  return cleanText(value?.replace(/\s*\|\s*DLsite.*$/i, ""));
+}
+
+function removeTrailingSellerNameFromTitle(
+  title: string | undefined,
+  sellerName: string | undefined,
+): string | undefined {
+  if (!title) return undefined;
+  const normalizedTitle = cleanText(title);
+  const normalizedSellerName = cleanText(sellerName);
+  if (!normalizedTitle || !normalizedSellerName) return normalizedTitle;
+
+  const suffixMatch = normalizedTitle.match(/\s*\[([^\]]+)\]\s*$/);
+  if (!suffixMatch) return normalizedTitle;
+
+  const suffixSellerName = cleanText(suffixMatch[1]);
+  if (suffixSellerName !== normalizedSellerName) return normalizedTitle;
+
+  const withoutSellerName = normalizedTitle
+    .slice(0, suffixMatch.index)
+    .trim();
+  return withoutSellerName || normalizedTitle;
+}
+
+function extractProductTitle(
+  html: string,
+  sourceProductId: string,
+  sellerName: string | undefined,
+): string {
+  const headingTitle = cleanText(
+    matchFirst(html, [
+      /<h1[^>]*id=["']work_name["'][^>]*>([\s\S]*?)<\/h1>/i,
+      /<h1[^>]*>([\s\S]*?)<\/h1>/i,
+    ]),
+  );
+  if (headingTitle) return headingTitle;
+
+  const ogTitle = removeTrailingSellerNameFromTitle(
+    cleanOgTitle(findMetaContent(html, "og:title")),
+    sellerName,
+  );
+  return ogTitle ?? sourceProductId;
+}
+
 function toNumber(value: string | undefined | null): number | undefined {
   if (!value) return undefined;
   const normalized = decodeHtml(value).replace(/[^0-9.]/g, "");
@@ -3156,19 +3201,8 @@ async function extractProductDetail(
     stripTags(html),
   );
   const basicInfo = measureParseStep(timing, "parseBasicInfoMs", () => {
-    const title =
-      cleanText(
-        findMetaContent(html, "og:title")?.replace(/\s*\|\s*DLsite.*$/i, ""),
-      ) ??
-      cleanText(
-        matchFirst(html, [
-          /<h1[^>]*id=["']work_name["'][^>]*>([\s\S]*?)<\/h1>/i,
-          /<h1[^>]*>([\s\S]*?)<\/h1>/i,
-        ]),
-      ) ??
-      sourceProductId;
-
     const seller = extractSeller(html);
+    const title = extractProductTitle(html, sourceProductId, seller.sellerName);
     const hintTypes =
       sourceProductIdHints.get(sourceProductId) ?? new Set<RankingType>();
     const isAdult = /R18|18禁|成人向け|年齢確認/.test(text);

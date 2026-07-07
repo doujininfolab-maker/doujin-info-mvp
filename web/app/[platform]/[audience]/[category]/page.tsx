@@ -7,9 +7,10 @@ import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } fro
 import {
   getHomeDashboardData,
   getHomeRandomNewProducts,
+  getHomeRandomRecentAddedProducts,
   getHomeRandomSaleProducts,
+  getHomeRandomWeeklyCircleHighlights,
   getLatestRankingProducts,
-  getNewProducts,
 } from "@/lib/firebase/products";
 
 export const dynamic = "force-dynamic";
@@ -52,14 +53,16 @@ export default async function SegmentTopPage({ params, searchParams }: PageProps
     category: segment.category,
   };
 
-  const [rankingProducts, newProducts, recentProducts, saleProducts, homeData] = await Promise.all([
+  const [rankingProducts, newProducts, recentProducts, saleProducts, homeData, weeklyCircleHighlights] = await Promise.all([
     getLatestRankingProducts({ ...filter, limitCount: 10, workType: rankingWorkType, contentType }),
     getHomeRandomNewProducts({ ...filter, limitCount: 10, workType: newWorkType, contentType }),
-    getNewProducts({ ...filter, limitCount: 10, contentType }),
+    getHomeRandomRecentAddedProducts({ ...filter, limitCount: 5, contentType }),
     getHomeRandomSaleProducts({ ...filter, limitCount: 10, contentType }),
     getHomeDashboardData({ ...filter, limitCount: 10, contentType }),
+    getHomeRandomWeeklyCircleHighlights({ ...filter, limitCount: 10, contentType }),
   ]);
-  const { stats, circleHighlights } = homeData;
+  const { stats } = homeData;
+  const circleHighlights = weeklyCircleHighlights.length ? weeklyCircleHighlights : homeData.circleHighlights;
 
   return (
     <HomeDashboard

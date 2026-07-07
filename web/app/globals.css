@@ -4443,6 +4443,42 @@ img {
   font-weight: 700;
 }
 
+.searchPageForm--withTarget {
+  width: min(900px, 100%);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.searchPageForm__keyword {
+  display: flex;
+  flex: 1 1 720px;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  box-shadow: var(--shadow-soft);
+}
+
+.searchPageForm__targetSelect {
+  flex: 0 0 150px;
+  min-width: 150px;
+  height: 52px;
+  padding: 0 36px 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  outline: 0;
+  background: #fff;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: var(--shadow-soft);
+}
+
 .searchPageForm input::placeholder {
   color: #a49ab0;
 }
@@ -4461,6 +4497,17 @@ img {
 .searchPageForm button svg {
   width: 20px;
   height: 20px;
+}
+
+@media (max-width: 760px) {
+  .searchPageForm--withTarget {
+    flex-wrap: wrap;
+  }
+
+  .searchPageForm__keyword,
+  .searchPageForm__targetSelect {
+    flex: 1 1 100%;
+  }
 }
 
 .searchEmptyState {

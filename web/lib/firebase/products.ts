@@ -8,16 +8,79 @@ import type {
   GenreSummary,
   GenreRankingItem,
   ProductCategorySummary,
+  ProductDailyMetric,
+  ProductTrendPoint,
   RankingSnapshot,
   RankingSnapshotItem,
   RankingType,
   SellerSummary,
   SiteStatsDocument,
 } from "../types";
+import type { SearchTarget } from "../searchTarget";
 
 const PRODUCTS_COLLECTION = "products";
 const RANKING_SNAPSHOTS_COLLECTION = "rankingSnapshots";
 const SITE_STATS_COLLECTION = "siteStats";
+
+const JST_TIME_ZONE = "Asia/Tokyo";
+
+function toJstDateParts(date = new Date()): { year: string; month: string; day: string } {
+  const formatter = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: JST_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  const parts = formatter.formatToParts(date).reduce<Record<string, string>>((acc, part) => {
+    if (part.type !== "literal") acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  return {
+    year: parts.year ?? "1970",
+    month: parts.month ?? "01",
+    day: parts.day ?? "01",
+  };
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function toJstDateKey(date = new Date()): string {
+  const parts = toJstDateParts(date);
+  return `${parts.year}${parts.month}${parts.day}`;
+}
+
+function toJstIsoDate(date = new Date()): string {
+  const parts = toJstDateParts(date);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function normalizeMetricDate(value: string | undefined): string | undefined {
+  const raw = value?.trim();
+  if (!raw) return undefined;
+
+  const yyyymmdd = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (yyyymmdd?.[1] && yyyymmdd[2] && yyyymmdd[3]) {
+    return `${yyyymmdd[1]}-${yyyymmdd[2]}-${yyyymmdd[3]}`;
+  }
+
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso?.[1] && iso[2] && iso[3]) {
+    return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  }
+
+  return undefined;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 
 function toProduct(id: string, data: FirebaseFirestore.DocumentData): Product {
   return {
@@ -248,6 +311,33 @@ export async function getHomeRandomNewProducts(
   return pickRandomTopSalesProducts(products, filter, filter.topSalesLimit ?? 30);
 }
 
+
+export async function getHomeRandomRecentAddedProducts(
+  filter: ProductListFilter & { lookbackDays?: number; candidateLimit?: number; topSalesLimit?: number },
+): Promise<Product[]> {
+  const db = getAdminDb();
+  const lookbackDays = Math.max(filter.lookbackDays ?? 3, 1);
+  const sinceDate = toJstIsoDate(addDays(new Date(), -(lookbackDays - 1)));
+  const candidateLimit = filter.candidateLimit ?? 300;
+
+  const snapshot = await db
+    .collection(PRODUCTS_COLLECTION)
+    .where("platform", "==", filter.platform)
+    .where("audience", "==", filter.audience)
+    .where("category", "==", filter.category)
+    .where("isActive", "==", true)
+    .where("releaseDate", ">=", sinceDate)
+    .orderBy("releaseDate", "desc")
+    .limit(queryLimitForFilter(filter, candidateLimit))
+    .get();
+
+  const products = snapshot.docs
+    .map((doc) => toProduct(doc.id, doc.data()))
+    .filter((product) => matchesProductListFilter(product, filter));
+
+  return pickRandomTopSalesProducts(products, filter, filter.topSalesLimit ?? 30).slice(0, filter.limitCount ?? 5);
+}
+
 export async function getHomeRandomSaleProducts(
   filter: ProductListFilter & { candidateLimit?: number; topSalesLimit?: number },
 ): Promise<Product[]> {
@@ -297,10 +387,54 @@ export async function getProductsByGenre(
   return needsPostFilter ? postFilterProducts(products, filter) : products;
 }
 
+type SellerProductFilter = ProductListFilter & { maxProducts?: number };
+
+type SellerFieldName = "seller.sellerId" | "seller.sellerName";
+
+async function getProductsBySellerField(
+  fieldName: SellerFieldName,
+  fieldValue: string,
+  filter: SellerProductFilter,
+  maxProducts?: number,
+): Promise<Product[]> {
+  let query: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> = getAdminDb()
+    .collection(PRODUCTS_COLLECTION)
+    .where("platform", "==", filter.platform)
+    .where("audience", "==", filter.audience)
+    .where("category", "==", filter.category)
+    .where("isActive", "==", true)
+    .where(fieldName, "==", fieldValue);
+
+  if (maxProducts) {
+    query = query.limit(maxProducts);
+  }
+
+  const snapshot = await query.get();
+  const products = snapshot.docs.map((doc) => toProduct(doc.id, doc.data()));
+  return shouldPostFilter(filter) ? products.filter((product) => matchesProductListFilter(product, filter)) : products;
+}
+
+async function getProductsBySellerKey(filter: SellerProductFilter & { sellerKey: string }): Promise<Product[]> {
+  const sellerKey = decodeURIComponent(filter.sellerKey).trim();
+  if (!sellerKey) return [];
+
+  const maxProducts = filter.maxProducts;
+  const [bySellerId, bySellerName] = await Promise.all([
+    getProductsBySellerField("seller.sellerId", sellerKey, filter, maxProducts),
+    getProductsBySellerField("seller.sellerName", sellerKey, filter, maxProducts),
+  ]);
+
+  const productById = new Map<string, Product>();
+  for (const product of [...bySellerId, ...bySellerName]) {
+    productById.set(product.productId, product);
+  }
+
+  return sortProductsBySales([...productById.values()]);
+}
+
 export async function getProductsBySameSeller(
   filter: ProductListFilter & { sellerId?: string; sellerName?: string; excludeProductId?: string },
 ): Promise<Product[]> {
-  const db = getAdminDb();
   const sellerId = filter.sellerId?.trim();
   const sellerName = filter.sellerName?.trim();
 
@@ -308,24 +442,20 @@ export async function getProductsBySameSeller(
     return [];
   }
 
-  let query: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> = db
-    .collection(PRODUCTS_COLLECTION)
-    .where("platform", "==", filter.platform)
-    .where("audience", "==", filter.audience)
-    .where("category", "==", filter.category)
-    .where("isActive", "==", true);
+  const products = sellerId
+    ? await getProductsBySellerField("seller.sellerId", sellerId, filter)
+    : await getProductsBySellerField("seller.sellerName", sellerName ?? "", filter);
 
-  query = sellerId
-    ? query.where("seller.sellerId", "==", sellerId)
-    : query.where("seller.sellerName", "==", sellerName);
-
-  const snapshot = await query.limit((filter.limitCount ?? 6) + 4).get();
-
-  return snapshot.docs
-    .map((doc) => toProduct(doc.id, doc.data()))
+  const relatedProducts = [...products]
     .filter((product) => product.productId !== filter.excludeProductId)
-    .sort((a, b) => (b.salesCount ?? 0) - (a.salesCount ?? 0))
-    .slice(0, filter.limitCount ?? 6);
+    .sort((a, b) => {
+      const releaseDateDiff = compareDateDesc(a.releaseDate, b.releaseDate);
+      if (releaseDateDiff !== 0) return releaseDateDiff;
+
+      return (b.salesCount ?? 0) - (a.salesCount ?? 0);
+    });
+
+  return filter.limitCount ? relatedProducts.slice(0, filter.limitCount) : relatedProducts;
 }
 
 export async function getProductById(
@@ -343,6 +473,100 @@ export async function getProductById(
   }
 
   return toProduct(snapshot.id, snapshot.data() ?? {});
+}
+
+
+function isoDateToKey(value: string): string | undefined {
+  const normalized = normalizeMetricDate(value);
+  return normalized?.replace(/-/g, "");
+}
+
+export async function getProductTrendPoints(productId: string, days = 365): Promise<ProductTrendPoint[]> {
+  const startDateKey = toJstDateKey(addDays(new Date(), -(Math.max(days, 1) - 1)));
+  const snapshot = await getAdminDb()
+    .collection(PRODUCTS_COLLECTION)
+    .doc(productId)
+    .collection("dailyMetrics")
+    .where("date", ">=", startDateKey)
+    .orderBy("date", "asc")
+    .get();
+
+  return snapshot.docs.flatMap((doc) => {
+    const metric = doc.data() as ProductDailyMetric;
+    const date = normalizeMetricDate(metric.date || doc.id);
+    const sales = getMetricSalesCount(metric);
+    const price = metric.priceCurrent ?? metric.priceOriginal ?? 0;
+
+    if (!date || sales === undefined || !isFiniteNumber(price)) {
+      return [];
+    }
+
+    return [{
+      date,
+      sales,
+      revenue: sales * price,
+      price,
+    } satisfies ProductTrendPoint];
+  });
+}
+
+export async function getAggregateTrendPointsForProducts(products: Product[], days = 365): Promise<ProductTrendPoint[]> {
+  if (products.length === 0) return [];
+
+  const startDateKey = toJstDateKey(addDays(new Date(), -(Math.max(days, 1) - 1)));
+  const trendByDate = new Map<string, { sales: number; revenue: number; priceSum: number; priceCount: number }>();
+
+  for (let index = 0; index < products.length; index += 20) {
+    const chunk = products.slice(index, index + 20);
+
+    await Promise.all(
+      chunk.map(async (product) => {
+        const snapshot = await getAdminDb()
+          .collection(PRODUCTS_COLLECTION)
+          .doc(product.productId)
+          .collection("dailyMetrics")
+          .where("date", ">=", startDateKey)
+          .orderBy("date", "asc")
+          .get();
+
+        for (const doc of snapshot.docs) {
+          const metric = doc.data() as ProductDailyMetric;
+          const date = normalizeMetricDate(metric.date || doc.id);
+          const sales = getMetricSalesCount(metric);
+          const price = metric.priceCurrent ?? metric.priceOriginal ?? product.priceCurrent ?? product.priceOriginal ?? 0;
+
+          if (!date || sales === undefined || !isFiniteNumber(price)) continue;
+
+          const current = trendByDate.get(date) ?? { sales: 0, revenue: 0, priceSum: 0, priceCount: 0 };
+          current.sales += sales;
+          current.revenue += sales * price;
+          current.priceSum += price;
+          current.priceCount += 1;
+          trendByDate.set(date, current);
+        }
+      }),
+    );
+  }
+
+  return Array.from(trendByDate.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, value]) => ({
+      date,
+      sales: value.sales,
+      revenue: value.revenue,
+      price: value.sales > 0
+        ? Math.round(value.revenue / value.sales)
+        : Math.round(value.priceSum / Math.max(value.priceCount, 1)),
+    } satisfies ProductTrendPoint));
+}
+
+export function hasRecentProductTrendData(points: ProductTrendPoint[], lookbackDays = 3): boolean {
+  const sinceDateKey = toJstDateKey(addDays(new Date(), -(Math.max(lookbackDays, 1) - 1)));
+
+  return points.some((point) => {
+    const dateKey = isoDateToKey(point.date);
+    return Boolean(dateKey && dateKey >= sinceDateKey && isFiniteNumber(point.sales));
+  });
 }
 
 async function getProductsByIds(productIds: string[]): Promise<Product[]> {
@@ -436,6 +660,177 @@ export async function getLatestRankingProducts(
 
   return postFilterProducts(rankedProducts, filter);
 }
+
+
+type WeeklyProductCandidate = {
+  product: Product;
+  weeklySalesCount: number;
+};
+
+async function getLatestRankingProductsByRank(
+  filter: ProductListFilter & { rankingType: RankingType; readLimit?: number },
+): Promise<Product[]> {
+  const db = getAdminDb();
+  const snapshotDocs = await db
+    .collection(RANKING_SNAPSHOTS_COLLECTION)
+    .where("platform", "==", filter.platform)
+    .where("audience", "==", filter.audience)
+    .where("category", "==", filter.category)
+    .where("rankingType", "==", filter.rankingType)
+    .orderBy("date", "desc")
+    .limit(1)
+    .get();
+
+  if (snapshotDocs.empty) {
+    return [];
+  }
+
+  const rankingSnapshot = {
+    ...(snapshotDocs.docs[0].data() as RankingSnapshot),
+    snapshotId: snapshotDocs.docs[0].id,
+  };
+
+  const itemDocs = await db
+    .collection(RANKING_SNAPSHOTS_COLLECTION)
+    .doc(rankingSnapshot.snapshotId)
+    .collection("items")
+    .orderBy("rank", "asc")
+    .limit(filter.readLimit ?? 120)
+    .get();
+
+  const productIds = itemDocs.docs.map((doc) => (doc.data() as RankingSnapshotItem).productId);
+  const products = await getProductsByIds(productIds);
+
+  return products.filter((product) => matchesProductListFilter(product, filter));
+}
+
+function getMetricSalesCount(metric: ProductDailyMetric): number | undefined {
+  if (isFiniteNumber(metric.dailySalesCount)) return Math.max(metric.dailySalesCount, 0);
+  if (isFiniteNumber(metric.periodSalesCount)) return Math.max(metric.periodSalesCount, 0);
+  return undefined;
+}
+
+async function getRecentSalesCount(productId: string, startDateKey: string): Promise<number> {
+  const snapshot = await getAdminDb()
+    .collection(PRODUCTS_COLLECTION)
+    .doc(productId)
+    .collection("dailyMetrics")
+    .where("date", ">=", startDateKey)
+    .get();
+
+  return snapshot.docs.reduce((sum, doc) => {
+    const sales = getMetricSalesCount(doc.data() as ProductDailyMetric);
+    return sum + (sales ?? 0);
+  }, 0);
+}
+
+function buildWeeklySellerSummaries(candidates: WeeklyProductCandidate[]): SellerSummary[] {
+  const groups = new Map<string, WeeklyProductCandidate[]>();
+
+  for (const candidate of candidates) {
+    const key = getSellerKey(candidate.product);
+    if (!key) continue;
+    const current = groups.get(key) ?? [];
+    current.push(candidate);
+    groups.set(key, current);
+  }
+
+  return Array.from(groups.entries()).map(([sellerKey, sellerProducts]) => {
+    const sortedByWeeklySales = [...sellerProducts].sort((a, b) => b.weeklySalesCount - a.weeklySalesCount);
+    const sortedByRelease = [...sellerProducts].sort((a, b) => compareDateDesc(a.product.releaseDate, b.product.releaseDate));
+    const topProduct = sortedByWeeklySales[0]?.product;
+    const latestProduct = sortedByRelease[0]?.product ?? topProduct;
+    const totalSalesCount = sellerProducts.reduce((sum, item) => sum + item.weeklySalesCount, 0);
+    const estimatedRevenue = sellerProducts.reduce(
+      (sum, item) => sum + item.weeklySalesCount * (item.product.priceCurrent ?? 0),
+      0,
+    );
+    const tagCount = new Map<string, number>();
+
+    for (const item of sellerProducts) {
+      for (const tag of (item.product.genres ?? []).filter(Boolean)) {
+        tagCount.set(tag, (tagCount.get(tag) ?? 0) + 1);
+      }
+    }
+
+    const tags = Array.from(tagCount.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja"))
+      .slice(0, 18)
+      .map(([name, count]) => ({ name, count }));
+
+    return {
+      sellerKey,
+      sellerId: topProduct?.seller?.sellerId,
+      sellerName: topProduct?.seller?.sellerName ?? sellerKey,
+      sellerUrl: topProduct?.seller?.sellerUrl,
+      sellerType: topProduct?.seller?.sellerType,
+      platform: topProduct?.platform ?? "dlsite",
+      audience: topProduct?.audience ?? "female",
+      category: topProduct?.category ?? "doujin",
+      productCount: sellerProducts.length,
+      totalSalesCount,
+      averageSalesCount: sellerProducts.length ? Math.round(totalSalesCount / sellerProducts.length) : 0,
+      estimatedRevenue,
+      averagePrice: totalSalesCount > 0 ? Math.round(estimatedRevenue / totalSalesCount) : undefined,
+      firstReleaseDate: [...sellerProducts]
+        .sort((a, b) => (a.product.releaseDate ?? "").localeCompare(b.product.releaseDate ?? ""))[0]
+        ?.product.releaseDate,
+      latestReleaseDate: latestProduct?.releaseDate,
+      newestProductTitle: latestProduct?.title,
+      topProduct,
+      latestProduct,
+      products: sortedByWeeklySales.map((item) => item.product),
+      tags,
+    } satisfies SellerSummary;
+  });
+}
+
+export async function getHomeRandomWeeklyCircleHighlights(
+  filter: ProductListFilter & { limitCount?: number; rankingReadLimit?: number; topCircleLimit?: number; lookbackDays?: number },
+): Promise<SellerSummary[]> {
+  const lookbackDays = Math.max(filter.lookbackDays ?? 7, 1);
+  const startDateKey = toJstDateKey(addDays(new Date(), -(lookbackDays - 1)));
+  const weeklyRankingProducts = await getLatestRankingProductsByRank({
+    ...filter,
+    rankingType: "weekly",
+    readLimit: filter.rankingReadLimit ?? 120,
+  });
+
+  if (weeklyRankingProducts.length === 0) {
+    return [];
+  }
+
+  const candidates = await Promise.all(
+    weeklyRankingProducts.map(async (product) => ({
+      product,
+      weeklySalesCount: await getRecentSalesCount(product.productId, startDateKey),
+    })),
+  );
+  const topCandidates = candidates
+    .filter((candidate) => getSellerKey(candidate.product))
+    .sort((a, b) => b.weeklySalesCount - a.weeklySalesCount)
+    .slice(0, filter.topCircleLimit ?? 30);
+  const randomizedKeys = new Set<string>();
+  const randomizedCandidates: WeeklyProductCandidate[] = [];
+
+  for (const candidate of shuffleProducts(topCandidates.map((item) => item.product))) {
+    const key = getSellerKey(candidate);
+    if (!key || randomizedKeys.has(key)) continue;
+    randomizedKeys.add(key);
+    randomizedCandidates.push(topCandidates.find((item) => item.product.productId === candidate.productId)!);
+    if (randomizedCandidates.length >= (filter.limitCount ?? 10)) break;
+  }
+
+  const keyOrder = new Map([...randomizedKeys].map((key, index) => [key, index]));
+
+  return buildWeeklySellerSummaries(
+    topCandidates.filter((candidate) => {
+      const key = getSellerKey(candidate.product);
+      return key ? randomizedKeys.has(key) : false;
+    }),
+  ).sort((a, b) => (keyOrder.get(a.sellerKey) ?? 9999) - (keyOrder.get(b.sellerKey) ?? 9999));
+}
+
 
 
 function buildGenreId(label: string, product: Product, index: number): string {
@@ -632,11 +1027,11 @@ export async function getSellerSummaries(
 export async function getSellerSummaryByKey(
   filter: ProductListFilter & { sellerKey: string; maxProducts?: number },
 ): Promise<SellerSummary | null> {
-  const products = await getProductsForSellerAggregation(filter);
+  const products = await getProductsBySellerKey(filter);
   const summaries = buildSellerSummaries(products);
   const decodedKey = decodeURIComponent(filter.sellerKey).trim();
 
-  return summaries.find((summary) => summary.sellerKey === decodedKey || summary.sellerName === decodedKey) ?? null;
+  return summaries.find((summary) => summary.sellerKey === decodedKey || summary.sellerName === decodedKey) ?? summaries[0] ?? null;
 }
 
 
@@ -741,6 +1136,7 @@ export async function getHomeDashboardStats(
 
 export type SearchProductsFilter = ProductListFilter & {
   keyword: string;
+  searchTarget?: SearchTarget;
   searchToken?: string;
 };
 
@@ -793,7 +1189,29 @@ function splitDirectSearchTerms(value: string): string[] {
     .filter(Boolean);
 }
 
-function getCandidateTextValues(candidate: SearchProductCandidate): string[] {
+function getCandidateTextValues(candidate: SearchProductCandidate, searchTarget: SearchTarget = "all"): string[] {
+  if (searchTarget === "title") {
+    return [candidate.title].filter((value): value is string => Boolean(value));
+  }
+
+  if (searchTarget === "seller") {
+    return [candidate.seller?.sellerName].filter((value): value is string => Boolean(value));
+  }
+
+  if (searchTarget === "genre") {
+    return [
+      candidate.workType,
+      candidate.workTypeLabel,
+      candidate.contentType,
+      ...(candidate.contentTypes ?? []),
+      ...(candidate.contentTypeIds ?? []),
+      ...(candidate.genres ?? []),
+      ...(candidate.tags ?? []),
+      ...(candidate.genreIds ?? []),
+      ...(candidate.tagIds ?? []),
+    ].filter((value): value is string => Boolean(value));
+  }
+
   return [
     candidate.sourceProductId,
     candidate.productId,
@@ -808,11 +1226,11 @@ function getCandidateTextValues(candidate: SearchProductCandidate): string[] {
   ].filter((value): value is string => Boolean(value));
 }
 
-function candidateMatchesKeyword(candidate: SearchProductCandidate, keyword: string): boolean {
+function candidateMatchesKeyword(candidate: SearchProductCandidate, keyword: string, searchTarget: SearchTarget = "all"): boolean {
   const terms = splitDirectSearchTerms(keyword);
   if (terms.length === 0) return false;
 
-  const values = getCandidateTextValues(candidate);
+  const values = getCandidateTextValues(candidate, searchTarget);
   const normalizedValues = values.map((value) => normalizeDirectSearchText(value));
   const compactedValues = values.map((value) => compactDirectSearchText(value));
 
@@ -842,10 +1260,10 @@ function candidateHasContentType(candidate: SearchProductCandidate, contentType:
 function candidateMatchesSearchFilter(candidate: SearchProductCandidate, filter: SearchProductsFilter): boolean {
   if (filter.workType && normalizeStoredWorkType(candidate as Product) !== filter.workType) return false;
   if (filter.contentType && !candidateHasContentType(candidate, filter.contentType)) return false;
-  return candidateMatchesKeyword(candidate, filter.keyword);
+  return candidateMatchesKeyword(candidate, filter.keyword, filter.searchTarget);
 }
 
-function getSearchCandidateScore(candidate: SearchProductCandidate, keyword: string): number {
+function getSearchCandidateScore(candidate: SearchProductCandidate, keyword: string, searchTarget: SearchTarget = "all"): number {
   const normalizedKeyword = normalizeDirectSearchText(keyword);
   const compactedKeyword = compactDirectSearchText(keyword);
   const title = normalizeDirectSearchText(candidate.title);
@@ -859,14 +1277,25 @@ function getSearchCandidateScore(candidate: SearchProductCandidate, keyword: str
   const sourceProductId = normalizeDirectSearchText(candidate.sourceProductId);
 
   let score = 0;
-  if (sourceProductId === normalizedKeyword) score += 20000;
-  if (title === normalizedKeyword || titleCompact === compactedKeyword) score += 12000;
-  if (title.includes(normalizedKeyword) || titleCompact.includes(compactedKeyword)) score += 8000;
-  if (sellerName === normalizedKeyword || sellerCompact === compactedKeyword) score += 7000;
-  if (sellerName.includes(normalizedKeyword) || sellerCompact.includes(compactedKeyword)) score += 5000;
-  if (genres.some((genre) => genre === normalizedKeyword) || genreCompacts.some((genre) => genre === compactedKeyword)) score += 4000;
-  if (genres.some((genre) => genre.includes(normalizedKeyword)) || genreCompacts.some((genre) => genre.includes(compactedKeyword))) score += 3000;
-  if (tags.some((tag) => tag.includes(normalizedKeyword)) || tagCompacts.some((tag) => tag.includes(compactedKeyword))) score += 1500;
+  const useAll = searchTarget === "all";
+
+  if (useAll && sourceProductId === normalizedKeyword) score += 20000;
+
+  if (useAll || searchTarget === "title") {
+    if (title === normalizedKeyword || titleCompact === compactedKeyword) score += 12000;
+    if (title.includes(normalizedKeyword) || titleCompact.includes(compactedKeyword)) score += 8000;
+  }
+
+  if (useAll || searchTarget === "seller") {
+    if (sellerName === normalizedKeyword || sellerCompact === compactedKeyword) score += 7000;
+    if (sellerName.includes(normalizedKeyword) || sellerCompact.includes(compactedKeyword)) score += 5000;
+  }
+
+  if (useAll || searchTarget === "genre") {
+    if (genres.some((genre) => genre === normalizedKeyword) || genreCompacts.some((genre) => genre === compactedKeyword)) score += 4000;
+    if (genres.some((genre) => genre.includes(normalizedKeyword)) || genreCompacts.some((genre) => genre.includes(compactedKeyword))) score += 3000;
+    if (tags.some((tag) => tag.includes(normalizedKeyword)) || tagCompacts.some((tag) => tag.includes(compactedKeyword))) score += 1500;
+  }
 
   score += Math.min(candidate.salesCount ?? 0, 100000) / 100;
   score += (candidate.ratingAverage ?? candidate.rating ?? 0) * 10;
@@ -874,9 +1303,9 @@ function getSearchCandidateScore(candidate: SearchProductCandidate, keyword: str
   return score;
 }
 
-function sortSearchCandidates(candidates: SearchProductCandidate[], keyword: string): SearchProductCandidate[] {
+function sortSearchCandidates(candidates: SearchProductCandidate[], keyword: string, searchTarget: SearchTarget = "all"): SearchProductCandidate[] {
   return [...candidates].sort((a, b) => {
-    const scoreDiff = getSearchCandidateScore(b, keyword) - getSearchCandidateScore(a, keyword);
+    const scoreDiff = getSearchCandidateScore(b, keyword, searchTarget) - getSearchCandidateScore(a, keyword, searchTarget);
     if (scoreDiff !== 0) return scoreDiff;
 
     const salesDiff = (b.salesCount ?? 0) - (a.salesCount ?? 0);
@@ -931,6 +1360,7 @@ export async function searchProductsWithTotal(filter: SearchProductsFilter): Pro
   const matchedCandidates = sortSearchCandidates(
     candidates.filter((candidate) => candidateMatchesSearchFilter(candidate, filter)),
     filter.keyword,
+    filter.searchTarget,
   );
 
   const offset = filter.offsetCount ?? 0;

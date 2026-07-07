@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { ProductTrendPoint } from "@/lib/types";
 
 const RANGE_OPTIONS = [
   { value: "30d", label: "過去30日", days: 30 },
@@ -32,6 +33,7 @@ type WorkTrendChartsProps = {
   priceCurrent?: number | null;
   priceOriginal?: number | null;
   salesCount?: number | null;
+  trendPoints?: ProductTrendPoint[];
 };
 
 const SALES_REVENUE_WIDTH = 900;
@@ -221,6 +223,75 @@ function createDummyTrendData(range: RangeValue, priceCurrent?: number | null, p
   return isMonthlyRange(range) ? aggregateMonthlyTrendData(dailyData) : dailyData;
 }
 
+function parseTrendDate(value: string): Date | undefined {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return undefined;
+  return new Date(year, month - 1, day);
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function endOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function addMonths(date: Date, months: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function getRangeBounds(range: RangeValue): { start: Date; end: Date } {
+  const today = new Date();
+
+  switch (range) {
+    case "thisMonth": {
+      return { start: startOfMonth(today), end: today };
+    }
+    case "lastMonth": {
+      const target = addMonths(today, -1);
+      return { start: startOfMonth(target), end: endOfMonth(target) };
+    }
+    case "twoMonthsAgo": {
+      const target = addMonths(today, -2);
+      return { start: startOfMonth(target), end: endOfMonth(target) };
+    }
+    case "halfYear":
+      return { start: addDays(today, -(getRangeDays(range) - 1)), end: today };
+    case "year":
+      return { start: addDays(today, -(getRangeDays(range) - 1)), end: today };
+    case "30d":
+    default:
+      return { start: addDays(today, -(getRangeDays(range) - 1)), end: today };
+  }
+}
+
+function createActualTrendData(points: ProductTrendPoint[], range: RangeValue): TrendPoint[] {
+  const { start, end } = getRangeBounds(range);
+  const dailyData = points
+    .map((point) => ({ point, dateValue: parseTrendDate(point.date) }))
+    .filter((item): item is { point: ProductTrendPoint; dateValue: Date } => {
+      if (!item.dateValue) return false;
+      return item.dateValue >= start && item.dateValue <= end;
+    })
+    .sort((a, b) => a.dateValue.getTime() - b.dateValue.getTime())
+    .map(({ point, dateValue }) => ({
+      date: point.date,
+      label: formatDateLabel(dateValue),
+      sales: point.sales,
+      revenue: point.revenue,
+      price: point.price,
+    }));
+
+  return isMonthlyRange(range) ? aggregateMonthlyTrendData(dailyData) : dailyData;
+}
+
 function AxisGrid({ width, leftTicks, rightTicks }: { width: number; leftTicks: number[]; rightTicks?: number[] }) {
   const inner = getInnerSize(width);
 
@@ -405,11 +476,14 @@ function PriceChart({ data }: { data: TrendPoint[] }) {
   );
 }
 
-export function WorkTrendCharts({ priceCurrent, priceOriginal, salesCount }: WorkTrendChartsProps) {
+export function WorkTrendCharts({ priceCurrent, priceOriginal, salesCount, trendPoints }: WorkTrendChartsProps) {
   const [range, setRange] = useState<RangeValue>("30d");
+  const hasActualTrendPoints = trendPoints !== undefined;
   const data = useMemo(
-    () => createDummyTrendData(range, priceCurrent, priceOriginal, salesCount),
-    [range, priceCurrent, priceOriginal, salesCount],
+    () => hasActualTrendPoints
+      ? createActualTrendData(trendPoints, range)
+      : createDummyTrendData(range, priceCurrent, priceOriginal, salesCount),
+    [hasActualTrendPoints, range, priceCurrent, priceOriginal, salesCount, trendPoints],
   );
 
   const totalSales = data.reduce((sum, point) => sum + point.sales, 0);
@@ -421,7 +495,7 @@ export function WorkTrendCharts({ priceCurrent, priceOriginal, salesCount }: Wor
       <div className="workTrendHeader">
         <div>
           <h2>販売数・売上額</h2>
-          <p>過去30日〜先々月は日次、半年・1年は月ごとの累計で表示しています。現在はダミーデータです。</p>
+          <p>{hasActualTrendPoints ? "DLsite取得データを基に表示しています。半年・1年は月ごとの累計です。" : "過去30日〜先々月は日次、半年・1年は月ごとの累計で表示しています。現在はダミーデータです。"}</p>
         </div>
         <label className="workTrendRange">
           <span>表示範囲</span>
@@ -444,7 +518,7 @@ export function WorkTrendCharts({ priceCurrent, priceOriginal, salesCount }: Wor
         <span><i className="legendSales" />販売数</span>
         <span><i className="legendRevenue" />推定売上額</span>
       </div>
-      <p className="workChartNote">※税込 / 欠けたデータは中間値で自動補完</p>
+      <p className="workChartNote">{hasActualTrendPoints ? "※税込 / 取得できた日次データのみ表示" : "※税込 / 欠けたデータは中間値で自動補完"}</p>
 
       <div className="workTrendHeader workTrendHeader--sub">
         <div>

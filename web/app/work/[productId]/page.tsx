@@ -6,7 +6,7 @@ import { WorkTrendCharts } from "@/components/WorkTrendCharts";
 import { ProductGrid } from "@/components/ProductGrid";
 import { PriceLabel } from "@/components/PriceLabel";
 import { PlatformBadge } from "@/components/PlatformBadge";
-import { getProductById, getProductsBySameSeller } from "@/lib/firebase/products";
+import { getProductById, getProductTrendPoints, getProductsBySameSeller, hasRecentProductTrendData } from "@/lib/firebase/products";
 import { formatDate, formatNumber, formatRating } from "@/lib/format";
 import { getSegmentPath } from "@/lib/siteSegments";
 
@@ -91,15 +91,18 @@ export default async function WorkDetailPage({ params }: PageProps) {
   const workTypeHref = buildWorkTypeHref(segmentPath, product.workType);
   const sellerHref = buildSellerHref(segmentPath, product.seller?.sellerId, product.seller?.sellerName);
   const dailyRank = getDailyRank(product);
-  const sameSellerProducts = await getProductsBySameSeller({
-    platform: product.platform,
-    audience: product.audience,
-    category: product.category,
-    sellerId: product.seller?.sellerId,
-    sellerName: product.seller?.sellerName,
-    excludeProductId: product.productId,
-    limitCount: 6,
-  });
+  const [sameSellerProducts, trendPoints] = await Promise.all([
+    getProductsBySameSeller({
+      platform: product.platform,
+      audience: product.audience,
+      category: product.category,
+      sellerId: product.seller?.sellerId,
+      sellerName: product.seller?.sellerName,
+      excludeProductId: product.productId,
+    }),
+    getProductTrendPoints(product.productId),
+  ]);
+  const showTrendCharts = hasRecentProductTrendData(trendPoints);
 
   return (
     <div className="detailPage">
@@ -177,11 +180,14 @@ export default async function WorkDetailPage({ params }: PageProps) {
       </div>
 
       <article className="detailBelow">
-        <WorkTrendCharts
-          priceCurrent={product.priceCurrent}
-          priceOriginal={product.priceOriginal}
-          salesCount={product.salesCount}
-        />
+        {showTrendCharts ? (
+          <WorkTrendCharts
+            priceCurrent={product.priceCurrent}
+            priceOriginal={product.priceOriginal}
+            salesCount={product.salesCount}
+            trendPoints={trendPoints}
+          />
+        ) : null}
 
         {sameSellerProducts.length > 0 ? (
           <section className="detailSection sameSellerSection">
@@ -190,15 +196,6 @@ export default async function WorkDetailPage({ params }: PageProps) {
           </section>
         ) : null}
 
-        <section className="detailSection detailSection--muted">
-          <h2>管理情報</h2>
-          <dl className="definitionList">
-            <div><dt>productId</dt><dd>{product.productId}</dd></div>
-            <div><dt>sourceProductId</dt><dd>{product.sourceProductId}</dd></div>
-            <div><dt>affiliateProvider</dt><dd>{product.affiliateProvider}</dd></div>
-            <div><dt>fetchStatus</dt><dd>{product.fetchStatus}</dd></div>
-          </dl>
-        </section>
       </article>
     </div>
   );

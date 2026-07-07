@@ -4,6 +4,7 @@ import { PageSizeSelect } from "@/components/PageSizeSelect";
 import { ListPagination } from "@/components/ListPagination";
 import { ListPageInfo } from "@/components/ListPageInfo";
 import { WorkTypeTabs } from "@/components/WorkTypeTabs";
+import { SearchPageForm } from "@/components/SearchPageForm";
 import { SearchIcon } from "@/components/icons/SiteIcons";
 import { searchProductsWithTotal } from "@/lib/firebase/products";
 import { getSegment } from "@/lib/siteSegments";
@@ -11,6 +12,7 @@ import { contentTypeForFilter, contentTypeParamForScope, getContentScopeLabel, p
 import { parsePageNumber } from "@/lib/pageSize";
 import { getWorkTypeLabel, parseWorkType } from "@/lib/workTypes";
 import { normalizeSearchText } from "@/lib/search";
+import { getSearchTargetLabel, parseSearchTarget, searchTargetParamForScope } from "@/lib/searchTarget";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +48,9 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const pageNumber = parsePageNumber(query.page);
   const offsetCount = (pageNumber - 1) * limitCount;
   const workType = parseWorkType(query.workType);
+  const searchTarget = parseSearchTarget(query.searchTarget);
+  const searchTargetParam = searchTargetParamForScope(searchTarget);
+  const searchTargetLabel = getSearchTargetLabel(searchTarget);
   const contentScope = parseContentScope(query.contentType);
   const contentType = contentTypeForFilter(contentScope);
   const contentTypeParam = contentTypeParamForScope(contentScope);
@@ -61,6 +66,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         offsetCount,
         workType,
         contentType,
+        searchTarget,
       }
     : undefined;
 
@@ -87,23 +93,27 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               contentType: contentTypeParam,
               limit: String(limitCount),
               page: "1",
+              searchTarget: searchTargetParam,
             }}
           />
         </SectionHeader>
 
-        <form className="searchPageForm" action="/search" method="get" role="search">
-          <input name="q" aria-label="検索キーワード" placeholder="作品名・サークル名・ジャンルで検索" defaultValue={keyword} />
-          {contentTypeParam ? <input type="hidden" name="contentType" value={contentTypeParam} /> : null}
-          {workType ? <input type="hidden" name="workType" value={workType} /> : null}
-          <input type="hidden" name="limit" value={limitCount} />
-          <button type="submit" aria-label="検索する"><SearchIcon /></button>
-        </form>
+        <SearchPageForm
+          keyword={keyword}
+          searchTarget={searchTarget}
+          contentTypeParam={contentTypeParam}
+          workType={workType}
+          limitCount={limitCount}
+        />
 
         {hasSearched ? (
           <>
             <ListPageInfo
               title="検索条件に合う作品を表示しています"
-              description="作品名・サークル名・ジャンル・タグ・RJ番号を対象に直接部分一致で検索しています。"
+              description={searchTarget === "all"
+                ? "作品名・サークル名・ジャンル・タグ・RJ番号を対象に直接部分一致で検索しています。"
+                : `${searchTargetLabel}を対象に直接部分一致で検索しています。`
+              }
               items={[
                 { label: "キーワード", value: `「${keyword}」` },
                 { label: "ヒット件数", value: `${formatNumber(totalCount)}件` },

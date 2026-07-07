@@ -41,7 +41,7 @@ export function Footer() {
             <LogoIcon />
             <span className="brand__text"><strong>Doujin Info</strong><small>同人インフォ</small></span>
           </Link>
-          <p>女性向け同人作品の情報を、データで分かりやすく。あなたの“好き”をもっと見つけやすく。</p>
+          <p><span>女性向け同人作品の情報を、データで分かりやすく。</span><span>あなたの“好き”をもっと見つけやすく。</span></p>
         </div>
         {footerGroups.map((group) => (
           <div className="footerLinks" key={group.title}>

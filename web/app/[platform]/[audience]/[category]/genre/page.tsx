@@ -95,7 +95,7 @@ export default async function GenreRankingPage({ params, searchParams }: PagePro
   const visibleRange = items.length ? `${offsetCount + 1}〜${offsetCount + items.length}件` : "0件";
 
   return (
-    <div className="listPage listPage--wide">
+    <div className="listPage listPage--wide listPage--mobileGenreList">
       <section className="contentSection listSection genreRankingSection">
         <SectionHeader title="ジャンルランキング" description={`${segment.label}で使われているジャンル`} icon="♟">
           <div className="listHeaderFilters listHeaderFilters--ranking">

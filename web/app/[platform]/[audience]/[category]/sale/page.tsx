@@ -62,7 +62,7 @@ export default async function SalePage({ params, searchParams }: PageProps) {
   const visibleRange = products.length ? `${offsetCount + 1}〜${offsetCount + products.length}件` : "0件";
 
   return (
-    <div className="listPage listPage--wide">
+    <div className="listPage listPage--wide listPage--mobileProductList">
       <section className="contentSection listSection">
         <SectionHeader title="セール・値引き中" description="割引中の作品" icon="◆">
           <WorkTypeTabs

@@ -240,7 +240,7 @@ export function HomeDashboard({
           <HomeStatsPanel stats={stats} segment={segment} contentTypeParam={contentTypeParam} />
           <DashboardSidebar popularGenres={popularGenres} recentProducts={recentProducts} segment={segment} contentTypeParam={contentTypeParam} />
         </div>
-        <section className="contentSection railOnlySection dashboardFullWidthSection">
+        <section className="contentSection railOnlySection dashboardFullWidthSection dashboardCategorySection">
           <SectionHeader title="カテゴリから探す" href={buildFilterHref(`${segment.path}/ranking`, {}, { contentType: contentTypeParam })} icon="▤" />
           <ScrollRail ariaLabel="カテゴリ一覧">
             {popularCategories.length ? popularCategories.map((category, index) => (
@@ -257,7 +257,7 @@ export function HomeDashboard({
           </ScrollRail>
         </section>
 
-        <section className="contentSection railOnlySection dashboardFullWidthSection">
+        <section className="contentSection railOnlySection dashboardFullWidthSection dashboardCircleSection">
           <SectionHeader title="注目サークル" href={buildFilterHref(`${segment.path}/circle`, {}, { contentType: contentTypeParam })} icon={<CircleHighlightSectionIcon />} />
           <ScrollRail ariaLabel="注目サークル一覧">
             {circleHighlights.length ? circleHighlights.slice(0, 10).map((circle) => (

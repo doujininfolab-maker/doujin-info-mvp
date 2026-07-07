@@ -3791,6 +3791,18 @@ img {
 }
 
 @media (max-width: 760px) {
+  .staticPage {
+    width: 100%;
+    padding: 24px 0 44px;
+  }
+
+  .staticPage__card {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 24px 22px 36px;
+  }
+
   .staticPage__grid {
     grid-template-columns: 1fr;
   }
@@ -3966,6 +3978,10 @@ img {
 
 .productCard__type {
   text-decoration: none;
+}
+
+.productCard__type--media {
+  display: none;
 }
 
 .productCard__type:hover,
@@ -4648,5 +4664,860 @@ img {
 
   .listPageInfo__items {
     grid-template-columns: 1fr;
+  }
+}
+
+/* v54: mobile-only TOP layout: maximize width, reorder sections, and separate header links from tabs. */
+@media (max-width: 760px) {
+  .dashboardPage {
+    width: 100%;
+    padding-top: 10px;
+  }
+
+  .dashboardPage .dashboardLayout {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .dashboardPage .mainColumn {
+    order: 1;
+    gap: 12px;
+  }
+
+  .dashboardPage .dashboardSideStack {
+    order: 2;
+    gap: 12px;
+  }
+
+  .dashboardPage .dashboardCategorySection {
+    order: 3;
+  }
+
+  .dashboardPage .dashboardCircleSection {
+    order: 4;
+  }
+
+  .dashboardPage .contentSection,
+  .dashboardPage .sidebarCard {
+    padding: 14px 12px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .dashboardPage .sideMetricsPanel {
+    padding: 8px 12px 14px;
+  }
+
+  .dashboardPage .sectionHeader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 12px;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .dashboardPage .sectionHeader > div:first-child {
+    grid-column: 1;
+    min-width: 0;
+  }
+
+  .dashboardPage .sectionHeader h2 {
+    white-space: normal;
+  }
+
+  .dashboardPage .sectionHeader__aside {
+    display: contents;
+  }
+
+  .dashboardPage .sectionHeader__aside > a {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    color: var(--purple-strong);
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .dashboardPage .homeSectionControls {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    justify-items: stretch;
+  }
+
+  .dashboardPage .homeSectionControls--ranking,
+  .dashboardPage .homeSectionControls--new {
+    width: 100%;
+  }
+
+  .dashboardPage .homeSectionControls .filterTabs,
+  .dashboardPage .homeSectionControls .rankingModeTabs {
+    width: 100%;
+    max-width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+  }
+
+  .dashboardPage .scrollRail {
+    padding-left: 12px;
+    padding-right: 12px;
+    scroll-padding-inline: 12px;
+  }
+
+  .dashboardPage .scrollRailWrap::after {
+    width: 24px;
+    background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255, 250, 253, 0.94));
+  }
+
+  .dashboardPage .railButton--left {
+    left: 2px;
+  }
+
+  .dashboardPage .railButton--right {
+    right: 2px;
+  }
+}
+
+/* v55: mobile-only TOP follow-up fixes: place audience badge in header, keep rails scrollable, and move stats below circle. */
+@media (max-width: 760px) {
+  .siteHeader__inner {
+    position: relative;
+  }
+
+  .siteHeader .headerSwitches .toggleGroup--audience {
+    position: absolute;
+    top: 16px;
+    right: 0;
+    z-index: 2;
+    margin: 0;
+  }
+
+  .siteHeader .headerSwitches .toggleGroup--audience .toggleGroup__item {
+    min-width: 96px;
+  }
+
+  .dashboardPage .dashboardSideStack {
+    display: contents;
+  }
+
+  .dashboardPage .dashboardSideStack .dashboardSidebar {
+    order: 2;
+    width: 100%;
+  }
+
+  .dashboardPage .dashboardCategorySection {
+    order: 3;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboardPage .dashboardCircleSection {
+    order: 4;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboardPage .sideMetricsPanel {
+    order: 5;
+    width: 100%;
+    min-width: 0;
+    padding: 8px 12px 14px;
+  }
+
+  .dashboardPage .dashboardFullWidthSection {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboardPage .dashboardFullWidthSection .scrollRailWrap {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboardPage .dashboardFullWidthSection .scrollRail {
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 48px;
+    scroll-padding-right: 48px;
+  }
+
+  .dashboardPage .dashboardFullWidthSection .railButton--right {
+    right: 8px;
+  }
+}
+
+/* v56: mobile-only ranking list layout: remove outer frame, keep filters, and place rank metrics beside image. */
+@media (max-width: 760px) {
+  .listPage--ranking {
+    width: 100%;
+    padding-top: 0;
+  }
+
+  .listPage--ranking .listSection {
+    padding: 14px 0 18px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .listPage--ranking .sectionHeader,
+  .listPage--ranking .listToolbar,
+  .listPage--ranking .listSection > .listPagination {
+    padding-inline: 14px;
+  }
+
+  .listPage--ranking .sectionHeader {
+    display: block;
+  }
+
+  .listPage--ranking .sectionHeader__aside {
+    display: block;
+    width: calc(100% + 28px);
+    max-width: none;
+    margin: 12px -14px 0;
+  }
+
+  .listPage--ranking .listHeaderFilters {
+    width: 100%;
+    justify-items: stretch;
+    gap: 10px;
+  }
+
+  .listPage--ranking .listHeaderFilters .rankingModeTabs,
+  .listPage--ranking .listHeaderFilters .filterTabs {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    padding-bottom: 4px;
+    border-left: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .listPage--ranking .listHeaderFilters .rankingModeTabs a {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .listPage--ranking .listHeaderFilters .filterTabs a {
+    flex: 0 0 auto;
+    min-width: 92px;
+    padding-inline: 14px;
+  }
+
+  .listPage--ranking .listPageInfo {
+    display: none;
+  }
+
+  .listPage--ranking .listToolbar {
+    display: grid;
+    grid-template-columns: minmax(0, auto) 1fr;
+    justify-content: stretch;
+    gap: 10px;
+  }
+
+  .listPage--ranking .listToolbar .listPagination {
+    justify-content: flex-end;
+  }
+
+  .listPage--ranking .productGrid--list {
+    padding-inline: 0;
+  }
+
+  .listPage--ranking .productCard--list {
+    grid-template-columns: 148px minmax(0, 1fr);
+    grid-template-areas:
+      "rank body"
+      "image body"
+      "type body";
+    column-gap: 12px;
+    row-gap: 0;
+    padding: 14px;
+  }
+
+  .listPage--ranking .productCard--list .productCard__imageLink {
+    grid-area: image;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    align-self: start;
+  }
+
+  .listPage--ranking .productCard--list .productCard__body {
+    grid-area: body;
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    align-content: start;
+    padding: 0;
+  }
+
+  .listPage--ranking .productCard--list .productCard__type--body {
+    display: none;
+  }
+
+  .listPage--ranking .productCard--list .productCard__type--media {
+    grid-area: type;
+    display: inline-flex;
+    width: 100%;
+    min-height: 25px;
+    justify-content: center;
+    margin: 0;
+    padding: 0 6px;
+  }
+
+  .listPage--ranking .productCard--list .listRankBadge {
+    grid-area: rank;
+    grid-column: auto;
+    align-self: start;
+    justify-self: stretch;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .listPage--ranking .productCard--list .productCard__title {
+    -webkit-line-clamp: 2;
+    font-size: 14px;
+    line-height: 1.42;
+  }
+
+  .listPage--ranking .productCard--list .productCard__seller {
+    margin-top: 6px;
+  }
+
+  .listPage--ranking .productCard--list .priceLine {
+    margin-top: 8px;
+  }
+
+  .listPage--ranking .productCard--list .productCard__meta {
+    margin-top: 8px;
+  }
+
+  .listPage--ranking .productCard--list .tagRow {
+    display: flex;
+    gap: 4px;
+    overflow: hidden;
+    max-height: 50px;
+  }
+
+  .listPage--ranking .productCard--list .tagRow a,
+  .listPage--ranking .productCard--list .tagRow span {
+    padding-inline: 6px;
+  }
+
+  .listPage--ranking .listRankBadge--sales {
+    grid-template-columns: 25px minmax(0, 1fr);
+    column-gap: 5px;
+    min-height: 28px;
+    padding: 4px 6px;
+    border-radius: 2px;
+  }
+
+  .listPage--ranking .listRankBadge__rank {
+    padding-right: 5px;
+  }
+
+  .listPage--ranking .listRankBadge__rank span {
+    font-size: 10px;
+  }
+
+  .listPage--ranking .listRankBadge__rank strong {
+    font-size: 16px;
+  }
+
+  .listPage--ranking .listRankBadge__metrics {
+    min-width: 0;
+  }
+
+  .listPage--ranking .listRankBadge__metrics strong,
+  .listPage--ranking .listRankBadge__metrics small {
+    overflow: hidden;
+    max-width: 100%;
+    text-align: right;
+    text-overflow: ellipsis;
+  }
+
+  .listPage--ranking .listRankBadge__metrics strong {
+    font-size: 12px;
+  }
+
+  .listPage--ranking .listRankBadge__metrics small {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 380px) {
+  .listPage--ranking .productCard--list {
+    grid-template-columns: 134px minmax(0, 1fr);
+    column-gap: 10px;
+    row-gap: 0;
+    padding-inline: 12px;
+  }
+
+  .listPage--ranking .listRankBadge--sales {
+    grid-template-columns: 22px minmax(0, 1fr);
+    padding-inline: 5px;
+  }
+
+  .listPage--ranking .listRankBadge__metrics strong {
+    font-size: 11px;
+  }
+
+  .listPage--ranking .listRankBadge__metrics small {
+    font-size: 9px;
+  }
+}
+
+/* v59: mobile header switch placement and compact ranking media stack. */
+.cornerBadge {
+  top: 0;
+  left: 0;
+}
+
+.productCard .rankBadge + .cornerBadge--sale {
+  right: 0;
+}
+
+.productCard--list .cornerBadge {
+  top: 0;
+  left: 0;
+}
+
+@media (max-width: 760px) {
+  .siteHeader .headerSwitches {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 6px 8px;
+    width: auto;
+    justify-content: end;
+    justify-items: end;
+    overflow: visible;
+  }
+
+  .siteHeader .headerSwitches .toggleGroup--audience {
+    position: static;
+    grid-column: 1 / -1;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .siteHeader .headerSwitches > .toggleGroup:not(.toggleGroup--audience) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .siteHeader .headerSwitches .contentScopeSwitch {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .siteHeader .searchBox {
+    margin-top: 18px;
+  }
+
+  .listPage--ranking .productCard--list {
+    row-gap: 0;
+  }
+
+  .listPage--ranking .productCard--list .listRankBadge {
+    margin: 0;
+    border-radius: 2px 2px 0 0;
+    box-shadow: none;
+  }
+
+  .listPage--ranking .productCard--list .productCard__imageLink {
+    margin: 0;
+    border-top: 0;
+    border-bottom: 0;
+    border-radius: 0;
+  }
+
+  .listPage--ranking .productCard--list .productCard__type--media {
+    margin: 0;
+    border-radius: 0 0 var(--radius-xs) var(--radius-xs);
+  }
+}
+
+/* v60: mobile header restore, footer copy wrap, and list-page mobile format expansion. */
+.footerBrand p {
+  max-width: 340px;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
+
+.footerBrand p span {
+  display: block;
+}
+
+@media (max-width: 760px) {
+  .siteHeader .headerSwitches {
+    position: absolute;
+    top: 70px;
+    right: 0;
+    z-index: 3;
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    align-items: center;
+    justify-content: flex-end;
+    justify-items: normal;
+    gap: 8px;
+    grid-template-columns: none;
+    overflow: visible;
+  }
+
+  .siteHeader .headerSwitches .toggleGroup--audience {
+    position: absolute;
+    top: -54px;
+    right: 0;
+    grid-column: auto;
+    grid-row: auto;
+    justify-self: auto;
+  }
+
+  .siteHeader .headerSwitches > .toggleGroup:not(.toggleGroup--audience),
+  .siteHeader .headerSwitches .contentScopeSwitch {
+    position: static;
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .siteHeader .searchBox {
+    margin-top: 74px;
+  }
+
+  .listPage--mobileProductList,
+  .listPage--mobileSellerList,
+  .listPage--mobileGenreList {
+    width: 100%;
+    padding-top: 0;
+  }
+
+  .listPage--mobileProductList .listSection,
+  .listPage--mobileSellerList .listSection,
+  .listPage--mobileGenreList .listSection {
+    padding: 14px 0 18px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .listPage--mobileProductList .sectionHeader,
+  .listPage--mobileProductList .listToolbar,
+  .listPage--mobileProductList .listSection > .listPagination,
+  .listPage--mobileSellerList .sectionHeader,
+  .listPage--mobileSellerList .listToolbar,
+  .listPage--mobileSellerList .listSection > .listPagination,
+  .listPage--mobileGenreList .sectionHeader,
+  .listPage--mobileGenreList .listToolbar,
+  .listPage--mobileGenreList .listSection > .listPagination {
+    padding-inline: 14px;
+  }
+
+  .listPage--mobileProductList .sectionHeader,
+  .listPage--mobileSellerList .sectionHeader,
+  .listPage--mobileGenreList .sectionHeader {
+    display: block;
+  }
+
+  .listPage--mobileProductList .sectionHeader__aside,
+  .listPage--mobileSellerList .sectionHeader__aside,
+  .listPage--mobileGenreList .sectionHeader__aside {
+    display: block;
+    width: calc(100% + 28px);
+    max-width: none;
+    margin: 12px -14px 0;
+  }
+
+  .listPage--mobileProductList .filterTabs,
+  .listPage--mobileGenreList .filterTabs,
+  .listPage--mobileGenreList .rankingModeTabs {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    padding-bottom: 4px;
+    border-left: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .listPage--mobileProductList .filterTabs a,
+  .listPage--mobileGenreList .filterTabs a {
+    flex: 0 0 auto;
+    min-width: 92px;
+    padding-inline: 14px;
+  }
+
+  .listPage--mobileGenreList .rankingModeTabs a {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .listPage--mobileProductList .listPageInfo,
+  .listPage--mobileSellerList .listPageInfo,
+  .listPage--mobileGenreList .listPageInfo {
+    display: none;
+  }
+
+  .listPage--mobileProductList .listToolbar,
+  .listPage--mobileSellerList .listToolbar,
+  .listPage--mobileGenreList .listToolbar {
+    display: grid;
+    grid-template-columns: minmax(0, auto) 1fr;
+    justify-content: stretch;
+    gap: 10px;
+  }
+
+  .listPage--mobileProductList .listToolbar .listPagination,
+  .listPage--mobileSellerList .listToolbar .listPagination,
+  .listPage--mobileGenreList .listToolbar .listPagination {
+    justify-content: flex-end;
+  }
+
+  .listPage--mobileProductList .productGrid--list,
+  .listPage--mobileSellerList .sellerList,
+  .listPage--mobileGenreList .genreRankingList {
+    padding-inline: 0;
+  }
+
+  .listPage--mobileProductList .productCard--list {
+    grid-template-columns: 148px minmax(0, 1fr);
+    grid-template-areas:
+      "image body"
+      "type body";
+    column-gap: 12px;
+    row-gap: 0;
+    padding: 14px;
+  }
+
+  .listPage--mobileProductList .productCard--list .productCard__imageLink {
+    grid-area: image;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    align-self: start;
+  }
+
+  .listPage--mobileProductList .productCard--list .productCard__body {
+    grid-area: body;
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    align-content: start;
+    padding: 0;
+  }
+
+  .listPage--mobileProductList .productCard--list .productCard__type--body {
+    display: none;
+  }
+
+  .listPage--mobileProductList .productCard--list .productCard__type--media {
+    grid-area: type;
+    display: inline-flex;
+    width: 100%;
+    min-height: 25px;
+    justify-content: center;
+    margin: 0;
+    padding: 0 6px;
+  }
+
+  .listPage--mobileProductList .productCard--list .productCard__title {
+    -webkit-line-clamp: 2;
+    font-size: 14px;
+    line-height: 1.42;
+  }
+
+  .listPage--mobileProductList .productCard--list .productCard__seller {
+    margin-top: 6px;
+  }
+
+  .listPage--mobileProductList .productCard--list .priceLine,
+  .listPage--mobileProductList .productCard--list .productCard__meta {
+    margin-top: 8px;
+  }
+
+  .listPage--mobileProductList .productCard--list .tagRow {
+    display: flex;
+    gap: 4px;
+    overflow: hidden;
+    max-height: 50px;
+  }
+
+  .listPage--mobileProductList .productCard--list .tagRow a,
+  .listPage--mobileProductList .productCard--list .tagRow span {
+    padding-inline: 6px;
+  }
+
+  .listPage--mobileSellerList .sellerCard {
+    grid-template-columns: 148px minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 0;
+    padding: 14px;
+  }
+
+  .listPage--mobileSellerList .sellerCard__imageLink {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+  }
+
+  .listPage--mobileSellerList .sellerCard__body {
+    padding: 0;
+  }
+
+  .listPage--mobileSellerList .sellerCard__title {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    font-size: 15px;
+  }
+
+  .listPage--mobileSellerList .sellerCard__latest {
+    white-space: normal;
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .listPage--mobileSellerList .sellerCard__tags {
+    display: flex;
+    gap: 4px;
+    overflow: hidden;
+    max-height: 50px;
+  }
+
+  .listPage--mobileSellerList .sellerCard__tagLink {
+    padding-inline: 6px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard {
+    grid-template-columns: 58px minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__rank {
+    min-height: 50px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__title {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    font-size: 15px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__products {
+    gap: 4px;
+    overflow: hidden;
+    max-height: 84px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__action {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 380px) {
+  .listPage--mobileProductList .productCard--list,
+  .listPage--mobileSellerList .sellerCard {
+    grid-template-columns: 134px minmax(0, 1fr);
+    column-gap: 10px;
+    padding-inline: 12px;
+  }
+}
+
+/* v61: mobile spacing follow-up for header controls, circle search, and work detail full-bleed gallery. */
+@media (max-width: 760px) {
+  .siteHeader .searchBox {
+    margin-top: 42px;
+  }
+
+  .listPage--mobileSellerList .sectionHeader__aside {
+    width: 100%;
+    max-width: 100%;
+    margin: 12px 0 0;
+  }
+
+  .listPage--mobileSellerList .circleSearchBox {
+    width: 100%;
+  }
+
+  .detailPage {
+    width: 100%;
+    gap: 0;
+    padding-top: 0;
+  }
+
+  .detailHeader,
+  .detailMain,
+  .detailBelow {
+    border-radius: 0;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: none;
+  }
+
+  .detailHeader {
+    padding: 14px 22px 18px;
+    border-bottom: 1px solid rgba(226, 218, 232, 0.86);
+  }
+
+  .detailMain {
+    gap: 0;
+    padding: 0;
+    border-bottom: 1px solid rgba(226, 218, 232, 0.86);
+  }
+
+  .gallery {
+    width: 100%;
+    border-bottom: 1px solid rgba(226, 218, 232, 0.86);
+  }
+
+  .gallery__mainFrame,
+  .gallery__mainLink,
+  .gallery__main {
+    width: 100%;
+  }
+
+  .gallery__thumbStrip {
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
+  }
+
+  .detailSide {
+    padding: 18px 22px 20px;
+  }
+
+  .detailBelow {
+    padding: 0 22px 24px;
+  }
+
+  .detailBelow > * {
+    padding-top: 18px;
+    border-top: 1px solid rgba(226, 218, 232, 0.86);
+  }
+
+  .detailBelow > *:first-child {
+    border-top: 0;
   }
 }

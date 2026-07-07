@@ -56,7 +56,7 @@ export default async function RankingPage({ params, searchParams }: PageProps) {
   const visibleRange = products.length ? `${offsetCount + 1}〜${offsetCount + products.length}件` : "0件";
 
   return (
-    <div className="listPage listPage--wide">
+    <div className="listPage listPage--wide listPage--ranking">
       <section className="contentSection listSection">
         <SectionHeader title="人気ランキング" description={`${segment.label}の人気作品`} icon="♕">
           <div className="listHeaderFilters listHeaderFilters--ranking">

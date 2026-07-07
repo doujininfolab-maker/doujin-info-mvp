@@ -97,9 +97,14 @@ export function ProductCard({
         {isNew ? <span className="cornerBadge cornerBadge--new">NEW</span> : null}
         {isSale && product.discountRate ? <span className="cornerBadge cornerBadge--sale">{product.discountRate}%<br />OFF</span> : null}
       </Link>
+      {isList ? (
+        <Link className="productCard__type productCard__type--media" href={getWorkTypeHref(product, contentTypeParam)}>
+          {getWorkTypeLabel(product)}
+        </Link>
+      ) : null}
       <div className="productCard__body">
         {isList ? (
-          <Link className="productCard__type" href={getWorkTypeHref(product, contentTypeParam)}>
+          <Link className="productCard__type productCard__type--body" href={getWorkTypeHref(product, contentTypeParam)}>
             {getWorkTypeLabel(product)}
           </Link>
         ) : null}

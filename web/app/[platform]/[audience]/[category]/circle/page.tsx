@@ -49,7 +49,7 @@ export default async function CircleListPage({ params, searchParams }: PageProps
   const visibleRange = sellers.length ? `${offsetCount + 1}〜${offsetCount + sellers.length}件` : "0件";
 
   return (
-    <div className="listPage listPage--wide">
+    <div className="listPage listPage--wide listPage--mobileSellerList">
       <section className="contentSection listSection sellerListSection">
         <SectionHeader title="サークル一覧" description={`${segment.label}のサークル`} icon="♧">
           <CircleSearchBox value={sellerQuery} />

@@ -108,7 +108,7 @@ function HomeStatsPanel({ stats, segment, contentTypeParam }: { stats: HomeDashb
   const topGenre = stats.topGenre;
   const homeStats: HomeStatItem[] = [
     { label: "掲載作品数", value: formatNumber(stats.productCount), suffix: "作品", icon: <ProductCountStatIcon />, tone: "pink" as const },
-    { label: "本日の更新", value: formatNumber(stats.todayUpdatedCount), suffix: "作品", icon: <TodayUpdateStatIcon />, tone: "orange" as const },
+    { label: "本日の新着", value: formatNumber(stats.todayUpdatedCount), suffix: "作品", icon: <TodayUpdateStatIcon />, tone: "orange" as const },
     { label: "セール件数", value: formatNumber(stats.saleCount), suffix: "件", icon: <SaleCountStatIcon />, tone: "pink" as const },
     {
       label: "注目ジャンル",

@@ -1,11 +1,11 @@
-import type { Timestamp } from "firebase-admin/firestore";
+import { FieldPath, type QueryDocumentSnapshot, type Timestamp } from "firebase-admin/firestore";
 import { db } from "../firebaseAdmin";
 import type { Category, FetchTarget, Platform, Product, SellerType, SiteStatsDocument } from "../types";
 import { nowTimestamp } from "../util";
 
 const PRODUCTS_COLLECTION = "products";
 const SITE_STATS_COLLECTION = "siteStats";
-const MAX_PRODUCTS_FOR_SITE_STATS = 5000;
+const SITE_STATS_PRODUCT_PAGE_SIZE = 1000;
 const MAX_POPULAR_GENRES = 30;
 const MAX_POPULAR_CATEGORIES = 12;
 const MAX_CIRCLE_HIGHLIGHTS = 12;
@@ -137,10 +137,8 @@ function dateLikeToJstDateKey(value: unknown): string | undefined {
   return date ? toJstDateKey(date) : undefined;
 }
 
-function isProductUpdatedToday(product: StoredProduct, todayKey: string): boolean {
-  return [product.releaseDate, product.fetchedAt, product.lastFetchedAt, product.createdAt, product.updatedAt].some(
-    (value) => dateLikeToJstDateKey(value) === todayKey,
-  );
+function isProductReleasedToday(product: StoredProduct, todayKey: string): boolean {
+  return dateLikeToJstDateKey(product.releaseDate) === todayKey;
 }
 
 function isSaleProduct(product: StoredProduct): boolean {
@@ -416,16 +414,36 @@ function buildCircleHighlights(products: StoredProduct[]): CircleHighlight[] {
 }
 
 async function getProductsForSiteStats(segment: SiteSegmentKey): Promise<StoredProduct[]> {
-  const snapshot = await db
-    .collection(PRODUCTS_COLLECTION)
-    .where("platform", "==", segment.platform)
-    .where("audience", "==", segment.audience)
-    .where("category", "==", segment.category)
-    .where("isActive", "==", true)
-    .limit(MAX_PRODUCTS_FOR_SITE_STATS)
-    .get();
+  const products: StoredProduct[] = [];
+  let lastDoc: QueryDocumentSnapshot | undefined;
 
-  return snapshot.docs.map((doc) => ({ ...(doc.data() as StoredProduct), productId: (doc.data() as Product).productId ?? doc.id }));
+  while (true) {
+    let query = db
+      .collection(PRODUCTS_COLLECTION)
+      .where("platform", "==", segment.platform)
+      .where("audience", "==", segment.audience)
+      .where("category", "==", segment.category)
+      .where("isActive", "==", true)
+      .orderBy(FieldPath.documentId())
+      .limit(SITE_STATS_PRODUCT_PAGE_SIZE);
+
+    if (lastDoc) {
+      query = query.startAfter(lastDoc);
+    }
+
+    const snapshot = await query.get();
+    if (snapshot.empty) break;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data() as StoredProduct;
+      products.push({ ...data, productId: (data as Product).productId ?? doc.id });
+    }
+
+    lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    if (snapshot.size < SITE_STATS_PRODUCT_PAGE_SIZE) break;
+  }
+
+  return products;
 }
 
 export async function rebuildSiteStats(segment: SiteSegmentKey, contentScope: ContentStatsScope = "all"): Promise<string> {
@@ -444,13 +462,13 @@ export async function rebuildSiteStats(segment: SiteSegmentKey, contentScope: Co
     audience: segment.audience,
     category: segment.category,
     productCount: products.length,
-    todayUpdatedCount: products.filter((product) => isProductUpdatedToday(product, todayKey)).length,
+    todayUpdatedCount: products.filter((product) => isProductReleasedToday(product, todayKey)).length,
     saleCount: products.filter(isSaleProduct).length,
     topGenre: popularGenres[0],
     popularGenres,
     popularCategories,
     circleHighlights,
-    maxProducts: MAX_PRODUCTS_FOR_SITE_STATS,
+    maxProducts: products.length,
     generatedAt,
     updatedAt: generatedAt,
   };

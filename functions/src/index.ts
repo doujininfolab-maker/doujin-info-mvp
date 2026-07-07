@@ -9,6 +9,7 @@ import {
 } from "./adapters/dlsite/dlsiteFemaleDoujinAdapter";
 import { fetchDailyProducts } from "./batch/fetchDailyProducts";
 import { fetchGirlsReleaseOldProducts } from "./batch/fetchGirlsReleaseOldProducts";
+import { fetchDailyPriorityProducts } from "./batch/fetchDailyPriorityProducts";
 import { db } from "./firebaseAdmin";
 import { rebuildSiteStatsForTargets } from "./batch/rebuildSiteStats";
 import { nowTimestamp } from "./util";
@@ -83,10 +84,62 @@ function buildGirlsReleaseOldFetchOptions(
       max: 5000,
     }),
     parseMode: parseProductParseModeQuery(query.parseMode),
+    htmlOnlyProbe: parseBooleanQuery(query.htmlOnlyProbe, false),
     contentType: parseProductContentTypeQuery(
       query.contentType ?? query.floor ?? query.target ?? query.site,
     ),
     pageChunkSize: parseIntegerQuery(query.pageChunkSize, { min: 1, max: 50 }),
+  };
+}
+
+function buildDailyPriorityFetchOptions(
+  query: Record<string, unknown>,
+  isEmulator: boolean,
+) {
+  const delayMs =
+    parseIntegerQuery(query.delayMs ?? query.minIntervalMs, {
+      min: 0,
+      max: 60_000,
+    }) ?? (isEmulator ? 10 : 30);
+
+  return {
+    delayMs,
+    newReleaseLimit: parseIntegerQuery(query.newReleaseLimit, {
+      min: 1,
+      max: 20_000,
+    }),
+    popularLimit: parseIntegerQuery(query.popularLimit, {
+      min: 1,
+      max: 20_000,
+    }),
+    salesCountLimit: parseIntegerQuery(query.salesCountLimit, {
+      min: 1,
+      max: 20_000,
+    }),
+    commitProductCount: parseIntegerQuery(query.commitProductCount, {
+      min: 1,
+      max: 500,
+    }),
+    existingProductReadCount: parseIntegerQuery(query.existingProductReadCount, {
+      min: 1,
+      max: 2000,
+    }),
+    contentTypeSleepMs: parseIntegerQuery(query.contentTypeSleepMs, {
+      min: 0,
+      max: 60 * 60 * 1000,
+    }),
+    retrySleepMs: parseIntegerQuery(query.retrySleepMs, {
+      min: 0,
+      max: 60 * 60 * 1000,
+    }),
+    retryCount: parseIntegerQuery(query.retryCount, { min: 0, max: 5 }),
+    dryRun: parseBooleanQuery(query.dryRun, false),
+    parseMode: parseProductParseModeQuery(query.parseMode),
+    rebuildStats: parseBooleanQuery(query.rebuildStats, true),
+    contentTypes: parseProductContentTypesQuery(
+      query.contentTypes ?? query.contentType ?? query.target,
+    ),
+    batchDate: parseYyyyMMddQuery(query.batchDate),
   };
 }
 
@@ -115,6 +168,23 @@ function parseProductContentTypeQuery(
   if (raw === "tl" || raw === "girls" || raw === "girl" || raw === "otome")
     return "tl";
   return undefined;
+}
+
+function parseProductContentTypesQuery(
+  value: unknown,
+): ProductContentType[] | undefined {
+  const raw = firstQueryValue(value)?.trim().toLowerCase();
+  if (!raw || raw === "all") return undefined;
+  const contentTypes = raw
+    .split(/[,.|+\s]+/)
+    .map((part) => parseProductContentTypeQuery(part))
+    .filter((part): part is ProductContentType => part !== undefined);
+  return contentTypes.length > 0 ? [...new Set(contentTypes)] : undefined;
+}
+
+function parseYyyyMMddQuery(value: unknown): string | undefined {
+  const raw = firstQueryValue(value)?.trim();
+  return raw && /^\d{8}$/.test(raw) ? raw : undefined;
 }
 
 function parseDlsiteDebugFloor(value: unknown): DlsiteProductDebugFloor {
@@ -241,6 +311,76 @@ export const fetchGirlsReleaseOldNow = onRequest(
       isEmulator,
     );
     const result = await fetchGirlsReleaseOldProducts(fetchOptions);
+    res.json({
+      ok: result.run.status === "success" || result.run.status === "partial",
+      options: fetchOptions,
+      result,
+    });
+  },
+);
+
+export const scheduledFetchDailyPriorityProducts = onSchedule(
+  {
+    schedule: "every day 01:00",
+    timeZone: "Asia/Tokyo",
+    region: "asia-northeast1",
+    memory: "1GiB",
+    timeoutSeconds: 3600,
+  },
+  async (): Promise<void> => {
+    const result = await fetchDailyPriorityProducts({
+      contentTypes: ["tl"],
+      contentTypeSleepMs: 0,
+      rebuildStats: true,
+      statsTargets: getEnabledFetchTargets(),
+    });
+    logger.info("scheduledFetchDailyPriorityProducts TL finished", result);
+  },
+);
+
+export const scheduledFetchDailyPriorityProductsBl = onSchedule(
+  {
+    schedule: "every day 01:30",
+    timeZone: "Asia/Tokyo",
+    region: "asia-northeast1",
+    memory: "1GiB",
+    timeoutSeconds: 3600,
+  },
+  async (): Promise<void> => {
+    const result = await fetchDailyPriorityProducts({
+      contentTypes: ["bl"],
+      contentTypeSleepMs: 0,
+      rebuildStats: true,
+      statsTargets: getEnabledFetchTargets(),
+    });
+    logger.info("scheduledFetchDailyPriorityProducts BL finished", result);
+  },
+);
+
+export const fetchDailyPriorityProductsNow = onRequest(
+  {
+    region: "asia-northeast1",
+    cors: true,
+    memory: "1GiB",
+    timeoutSeconds: 3600,
+  },
+  async (req, res): Promise<void> => {
+    const key = typeof req.query.key === "string" ? req.query.key : undefined;
+    const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator =
+      process.env.FUNCTIONS_EMULATOR === "true" ||
+      process.env.FIRESTORE_EMULATOR_HOST != null;
+
+    if (!isEmulator && (!expected || key !== expected)) {
+      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
+      return;
+    }
+
+    const fetchOptions = buildDailyPriorityFetchOptions(req.query, isEmulator);
+    const result = await fetchDailyPriorityProducts({
+      ...fetchOptions,
+      statsTargets: getEnabledFetchTargets(),
+    });
     res.json({
       ok: result.run.status === "success" || result.run.status === "partial",
       options: fetchOptions,

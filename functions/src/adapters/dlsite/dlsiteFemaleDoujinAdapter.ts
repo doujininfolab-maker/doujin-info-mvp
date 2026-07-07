@@ -10,7 +10,6 @@ import type {
   DiscoveredProductSource,
   HtmlSalesCountAjaxComparison,
   ProductDetailFetchOptions,
-  ProductDetailTiming,
   ProductDetailParseTiming,
   ProductParseMode,
   RankingFetchOptions,
@@ -37,6 +36,12 @@ const DLSITE_GIRLS_RELEASE_OLD_PER_PAGE = 100;
 const DLSITE_BL_RELEASE_NEW_LIST_URL =
   "https://www.dlsite.com/bl/fsr/=/language/jp/sex_category%5B0%5D/female/sex_category%5B1%5D/gay/work_category%5B0%5D/doujin/order%5B0%5D/release_d/work_type_category%5B0%5D/game/work_type_category%5B1%5D/comic/work_type_category%5B2%5D/illust/work_type_category%5B3%5D/novel/work_type_category%5B4%5D/movie/work_type_category%5B5%5D/audio/work_type_category%5B6%5D/music/work_type_category%5B7%5D/tool/work_type_category%5B8%5D/etc/work_type_category_name%5B0%5D/%E3%82%B2%E3%83%BC%E3%83%A0/work_type_category_name%5B1%5D/%E3%83%9E%E3%83%B3%E3%82%AC/work_type_category_name%5B2%5D/CG%E3%83%BB%E3%82%A4%E3%83%A9%E3%82%B9%E3%83%88/work_type_category_name%5B3%5D/%E3%83%8E%E3%83%99%E3%83%AB/work_type_category_name%5B4%5D/%E5%8B%95%E7%94%BB/work_type_category_name%5B5%5D/%E3%83%9C%E3%82%A4%E3%82%B9%E3%83%BBASMR/work_type_category_name%5B6%5D/%E9%9F%B3%E6%A5%BD/work_type_category_name%5B7%5D/%E3%83%84%E3%83%BC%E3%83%AB%2F%E3%82%A2%E3%82%AF%E3%82%BB%E3%82%B5%E3%83%AA/work_type_category_name%5B8%5D/%E3%81%9D%E3%81%AE%E4%BB%96/options_and_or/and/options%5B0%5D/JPN/options%5B1%5D/NM/options_name%5B0%5D/%E6%97%A5%E6%9C%AC%E8%AA%9E%E4%BD%9C%E5%93%81/options_name%5B1%5D/%E8%A8%80%E8%AA%9E%E4%B8%8D%E5%95%8F%E4%BD%9C%E5%93%81/per_page/100/page/1/is_bl/1/is_gay/1/show_type/3";
 const DLSITE_BL_RELEASE_NEW_PER_PAGE = 100;
+
+const DLSITE_DAILY_PRIORITY_PER_PAGE = 100;
+const DLSITE_TL_DAILY_PRIORITY_LIST_URL_TEMPLATE =
+  "https://www.dlsite.com/girls/fsr/=/language/jp/sex_category%5B0%5D/female/sex_category%5B1%5D/gay/work_category%5B0%5D/doujin/order%5B0%5D/__ORDER__/work_type_category%5B0%5D/game/work_type_category%5B1%5D/comic/work_type_category%5B2%5D/illust/work_type_category%5B3%5D/novel/work_type_category%5B4%5D/movie/work_type_category%5B5%5D/audio/work_type_category%5B6%5D/music/work_type_category%5B7%5D/tool/work_type_category%5B8%5D/etc/work_type_category_name%5B0%5D/%E3%82%B2%E3%83%BC%E3%83%A0/work_type_category_name%5B1%5D/%E3%83%9E%E3%83%B3%E3%82%AC/work_type_category_name%5B2%5D/CG%E3%83%BB%E3%82%A4%E3%83%A9%E3%82%B9%E3%83%88/work_type_category_name%5B3%5D/%E3%83%8E%E3%83%99%E3%83%AB/work_type_category_name%5B4%5D/%E5%8B%95%E7%94%BB/work_type_category_name%5B5%5D/%E3%83%9C%E3%82%A4%E3%82%B9%E3%83%BBASMR/work_type_category_name%5B6%5D/%E9%9F%B3%E6%A5%BD/work_type_category_name%5B7%5D/%E3%83%84%E3%83%BC%E3%83%AB%2F%E3%82%A2%E3%82%AF%E3%82%BB%E3%82%B5%E3%83%AA/work_type_category_name%5B8%5D/%E3%81%9D%E3%81%AE%E4%BB%96/options_and_or/and/options%5B0%5D/JPN/options%5B1%5D/NM/options_name%5B0%5D/%E6%97%A5%E6%9C%AC%E8%AA%9E%E4%BD%9C%E5%93%81/options_name%5B1%5D/%E8%A8%80%E8%AA%9E%E4%B8%8D%E5%95%8F%E4%BD%9C%E5%93%81/per_page/100/page/1/is_tl/1/show_type/3";
+const DLSITE_BL_DAILY_PRIORITY_LIST_URL_TEMPLATE =
+  "https://www.dlsite.com/bl/fsr/=/language/jp/sex_category%5B0%5D/female/sex_category%5B1%5D/gay/work_category%5B0%5D/doujin/order%5B0%5D/__ORDER__/work_type_category%5B0%5D/game/work_type_category%5B1%5D/comic/work_type_category%5B2%5D/illust/work_type_category%5B3%5D/novel/work_type_category%5B4%5D/movie/work_type_category%5B5%5D/audio/work_type_category%5B6%5D/music/work_type_category%5B7%5D/tool/work_type_category%5B8%5D/etc/work_type_category_name%5B0%5D/%E3%82%B2%E3%83%BC%E3%83%A0/work_type_category_name%5B1%5D/%E3%83%9E%E3%83%B3%E3%82%AC/work_type_category_name%5B2%5D/CG%E3%83%BB%E3%82%A4%E3%83%A9%E3%82%B9%E3%83%88/work_type_category_name%5B3%5D/%E3%83%8E%E3%83%99%E3%83%AB/work_type_category_name%5B4%5D/%E5%8B%95%E7%94%BB/work_type_category_name%5B5%5D/%E3%83%9C%E3%82%A4%E3%82%B9%E3%83%BBASMR/work_type_category_name%5B6%5D/%E9%9F%B3%E6%A5%BD/work_type_category_name%5B7%5D/%E3%83%84%E3%83%BC%E3%83%AB%2F%E3%82%A2%E3%82%AF%E3%82%BB%E3%82%B5%E3%83%AA/work_type_category_name%5B8%5D/%E3%81%9D%E3%81%AE%E4%BB%96/options_and_or/and/options%5B0%5D/JPN/options%5B1%5D/NM/options_name%5B0%5D/%E6%97%A5%E6%9C%AC%E8%AA%9E%E4%BD%9C%E5%93%81/options_name%5B1%5D/%E8%A8%80%E8%AA%9E%E4%B8%8D%E5%95%8F%E4%BD%9C%E5%93%81/per_page/100/page/1/is_bl/1/is_gay/1/show_type/3";
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 200;
 const MAX_LIST_PAGE_COUNT = 20;
@@ -59,32 +64,6 @@ const sourceProductIdHints = new Map<string, Set<RankingType>>();
 const sourceProductIdContentTypeHints = new Map<string, ProductContentType>();
 
 type DlsiteFloor = "girls" | "bl";
-
-function incrementTimingCount(
-  timing: ProductDetailTiming | undefined,
-  key: keyof ProductDetailTiming,
-  amount = 1,
-): void {
-  if (!timing) return;
-  const current = timing[key];
-  if (typeof current !== "number") {
-    (timing as Record<string, unknown>)[key] = amount;
-    return;
-  }
-  (timing as Record<string, unknown>)[key] = current + amount;
-}
-
-function incrementTimingStatusCount(
-  timing: ProductDetailTiming | undefined,
-  key: "detailHtmlStatusCounts" | "ajaxStatusCounts",
-  status: number | string,
-): void {
-  if (!timing) return;
-  const statusKey = String(status);
-  const counts = timing[key] ?? {};
-  counts[statusKey] = (counts[statusKey] ?? 0) + 1;
-  timing[key] = counts;
-}
 
 function getBaseUrlForContentType(
   contentType: ProductContentType | undefined,
@@ -337,7 +316,6 @@ function sortProductDetailHtmlCandidates(
 async function fetchBestProductDetailHtml(
   sourceProductId: string,
   preferredSourceUrl?: string,
-  timing?: ProductDetailTiming,
 ): Promise<ProductDetailHtmlCandidate> {
   const hintedContentType =
     sourceProductIdContentTypeHints.get(sourceProductId);
@@ -357,19 +335,12 @@ async function fetchBestProductDetailHtml(
     if (queued.has(key)) return;
     queued.add(key);
     queue.push(url);
-    if (timing) {
-      timing.detailHtmlCandidateUrlCount = queued.size;
-    }
   };
-
-  if (timing) {
-    timing.detailHtmlCandidateUrlCount = queued.size;
-  }
 
   for (let index = 0; index < queue.length; index += 1) {
     const url = queue[index];
     try {
-      const html = await fetchPublicHtml(url, timing);
+      const html = await fetchPublicHtml(url);
       const candidate: ProductDetailHtmlCandidate = {
         url,
         html,
@@ -404,7 +375,6 @@ async function fetchBestProductDetailHtml(
 
       const message = error instanceof Error ? error.message : String(error);
       failedMessages.push(`${url}: ${message}`);
-      incrementTimingCount(timing, "detailHtmlCandidateFetchFailedCount");
 
       // 初回URLが404等で取れない場合に備え、TL/BLの反対側URLも一度だけ試す。
       if (index === 0) {
@@ -445,11 +415,6 @@ async function fetchBestProductDetailHtml(
         hasWorkSlider: candidate.hasWorkSlider,
       })),
     });
-  }
-
-  if (timing) {
-    timing.detailHtmlCandidateUrlCount = queued.size;
-    timing.selectedImageCount = best.imageCount;
   }
 
   return best;
@@ -518,6 +483,300 @@ function extractProductSources(
   }
 
   return products;
+}
+
+
+export type DlsiteDailyPriorityListOrder = "release_d" | "trend" | "dl_d";
+
+export type DlsiteDailyPriorityProductSource = DiscoveredProductSource & {
+  releaseDate?: string;
+  releaseDateKey?: string;
+  orderType: DlsiteDailyPriorityListOrder;
+};
+
+export type FetchDlsiteDailyPriorityProductSourcesOptions = {
+  contentType?: ProductContentType;
+  orderType: DlsiteDailyPriorityListOrder;
+  limit: number;
+  delayMs?: number;
+  targetReleaseDateKey?: string;
+  breakOnOlderReleaseDate?: boolean;
+  startPage?: number;
+};
+
+export type FetchDlsiteDailyPriorityProductSourcesResult = {
+  contentType: ProductContentType;
+  orderType: DlsiteDailyPriorityListOrder;
+  sourceUrl: string;
+  requestedLimit: number;
+  fetchedPageCount: number;
+  sourceProductIds: string[];
+  products: DlsiteDailyPriorityProductSource[];
+  olderReleaseDateFound: boolean;
+  missingReleaseDateCount: number;
+  performance: {
+    totalMs: number;
+    listPageFetchTotalMs: number;
+    productIdExtractTotalMs: number;
+  };
+};
+
+function resolveDailyPriorityContentType(
+  contentType: ProductContentType | undefined,
+): ProductContentType {
+  return contentType === "bl" ? "bl" : "tl";
+}
+
+function buildDailyPriorityListUrl(
+  contentType: ProductContentType | undefined,
+  orderType: DlsiteDailyPriorityListOrder,
+): string {
+  const template =
+    resolveDailyPriorityContentType(contentType) === "bl"
+      ? DLSITE_BL_DAILY_PRIORITY_LIST_URL_TEMPLATE
+      : DLSITE_TL_DAILY_PRIORITY_LIST_URL_TEMPLATE;
+  return template.replace("__ORDER__", orderType);
+}
+
+function buildDailyPriorityListPageUrl(
+  contentType: ProductContentType | undefined,
+  orderType: DlsiteDailyPriorityListOrder,
+  pageNumber: number,
+): string {
+  const safePage = Math.max(1, Math.floor(pageNumber));
+  return buildDailyPriorityListUrl(contentType, orderType).replace(
+    /\/page\/\d+(?=\/|$)/i,
+    `/page/${safePage}`,
+  );
+}
+
+function normalizeListReleaseDate(value: string | undefined):
+  | { releaseDate: string; releaseDateKey: string }
+  | undefined {
+  if (!value) return undefined;
+
+  const match = value.match(
+    /(\d{4})\s*(?:年|[/.\-])\s*(\d{1,2})\s*(?:月|[/.\-])\s*(\d{1,2})\s*(?:日)?/,
+  );
+  if (!match?.[1] || !match[2] || !match[3]) return undefined;
+
+  const year = match[1];
+  const month = match[2].padStart(2, "0");
+  const day = match[3].padStart(2, "0");
+  const releaseDate = `${year}-${month}-${day}`;
+  return { releaseDate, releaseDateKey: `${year}${month}${day}` };
+}
+
+function extractReleaseDateNearProductAnchor(
+  html: string,
+  anchorIndex: number,
+): { releaseDate: string; releaseDateKey: string } | undefined {
+  const start = Math.max(0, anchorIndex - 1800);
+  const end = Math.min(html.length, anchorIndex + 3200);
+  const rawChunk = html.slice(start, end);
+
+  const attributePatterns = [
+    /\bdata-[\w:-]*(?:release|regist|sales?|sale)[\w:-]*date[\w:-]*=["']([^"']+)["']/gi,
+    /\b(?:release|regist|sales?|sale)[_-]?date=["']([^"']+)["']/gi,
+    /["'](?:regist_date|release_date|releaseDate|datePublished)["']\s*:\s*["']([^"']+)["']/gi,
+  ];
+
+  for (const pattern of attributePatterns) {
+    for (const match of rawChunk.matchAll(pattern)) {
+      const normalized = normalizeListReleaseDate(decodeHtml(match[1]));
+      if (normalized) return normalized;
+    }
+  }
+
+  const text = stripTags(rawChunk);
+
+  const labeledPatterns = [
+    /(?:販売日|販売開始日|発売日|発売開始日)\s*[:：]?\s*((?:\d{4})\s*(?:年|[/.\-])\s*(?:\d{1,2})\s*(?:月|[/.\-])\s*(?:\d{1,2})\s*(?:日)?)/,
+    /((?:\d{4})\s*(?:年|[/.\-])\s*(?:\d{1,2})\s*(?:月|[/.\-])\s*(?:\d{1,2})\s*(?:日)?)\s*(?:販売開始|発売開始|販売|発売)/,
+  ];
+
+  for (const pattern of labeledPatterns) {
+    const matched = text.match(pattern);
+    const normalized = normalizeListReleaseDate(matched?.[1]);
+    if (normalized) return normalized;
+  }
+
+  // DLsiteの一覧カードでは日付ラベルがHTML構造で分断されることがあるため、
+  // 最後のフォールバックとしてカード近傍の年月日を拾う。
+  const dateMatches = [
+    ...text.matchAll(
+      /(\d{4}\s*(?:年|[/.\-])\s*\d{1,2}\s*(?:月|[/.\-])\s*\d{1,2}\s*(?:日)?)/g,
+    ),
+  ];
+  for (const matched of dateMatches) {
+    const normalized = normalizeListReleaseDate(matched[1]);
+    if (normalized) return normalized;
+  }
+
+  return undefined;
+}
+
+function extractProductSourcesWithReleaseDates(
+  html: string,
+  currentUrl: string,
+  orderType: DlsiteDailyPriorityListOrder,
+): DlsiteDailyPriorityProductSource[] {
+  const products: DlsiteDailyPriorityProductSource[] = [];
+  const seenProductIds = new Set<string>();
+  const push = (
+    sourceProductId: string | undefined,
+    sourceUrl: string | undefined,
+    anchorIndex: number | undefined,
+  ) => {
+    if (!sourceProductId) return;
+    const normalizedId = sourceProductId.toUpperCase();
+    if (!/^RJ\d{6,10}$/.test(normalizedId)) return;
+    if (seenProductIds.has(normalizedId)) return;
+    seenProductIds.add(normalizedId);
+    const releaseDate =
+      anchorIndex === undefined
+        ? undefined
+        : extractReleaseDateNearProductAnchor(html, anchorIndex);
+    products.push({
+      sourceProductId: normalizedId,
+      sourceUrl,
+      rank: products.length + 1,
+      listUrl: currentUrl,
+      releaseDate: releaseDate?.releaseDate,
+      releaseDateKey: releaseDate?.releaseDateKey,
+      orderType,
+    });
+  };
+
+  const anchorPattern = /<a\b([^>]*href=["']([^"']+)["'][^>]*)>/gi;
+  for (const match of html.matchAll(anchorPattern)) {
+    const rawHref = match[2] ?? "";
+    if (!/\/work\/=\/product_id\//i.test(decodeHtml(rawHref))) continue;
+    const sourceProductId = extractProductIdFromWorkUrl(rawHref);
+    const sourceUrl = buildListAbsoluteUrl(rawHref, currentUrl);
+    push(sourceProductId, sourceUrl, match.index);
+  }
+
+  if (products.length > 0) return products;
+
+  for (const product of extractProductSources(html, currentUrl)) {
+    products.push({
+      ...product,
+      orderType,
+    });
+  }
+
+  return products;
+}
+
+export async function fetchDlsiteDailyPriorityProductSources(
+  options: FetchDlsiteDailyPriorityProductSourcesOptions,
+): Promise<FetchDlsiteDailyPriorityProductSourcesResult> {
+  const startedAt = Date.now();
+  let listPageFetchTotalMs = 0;
+  let productIdExtractTotalMs = 0;
+  const contentType = resolveDailyPriorityContentType(options.contentType);
+  const limit = Math.max(0, Math.floor(options.limit));
+  const delayMs = Math.max(0, Math.floor(options.delayMs ?? 0));
+  const sourceUrl = buildDailyPriorityListPageUrl(
+    contentType,
+    options.orderType,
+    1,
+  );
+  const products: DlsiteDailyPriorityProductSource[] = [];
+  const seenProductIds = new Set<string>();
+  let fetchedPageCount = 0;
+  let olderReleaseDateFound = false;
+  let missingReleaseDateCount = 0;
+  const startPage = Math.max(1, Math.floor(options.startPage ?? 1));
+  const pageCount = Math.max(
+    1,
+    Math.ceil(Math.max(limit, DLSITE_DAILY_PRIORITY_PER_PAGE) / DLSITE_DAILY_PRIORITY_PER_PAGE),
+  );
+
+  for (
+    let pageOffset = 0;
+    pageOffset < pageCount && products.length < limit && !olderReleaseDateFound;
+    pageOffset += 1
+  ) {
+    const page = startPage + pageOffset;
+    if (pageOffset > 0 && delayMs > 0) await delay(delayMs);
+    const url = buildDailyPriorityListPageUrl(contentType, options.orderType, page);
+    const fetchStartedAt = Date.now();
+    const html = await fetchPublicHtml(url);
+    listPageFetchTotalMs += Date.now() - fetchStartedAt;
+    fetchedPageCount += 1;
+
+    const extractStartedAt = Date.now();
+    const pageProducts = extractProductSourcesWithReleaseDates(
+      html,
+      url,
+      options.orderType,
+    );
+    productIdExtractTotalMs += Date.now() - extractStartedAt;
+
+    let newCount = 0;
+    for (const product of pageProducts) {
+      if (seenProductIds.has(product.sourceProductId)) continue;
+
+      if (options.targetReleaseDateKey) {
+        if (!product.releaseDateKey) {
+          missingReleaseDateCount += 1;
+          continue;
+        }
+        if (product.releaseDateKey < options.targetReleaseDateKey) {
+          olderReleaseDateFound = true;
+          continue;
+        }
+        if (product.releaseDateKey !== options.targetReleaseDateKey) {
+          continue;
+        }
+      }
+
+      seenProductIds.add(product.sourceProductId);
+      products.push({
+        ...product,
+        rank: products.length + 1,
+      });
+      sourceProductIdContentTypeHints.set(product.sourceProductId, contentType);
+      newCount += 1;
+      if (products.length >= limit) break;
+    }
+
+    logger.info("DLsite daily priority list page fetched", {
+      contentType,
+      orderType: options.orderType,
+      page,
+      url,
+      extractedCount: pageProducts.length,
+      newCount,
+      totalCount: products.length,
+      targetReleaseDateKey: options.targetReleaseDateKey,
+      olderReleaseDateFound,
+      missingReleaseDateCount,
+      limit,
+    });
+
+    if (options.breakOnOlderReleaseDate && olderReleaseDateFound) break;
+    if (pageProducts.length === 0) break;
+  }
+
+  return {
+    contentType,
+    orderType: options.orderType,
+    sourceUrl,
+    requestedLimit: limit,
+    fetchedPageCount,
+    sourceProductIds: products.map((product) => product.sourceProductId),
+    products,
+    olderReleaseDateFound,
+    missingReleaseDateCount,
+    performance: {
+      totalMs: Date.now() - startedAt,
+      listPageFetchTotalMs,
+      productIdExtractTotalMs,
+    },
+  };
 }
 
 function buildListAbsoluteUrl(
@@ -2025,11 +2284,7 @@ function parseDlsiteAjaxInfo(parsed: unknown): DlsiteAjaxInfo {
 
 async function fetchProductInfoAjax(
   sourceProductId: string,
-  options?: {
-    parseMode?: ProductParseMode;
-    sourceUrl?: string;
-    timing?: ProductDetailTiming;
-  },
+  options?: { parseMode?: ProductParseMode; sourceUrl?: string },
 ): Promise<DlsiteAjaxInfo> {
   const parseMode = options?.parseMode ?? "full";
   const ajaxBaseUrl = /\/bl(?:-touch)?\//i.test(options?.sourceUrl ?? "")
@@ -2047,12 +2302,8 @@ async function fetchProductInfoAjax(
 
   let merged: DlsiteAjaxInfo = {};
 
-  for (const [index, url] of urls.entries()) {
+  for (const url of urls) {
     try {
-      incrementTimingCount(options?.timing, "ajaxRequestCount");
-      if (index > 0) {
-        incrementTimingCount(options?.timing, "ajaxSecondUrlTriedCount");
-      }
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -2062,19 +2313,11 @@ async function fetchProductInfoAjax(
           referer,
         },
       });
-      incrementTimingStatusCount(options?.timing, "ajaxStatusCounts", response.status);
-      if (!response.ok) {
-        incrementTimingCount(options?.timing, "ajaxNonOkCount");
-        continue;
-      }
+      if (!response.ok) continue;
 
       const text = await response.text();
       const parsed = JSON.parse(text) as unknown;
       merged = mergeDlsiteAjaxInfo(merged, parseDlsiteAjaxInfo(parsed));
-      incrementTimingCount(options?.timing, "ajaxSuccessCount");
-      if (index === 0) {
-        incrementTimingCount(options?.timing, "ajaxFirstUrlSucceededCount");
-      }
 
       // fastでは初回全量取得向けに、追加のAjax補完を行わない。
       // sales/price/ratingなどの主要項目は最初に成功したレスポンスとHTMLフォールバックで取得する。
@@ -2088,7 +2331,6 @@ async function fetchProductInfoAjax(
         return merged;
       }
     } catch {
-      incrementTimingCount(options?.timing, "ajaxErrorCount");
       // 公開ページHTMLのパース結果を優先して処理継続する。
     }
   }
@@ -2901,7 +3143,6 @@ async function extractProductDetail(
   options?: {
     parseMode?: ProductParseMode;
     htmlOnlyProbe?: boolean;
-    detailTiming?: ProductDetailTiming;
     onParseTiming?: (timing: ProductDetailParseTiming) => void;
     onHtmlSalesCountAjaxComparison?: (
       comparison: HtmlSalesCountAjaxComparison,
@@ -2967,11 +3208,7 @@ async function extractProductDetail(
   }
 
   const ajaxInfo = await measureParseStepAsync(timing, "ajaxInfoFetchMs", () =>
-    fetchProductInfoAjax(sourceProductId, {
-      parseMode,
-      sourceUrl,
-      timing: options?.detailTiming,
-    }),
+    fetchProductInfoAjax(sourceProductId, { parseMode, sourceUrl }),
   );
 
   if (options?.htmlOnlyProbe) {
@@ -3180,10 +3417,7 @@ function delay(ms: number): Promise<void> {
   });
 }
 
-async function fetchPublicHtml(
-  url: string,
-  timing?: ProductDetailTiming,
-): Promise<string> {
+async function fetchPublicHtml(url: string): Promise<string> {
   const failures: string[] = [];
 
   for (let attempt = 1; attempt <= FETCH_RETRY_COUNT; attempt += 1) {
@@ -3191,7 +3425,6 @@ async function fetchPublicHtml(
     const timeout = setTimeout(() => abortController.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      incrementTimingCount(timing, "detailHtmlRequestCount");
       const response = await fetch(url, {
         method: "GET",
         redirect: "follow",
@@ -3207,7 +3440,6 @@ async function fetchPublicHtml(
           "upgrade-insecure-requests": "1",
         },
       });
-      incrementTimingStatusCount(timing, "detailHtmlStatusCounts", response.status);
 
       if (response.status === 403 || response.status === 429) {
         throw new BlockedAccessError(
@@ -3250,10 +3482,7 @@ async function fetchPublicHtml(
         attempt,
         diagnostic,
       });
-      const backoffMs = 600 * attempt;
-      incrementTimingCount(timing, "detailHtmlRetryCount");
-      incrementTimingCount(timing, "detailHtmlRetryBackoffMs", backoffMs);
-      await delay(backoffMs);
+      await delay(600 * attempt);
     } finally {
       clearTimeout(timeout);
     }
@@ -3441,12 +3670,10 @@ export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
     sourceProductId: string,
     options?: ProductDetailFetchOptions,
   ): Promise<RawProductDetail> {
-    const timing: ProductDetailTiming = {};
     const fetchHtmlStartedAt = Date.now();
     const candidate = await fetchBestProductDetailHtml(
       sourceProductId,
       options?.sourceUrl,
-      timing,
     );
     const fetchHtmlMs = Date.now() - fetchHtmlStartedAt;
 
@@ -3460,7 +3687,6 @@ export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
       {
         parseMode: options?.parseMode,
         htmlOnlyProbe: options?.htmlOnlyProbe,
-        detailTiming: timing,
         onParseTiming: (timing) => {
           parseTiming = timing;
         },
@@ -3469,15 +3695,11 @@ export const dlsiteFemaleDoujinAdapter: SourceAdapter = {
         },
       },
     );
-    const parseHtmlTotalMs = Date.now() - parseHtmlStartedAt;
-    const ajaxInfoFetchMs = parseTiming?.ajaxInfoFetchMs ?? 0;
-    const parseHtmlMs = Math.max(0, parseHtmlTotalMs - ajaxInfoFetchMs);
+    const parseHtmlMs = Date.now() - parseHtmlStartedAt;
 
     options?.onTiming?.({
-      ...timing,
       fetchHtmlMs,
       parseHtmlMs,
-      parseHtmlTotalMs,
       selectedUrl: candidate.url,
       htmlLength: candidate.html.length,
       parse: parseTiming,

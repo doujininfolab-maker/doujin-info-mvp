@@ -325,7 +325,7 @@ export const scheduledFetchDailyPriorityProducts = onSchedule(
     timeZone: "Asia/Tokyo",
     region: "asia-northeast1",
     memory: "1GiB",
-    timeoutSeconds: 3600,
+    timeoutSeconds: 1800,
   },
   async (): Promise<void> => {
     const result = await fetchDailyPriorityProducts({
@@ -344,7 +344,7 @@ export const scheduledFetchDailyPriorityProductsBl = onSchedule(
     timeZone: "Asia/Tokyo",
     region: "asia-northeast1",
     memory: "1GiB",
-    timeoutSeconds: 3600,
+    timeoutSeconds: 1800,
   },
   async (): Promise<void> => {
     const result = await fetchDailyPriorityProducts({

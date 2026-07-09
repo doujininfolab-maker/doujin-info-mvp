@@ -1,4 +1,3 @@
-import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onRequest } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { getEnabledFetchTargets } from "./adapters";
@@ -241,24 +240,6 @@ function errorToDebugPayload(error: unknown): {
   };
 }
 
-export const scheduledFetchDailyAllSources = onSchedule(
-  {
-    schedule: "every day 03:00",
-    timeZone: "Asia/Tokyo",
-    region: "asia-northeast1",
-    memory: "512MiB",
-    timeoutSeconds: 540,
-  },
-  async (): Promise<void> => {
-    const targets = getEnabledFetchTargets();
-    const result = await fetchDailyProducts({
-      targets,
-      minIntervalMs: 500,
-    });
-    logger.info("scheduledFetchDailyAllSources finished", result);
-  },
-);
-
 export const fetchDailyAllSourcesNow = onRequest(
   {
     region: "asia-northeast1",
@@ -319,41 +300,79 @@ export const fetchGirlsReleaseOldNow = onRequest(
   },
 );
 
-export const scheduledFetchDailyPriorityProducts = onSchedule(
+export const scheduledFetchDailyPriorityProducts = onRequest(
   {
-    schedule: "every day 01:00",
-    timeZone: "Asia/Tokyo",
     region: "asia-northeast1",
+    cors: true,
     memory: "1GiB",
-    timeoutSeconds: 1800,
+    timeoutSeconds: 3600,
   },
-  async (): Promise<void> => {
+  async (req, res): Promise<void> => {
+    const key = typeof req.query.key === "string" ? req.query.key : undefined;
+    const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator =
+      process.env.FUNCTIONS_EMULATOR === "true" ||
+      process.env.FIRESTORE_EMULATOR_HOST != null;
+
+    if (!isEmulator && (!expected || key !== expected)) {
+      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
+      return;
+    }
+
+    const queryOptions = buildDailyPriorityFetchOptions(req.query, isEmulator);
+    const rebuildStats = parseBooleanQuery(req.query.rebuildStats, false);
     const result = await fetchDailyPriorityProducts({
+      ...queryOptions,
       contentTypes: ["tl"],
       contentTypeSleepMs: 0,
-      rebuildStats: true,
+      rebuildStats,
       statsTargets: getEnabledFetchTargets(),
     });
-    logger.info("scheduledFetchDailyPriorityProducts TL finished", result);
+
+    logger.info("scheduledFetchDailyPriorityProducts TL HTTP finished", result);
+    res.json({
+      ok: result.run.status === "success" || result.run.status === "partial",
+      options: { ...queryOptions, contentTypes: ["tl"], rebuildStats },
+      result,
+    });
   },
 );
 
-export const scheduledFetchDailyPriorityProductsBl = onSchedule(
+export const scheduledFetchDailyPriorityProductsBl = onRequest(
   {
-    schedule: "every day 01:30",
-    timeZone: "Asia/Tokyo",
     region: "asia-northeast1",
+    cors: true,
     memory: "1GiB",
-    timeoutSeconds: 1800,
+    timeoutSeconds: 3600,
   },
-  async (): Promise<void> => {
+  async (req, res): Promise<void> => {
+    const key = typeof req.query.key === "string" ? req.query.key : undefined;
+    const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator =
+      process.env.FUNCTIONS_EMULATOR === "true" ||
+      process.env.FIRESTORE_EMULATOR_HOST != null;
+
+    if (!isEmulator && (!expected || key !== expected)) {
+      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
+      return;
+    }
+
+    const queryOptions = buildDailyPriorityFetchOptions(req.query, isEmulator);
+    const rebuildStats = parseBooleanQuery(req.query.rebuildStats, true);
     const result = await fetchDailyPriorityProducts({
+      ...queryOptions,
       contentTypes: ["bl"],
       contentTypeSleepMs: 0,
-      rebuildStats: true,
+      rebuildStats,
       statsTargets: getEnabledFetchTargets(),
     });
-    logger.info("scheduledFetchDailyPriorityProducts BL finished", result);
+
+    logger.info("scheduledFetchDailyPriorityProducts BL HTTP finished", result);
+    res.json({
+      ok: result.run.status === "success" || result.run.status === "partial",
+      options: { ...queryOptions, contentTypes: ["bl"], rebuildStats },
+      result,
+    });
   },
 );
 

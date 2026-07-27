@@ -1,6 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata = { title: "使い方" };
+export const metadata: Metadata = {
+  title: "使い方",
+  alternates: { canonical: "/guide" },
+};
 
 export default function GuidePage() {
   return (
@@ -18,7 +22,7 @@ export default function GuidePage() {
             <h2>作品を探す</h2>
             <p>
               TOPページやランキング、新着、セール、ジャンル、サークル一覧から作品を探せます。
-              TL/乙女向け・BLの切り替えや、作品形式タブを使って表示対象を絞り込めます。
+              TL・BLの切り替えや、作品形式タブを使って表示対象を絞り込めます。
             </p>
           </div>
           <div>
@@ -32,7 +36,7 @@ export default function GuidePage() {
             <h2>ランキング・注目作品</h2>
             <p>
               ランキング、最近追加された作品、注目サークルなどから、人気作品や新しい作品を確認できます。
-              表示順位や数値は、取得時点のデータをもとにした参考情報です。
+              推定売上や順位は、取得時点のデータをもとにした参考情報です。
             </p>
           </div>
           <div>
@@ -50,9 +54,9 @@ export default function GuidePage() {
             </p>
           </div>
           <div>
-            <h2>公式ページで確認</h2>
+            <h2>DLsiteで確認</h2>
             <p>
-              作品詳細の「公式サイトで見る」からDLsiteの商品ページへ移動できます。
+              作品詳細の「DLsiteで詳細を見る（PR）」からDLsiteの商品ページへ移動できます。
               価格、割引、販売状況、年齢制限などの最新情報は、DLsite公式ページをご確認ください。
             </p>
           </div>

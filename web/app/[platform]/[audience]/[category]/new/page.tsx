@@ -23,7 +23,10 @@ type PageProps = {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { platform, audience, category } = await params;
   const segment = getSegment(platform, audience, category);
-  return { title: segment ? `${segment.label}の新着作品` : "新着作品" };
+  return {
+    title: segment ? `${segment.label}の新着作品` : "新着作品",
+    alternates: segment ? { canonical: `${segment.path}/new` } : undefined,
+  };
 }
 
 export default async function NewPage({ params, searchParams }: PageProps) {

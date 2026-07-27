@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ProductGrid } from "@/components/ProductGrid";
 import { SectionHeader } from "@/components/SectionHeader";
 import { PageSizeSelect } from "@/components/PageSizeSelect";
+import { SortSelect } from "@/components/SortSelect";
 import { ListPagination } from "@/components/ListPagination";
 import { ListEmptyState, ListPageInfo } from "@/components/ListPageInfo";
 import { DiscountTabs, WorkTypeTabs } from "@/components/WorkTypeTabs";
@@ -11,8 +12,21 @@ import { getSegment } from "@/lib/siteSegments";
 import { getSaleProducts } from "@/lib/firebase/products";
 import { getWorkTypeLabel, parseWorkType } from "@/lib/workTypes";
 import { contentTypeForFilter, contentTypeParamForScope, getContentScopeLabel, parseContentScope } from "@/lib/contentCategories";
+import type { SaleSortMode } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+
+const SALE_SORT_OPTIONS: ReadonlyArray<{ label: string; value: SaleSortMode }> = [
+  { label: "割引率が高い順", value: "discountRate" },
+  { label: "値引き額が大きい順", value: "discountAmount" },
+  { label: "発売日が新しい順", value: "newest" },
+];
+
+function parseSaleSort(value: string | string[] | undefined): SaleSortMode {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return SALE_SORT_OPTIONS.some((option) => option.value === raw) ? raw as SaleSortMode : "discountRate";
+}
 
 type PageProps = {
   params: Promise<{ platform: string; audience: string; category: string }>;
@@ -32,7 +46,10 @@ function getDiscountLabel(value: number | undefined): string {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { platform, audience, category } = await params;
   const segment = getSegment(platform, audience, category);
-  return { title: segment ? `${segment.label}のセール作品` : "セール作品" };
+  return {
+    title: segment ? `${segment.label}のセール作品` : "セール作品",
+    alternates: segment ? { canonical: `${segment.path}/sale` } : undefined,
+  };
 }
 
 export default async function SalePage({ params, searchParams }: PageProps) {
@@ -46,6 +63,7 @@ export default async function SalePage({ params, searchParams }: PageProps) {
   const contentType = contentTypeForFilter(contentScope);
   const contentTypeParam = contentTypeParamForScope(contentScope);
   const discountRateMin = parseDiscount(query.discount);
+  const sortMode = parseSaleSort(query.sort);
   const segment = getSegment(platform, audience, category);
   if (!segment || !segment.enabled) notFound();
 
@@ -58,6 +76,7 @@ export default async function SalePage({ params, searchParams }: PageProps) {
     workType,
     contentType,
     discountRateMin,
+    sortMode,
   });
   const visibleRange = products.length ? `${offsetCount + 1}〜${offsetCount + products.length}件` : "0件";
 
@@ -73,6 +92,7 @@ export default async function SalePage({ params, searchParams }: PageProps) {
               contentType: contentTypeParam,
               limit: String(limitCount),
               page: "1",
+              sort: sortMode === "discountRate" ? undefined : sortMode,
             }}
           />
         </SectionHeader>
@@ -80,7 +100,7 @@ export default async function SalePage({ params, searchParams }: PageProps) {
           <DiscountTabs
             basePath={`${segment.path}/sale`}
             currentDiscountRateMin={discountRateMin}
-            currentParams={{ workType, contentType: contentTypeParam, limit: String(limitCount), page: "1" }}
+            currentParams={{ workType, contentType: contentTypeParam, limit: String(limitCount), page: "1", sort: sortMode === "discountRate" ? undefined : sortMode }}
           />
         </div>
         <ListPageInfo
@@ -90,10 +110,12 @@ export default async function SalePage({ params, searchParams }: PageProps) {
             { label: "対象", value: getContentScopeLabel(contentScope) },
             { label: "作品形式", value: getWorkTypeLabel(workType) },
             { label: "割引条件", value: getDiscountLabel(discountRateMin) },
+            { label: "並び順", value: SALE_SORT_OPTIONS.find((option) => option.value === sortMode)?.label ?? "割引率が高い順" },
             { label: "表示中", value: visibleRange },
           ]}
         />
         <div className="listToolbar listToolbar--below">
+          <SortSelect value={sortMode} options={SALE_SORT_OPTIONS} defaultValue="discountRate" />
           <PageSizeSelect value={limitCount} />
           <ListPagination page={pageNumber} limit={limitCount} hasNext={products.length === limitCount} />
         </div>

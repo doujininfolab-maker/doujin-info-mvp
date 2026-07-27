@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export type IconTone = "pink" | "purple" | "orange" | "blue" | "gold" | "muted";
 
 const toneClass: Record<IconTone, string> = {
@@ -32,9 +34,13 @@ export function IconShell({
 export function LogoIcon() {
   return (
     <span className="logoIcon" aria-hidden="true">
-      <span className="logoIcon__page logoIcon__page--left" />
-      <span className="logoIcon__page logoIcon__page--right" />
-      <span className="logoIcon__heart">♥</span>
+      <Image
+        src="/brand/doujin-info-logo.png"
+        alt=""
+        width={1027}
+        height={267}
+        priority
+      />
     </span>
   );
 }

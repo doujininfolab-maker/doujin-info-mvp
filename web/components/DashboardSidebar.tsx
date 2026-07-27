@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { GenreSummary, Product, SiteSegment } from "@/lib/types";
+import type { GenreSummary, Product, ProductCardItem, SiteSegment } from "@/lib/types";
 import { buildFilterHref } from "@/lib/workTypes";
 
 function genreHref(segment: SiteSegment, genre: GenreSummary): string {
@@ -10,12 +10,13 @@ function genreHref(segment: SiteSegment, genre: GenreSummary): string {
   return `${segment.path}/genre/${encodeURIComponent(genreId)}`;
 }
 
-function productHref(product: Product, contentTypeParam?: string): string {
+function productHref(product: Product | ProductCardItem, contentTypeParam?: string): string {
   return buildFilterHref(`/work/${product.productId}`, {}, { contentType: contentTypeParam });
 }
 
-function getProductImage(product: Product): string {
+function getProductImage(product: Product | ProductCardItem): string {
   return (
+    ("cardImageUrl" in product ? product.cardImageUrl : undefined) ||
     product.mainImageUrl ||
     product.images?.[0]?.thumbnailUrl ||
     product.images?.[0]?.url ||
@@ -30,7 +31,7 @@ export function DashboardSidebar({
   segment,
   contentTypeParam,
 }: {
-  recentProducts?: Product[];
+  recentProducts?: Array<Product | ProductCardItem>;
   popularGenres?: GenreSummary[];
   segment: SiteSegment;
   contentTypeParam?: string;

@@ -37,9 +37,8 @@ export function Footer() {
     <footer className="siteFooter">
       <div className="siteFooter__inner">
         <div className="footerBrand">
-          <Link className="brand" href="/">
+          <Link className="brand" href="/" aria-label="Doujin Info サイトトップ">
             <LogoIcon />
-            <span className="brand__text"><strong>Doujin Info</strong><small>同人インフォ</small></span>
           </Link>
           <p><span>女性向け同人作品の情報を、データで分かりやすく。</span><span>あなたの“好き”をもっと見つけやすく。</span></p>
         </div>
@@ -57,15 +56,20 @@ export function Footer() {
         ))}
         <div className="footerSocial">
           <h3>公式SNS</h3>
-          <div aria-label="公式SNSは準備中です">
-            <span className="footerSocial__placeholder">𝕏</span>
-            <span className="footerSocial__placeholder">◎</span>
-            <span className="footerSocial__placeholder">✉</span>
+          <div aria-label="公式SNS">
+            <a
+              href="https://x.com/doujin_info_jp"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Doujin Info 公式Xを開く"
+              title="Doujin Info 公式X"
+            >
+              𝕏
+            </a>
           </div>
-          <small>準備中</small>
         </div>
       </div>
-      <small className="copyright">© 2024 Doujin Info</small>
+      <small className="copyright">© 2026 Doujin Info</small>
     </footer>
   );
 }

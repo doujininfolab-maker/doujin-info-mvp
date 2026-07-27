@@ -1,11 +1,33 @@
+import { createHash } from "node:crypto";
 import { FieldPath, type QueryDocumentSnapshot, type Timestamp } from "firebase-admin/firestore";
 import { db } from "../firebaseAdmin";
-import type { Category, FetchTarget, Platform, Product, SellerType, SiteStatsDocument } from "../types";
+import type {
+  Category,
+  FetchTarget,
+  Platform,
+  Product,
+  SellerStatsDocument,
+  SellerType,
+  SiteStatsDocument,
+} from "../types";
 import { nowTimestamp } from "../util";
+import { rebuildSearchIndex } from "./rebuildSearchIndex";
+import { rebuildRankingIndex } from "./rebuildRankingIndex";
+import { rebuildGenreIndex } from "./rebuildGenreIndex";
+import { rebuildSellerIndex } from "./rebuildSellerIndex";
+import { rebuildHomeDashboardViews } from "./rebuildHomeDashboardView";
+import {
+  analyzeListViewDryRun,
+  LIST_VIEW_DRY_RUN_PRODUCT_FIELDS,
+  type ListViewDryRunOptions,
+  type ListViewDryRunReport,
+} from "./analyzeListViewDryRun";
 
 const PRODUCTS_COLLECTION = "products";
 const SITE_STATS_COLLECTION = "siteStats";
+const SELLERS_COLLECTION = "sellers";
 const SITE_STATS_PRODUCT_PAGE_SIZE = 1000;
+const SELLER_WRITE_BATCH_SIZE = 400;
 const MAX_POPULAR_GENRES = 30;
 const MAX_POPULAR_CATEGORIES = 12;
 const MAX_CIRCLE_HIGHLIGHTS = 12;
@@ -97,6 +119,32 @@ function removeUndefinedDeep<T>(value: T): T {
   }
 
   return cleaned as T;
+}
+
+function stableComparableValue(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object") return value;
+
+  if (value instanceof Date) return value.toISOString();
+
+  const timestampLike = value as { seconds?: number; nanoseconds?: number; toDate?: () => Date };
+  if (typeof timestampLike.seconds === "number" && typeof timestampLike.toDate === "function") {
+    return {
+      seconds: timestampLike.seconds,
+      nanoseconds: timestampLike.nanoseconds ?? 0,
+    };
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => stableComparableValue(item));
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => [key, stableComparableValue(item)]),
+  );
 }
 
 function buildSiteStatsId(segment: SiteSegmentKey, contentScope: ContentStatsScope = "all"): string {
@@ -351,7 +399,7 @@ function compactProduct(product?: StoredProduct): CompactProduct | undefined {
   };
 }
 
-function buildCircleHighlights(products: StoredProduct[]): CircleHighlight[] {
+function buildSellerSummaries(products: StoredProduct[]): CircleHighlight[] {
   const groups = new Map<string, StoredProduct[]>();
 
   for (const product of products) {
@@ -409,8 +457,135 @@ function buildCircleHighlights(products: StoredProduct[]): CircleHighlight[] {
         tags,
       } satisfies CircleHighlight;
     })
-    .sort((a, b) => b.totalSalesCount - a.totalSalesCount || b.productCount - a.productCount)
-    .slice(0, MAX_CIRCLE_HIGHLIGHTS);
+    .sort((a, b) => b.totalSalesCount - a.totalSalesCount || b.productCount - a.productCount);
+}
+
+function buildSellerStatsId(statId: string, sellerKey: string): string {
+  const sellerHash = createHash("sha256").update(sellerKey).digest("hex").slice(0, 32);
+  return `${statId}_${sellerHash}`;
+}
+
+function toSellerStatsDocument(
+  statId: string,
+  contentScope: ContentStatsScope,
+  summary: CircleHighlight,
+  generatedAt: Timestamp,
+): SellerStatsDocument {
+  return {
+    sellerStatsId: buildSellerStatsId(statId, summary.sellerKey),
+    statId,
+    sellerKey: summary.sellerKey,
+    sellerId: summary.sellerId,
+    sellerName: summary.sellerName,
+    sellerUrl: summary.sellerUrl,
+    sellerType: summary.sellerType,
+    platform: summary.platform,
+    audience: summary.audience,
+    category: summary.category,
+    contentScope,
+    productCount: summary.productCount,
+    totalSalesCount: summary.totalSalesCount,
+    averageSalesCount: summary.averageSalesCount,
+    estimatedRevenue: summary.estimatedRevenue,
+    averagePrice: summary.averagePrice,
+    firstReleaseDate: summary.firstReleaseDate,
+    latestReleaseDate: summary.latestReleaseDate,
+    newestProductTitle: summary.newestProductTitle,
+    topProduct: summary.topProduct,
+    latestProduct: summary.latestProduct,
+    tags: summary.tags,
+    isActive: true,
+    generatedAt,
+    updatedAt: generatedAt,
+  };
+}
+
+async function replaceSellerStatsForScope(
+  statId: string,
+  sellerStats: SellerStatsDocument[],
+): Promise<void> {
+  const existingSnapshot = await db
+    .collection(SELLERS_COLLECTION)
+    .where("statId", "==", statId)
+    .get();
+  const existingById = new Map(
+    existingSnapshot.docs.map((doc) => [doc.id, doc.data() as SellerStatsDocument]),
+  );
+  const currentIds = new Set(sellerStats.map((seller) => seller.sellerStatsId));
+  const staleIds = existingSnapshot.docs
+    .map((doc) => doc.id)
+    .filter((id) => !currentIds.has(id));
+  const changedSellerStats = sellerStats.filter((seller) => {
+    const existing = existingById.get(seller.sellerStatsId);
+    if (!existing) return true;
+
+    const { generatedAt: _existingGeneratedAt, updatedAt: _existingUpdatedAt, ...existingComparable } =
+      removeUndefinedDeep(existing);
+    const { generatedAt: _nextGeneratedAt, updatedAt: _nextUpdatedAt, ...nextComparable } =
+      removeUndefinedDeep(seller);
+    return JSON.stringify(stableComparableValue(existingComparable)) !==
+      JSON.stringify(stableComparableValue(nextComparable));
+  });
+
+  const operations: Array<
+    | { type: "set"; seller: SellerStatsDocument }
+    | { type: "delete"; documentId: string }
+  > = [
+    ...changedSellerStats.map((seller) => ({ type: "set" as const, seller })),
+    ...staleIds.map((documentId) => ({ type: "delete" as const, documentId })),
+  ];
+
+  for (let index = 0; index < operations.length; index += SELLER_WRITE_BATCH_SIZE) {
+    const batch = db.batch();
+    const chunk = operations.slice(index, index + SELLER_WRITE_BATCH_SIZE);
+
+    for (const operation of chunk) {
+      const ref = db.collection(SELLERS_COLLECTION).doc(
+        operation.type === "set" ? operation.seller.sellerStatsId : operation.documentId,
+      );
+      if (operation.type === "set") {
+        batch.set(ref, removeUndefinedDeep(operation.seller), { merge: false });
+      } else {
+        batch.delete(ref);
+      }
+    }
+
+    await batch.commit();
+  }
+}
+
+async function getProductsForListViewDryRun(segment: SiteSegmentKey): Promise<StoredProduct[]> {
+  const products: StoredProduct[] = [];
+  let lastDoc: QueryDocumentSnapshot | undefined;
+
+  while (true) {
+    let query = db
+      .collection(PRODUCTS_COLLECTION)
+      .where("platform", "==", segment.platform)
+      .where("audience", "==", segment.audience)
+      .where("category", "==", segment.category)
+      .where("isActive", "==", true)
+      .select(...LIST_VIEW_DRY_RUN_PRODUCT_FIELDS)
+      .orderBy(FieldPath.documentId())
+      .limit(SITE_STATS_PRODUCT_PAGE_SIZE);
+
+    if (lastDoc) {
+      query = query.startAfter(lastDoc);
+    }
+
+    const snapshot = await query.get();
+    if (snapshot.empty) break;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data() as StoredProduct;
+      products.push({ ...data, productId: (data as Product).productId ?? doc.id });
+    }
+
+    lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    if (snapshot.size < SITE_STATS_PRODUCT_PAGE_SIZE) break;
+  }
+
+  return products;
 }
 
 async function getProductsForSiteStats(segment: SiteSegmentKey): Promise<StoredProduct[]> {
@@ -446,15 +621,22 @@ async function getProductsForSiteStats(segment: SiteSegmentKey): Promise<StoredP
   return products;
 }
 
-export async function rebuildSiteStats(segment: SiteSegmentKey, contentScope: ContentStatsScope = "all"): Promise<string> {
+async function rebuildSiteStatsFromProducts(
+  segment: SiteSegmentKey,
+  contentScope: ContentStatsScope,
+  allProducts: StoredProduct[],
+  generatedAt: Timestamp,
+): Promise<string> {
   const statId = buildSiteStatsId(segment, contentScope);
-  const allProducts = await getProductsForSiteStats(segment);
   const products = filterProductsByContentScope(allProducts, contentScope);
   const todayKey = toJstDateKey(new Date());
   const popularGenres = buildGenreSummaries(products).slice(0, MAX_POPULAR_GENRES);
   const popularCategories = buildProductCategorySummaries(products);
-  const circleHighlights = buildCircleHighlights(products);
-  const generatedAt = nowTimestamp();
+  const sellerSummaries = buildSellerSummaries(products);
+  const circleHighlights = sellerSummaries.slice(0, MAX_CIRCLE_HIGHLIGHTS);
+  const sellerStats = sellerSummaries.map((summary) =>
+    toSellerStatsDocument(statId, contentScope, summary, generatedAt),
+  );
 
   const siteStats: SiteStatsDocument = {
     statId,
@@ -468,16 +650,125 @@ export async function rebuildSiteStats(segment: SiteSegmentKey, contentScope: Co
     popularGenres,
     popularCategories,
     circleHighlights,
+    sellerCount: sellerStats.length,
+    sellerStatsGeneratedAt: generatedAt,
     maxProducts: products.length,
     generatedAt,
     updatedAt: generatedAt,
   };
 
+  await replaceSellerStatsForScope(statId, sellerStats);
   await db.collection(SITE_STATS_COLLECTION).doc(statId).set(removeUndefinedDeep(siteStats), { merge: true });
   return statId;
 }
 
-export async function rebuildSiteStatsForTargets(targets: SiteSegmentKey[]): Promise<string[]> {
+export async function rebuildSiteStats(segment: SiteSegmentKey, contentScope: ContentStatsScope = "all"): Promise<string> {
+  const allProducts = await getProductsForSiteStats(segment);
+  const generatedAt = nowTimestamp();
+  const statId = await rebuildSiteStatsFromProducts(segment, contentScope, allProducts, generatedAt);
+
+  try {
+    await rebuildHomeDashboardViews(segment, allProducts, generatedAt, [contentScope]);
+  } catch (error) {
+    console.error("Failed to rebuild home dashboard view; keeping the previous cached view", {
+      segment,
+      contentScope,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    await rebuildSearchIndex(segment, allProducts, generatedAt);
+  } catch (error) {
+    console.error("Failed to rebuild search index; keeping the previous active version", {
+      segment,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    await rebuildRankingIndex(segment, allProducts, generatedAt);
+  } catch (error) {
+    console.error("Failed to rebuild ranking index; keeping the previous active version", {
+      segment,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    await rebuildGenreIndex(segment, allProducts, generatedAt);
+  } catch (error) {
+    console.error("Failed to rebuild genre index; keeping the previous active version", {
+      segment,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    await rebuildSellerIndex(segment, allProducts, generatedAt);
+  } catch (error) {
+    console.error("Failed to rebuild seller index; keeping the previous active version", {
+      segment,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return statId;
+}
+
+export type RebuildComponentStatus = "success" | "failed";
+
+export type RebuildComponentResult = {
+  status: RebuildComponentStatus;
+  error?: string;
+  details?: unknown;
+};
+
+export type RebuildSiteStatsSegmentResult = {
+  segmentId: string;
+  productCount: number;
+  components: {
+    siteStats: RebuildComponentResult;
+    homeViews: RebuildComponentResult;
+    searchIndex: RebuildComponentResult;
+    rankingIndex: RebuildComponentResult;
+    genreIndex: RebuildComponentResult;
+    sellerIndex: RebuildComponentResult;
+  };
+};
+
+export type RebuildSiteStatsForTargetsResult = {
+  status: "success" | "partial";
+  siteStatsIds: string[];
+  segments: RebuildSiteStatsSegmentResult[];
+};
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function runRebuildComponent<T>(
+  name: string,
+  segment: SiteSegmentKey,
+  operation: () => Promise<T>,
+): Promise<RebuildComponentResult> {
+  try {
+    const details = await operation();
+    console.log(`${name} rebuilt`, details);
+    return { status: "success", details };
+  } catch (error) {
+    const message = toErrorMessage(error);
+    console.error(`Failed to rebuild ${name}; keeping the previous active data`, {
+      segment,
+      error: message,
+    });
+    return { status: "failed", error: message };
+  }
+}
+
+export async function rebuildSiteStatsForTargetsDetailed(
+  targets: SiteSegmentKey[],
+): Promise<RebuildSiteStatsForTargetsResult> {
   const uniqueSegments = new Map<string, SiteSegmentKey>();
 
   for (const target of targets) {
@@ -490,11 +781,145 @@ export async function rebuildSiteStatsForTargets(targets: SiteSegmentKey[]): Pro
   }
 
   const statIds: string[] = [];
+  const segments: RebuildSiteStatsSegmentResult[] = [];
+
   for (const segment of uniqueSegments.values()) {
+    const segmentId = buildSiteStatsId(segment);
+    const allProducts = await getProductsForSiteStats(segment);
+    const generatedAt = nowTimestamp();
+    const segmentStatIds: string[] = [];
+
     for (const contentScope of CONTENT_STATS_SCOPES) {
-      statIds.push(await rebuildSiteStats(segment, contentScope));
+      segmentStatIds.push(
+        await rebuildSiteStatsFromProducts(
+          segment,
+          contentScope,
+          allProducts,
+          generatedAt,
+        ),
+      );
     }
+    statIds.push(...segmentStatIds);
+
+    const components: RebuildSiteStatsSegmentResult["components"] = {
+      siteStats: {
+        status: "success",
+        details: { statIds: segmentStatIds },
+      },
+      homeViews: await runRebuildComponent(
+        "home dashboard views",
+        segment,
+        () =>
+          rebuildHomeDashboardViews(
+            segment,
+            allProducts,
+            generatedAt,
+            CONTENT_STATS_SCOPES,
+          ),
+      ),
+      searchIndex: await runRebuildComponent(
+        "search index",
+        segment,
+        () => rebuildSearchIndex(segment, allProducts, generatedAt),
+      ),
+      rankingIndex: await runRebuildComponent(
+        "ranking index",
+        segment,
+        () => rebuildRankingIndex(segment, allProducts, generatedAt),
+      ),
+      genreIndex: await runRebuildComponent(
+        "genre index",
+        segment,
+        () => rebuildGenreIndex(segment, allProducts, generatedAt),
+      ),
+      sellerIndex: await runRebuildComponent(
+        "seller index",
+        segment,
+        () => rebuildSellerIndex(segment, allProducts, generatedAt),
+      ),
+    };
+
+    segments.push({
+      segmentId,
+      productCount: allProducts.length,
+      components,
+    });
   }
 
-  return statIds;
+  const hasFailure = segments.some((segment) =>
+    Object.values(segment.components).some(
+      (component) => component.status === "failed",
+    ),
+  );
+
+  return {
+    status: hasFailure ? "partial" : "success",
+    siteStatsIds: [...new Set(statIds)],
+    segments,
+  };
+}
+
+export async function rebuildSiteStatsForTargets(
+  targets: SiteSegmentKey[],
+): Promise<string[]> {
+  const result = await rebuildSiteStatsForTargetsDetailed(targets);
+  return result.siteStatsIds;
+}
+
+export type AnalyzeListViewDryRunForTargetsResult = {
+  status: "success";
+  dryRun: true;
+  writesPerformed: false;
+  reports: ListViewDryRunReport[];
+};
+
+/**
+ * Phase 0 only: reads active product documents and estimates the proposed
+ * list-view/search-view footprint. This function never writes to Firestore.
+ */
+export async function analyzeListViewDryRunForTargets(
+  targets: SiteSegmentKey[],
+  options: ListViewDryRunOptions = {},
+): Promise<AnalyzeListViewDryRunForTargetsResult> {
+  const uniqueSegments = new Map<string, SiteSegmentKey>();
+  for (const target of targets) {
+    const segmentId = buildSiteStatsId(target);
+    uniqueSegments.set(segmentId, {
+      platform: target.platform,
+      audience: target.audience,
+      category: target.category,
+    });
+  }
+
+  const reports: ListViewDryRunReport[] = [];
+  for (const segment of uniqueSegments.values()) {
+    const products = await getProductsForListViewDryRun(segment);
+    const report = analyzeListViewDryRun(segment, products, options);
+    reports.push(report);
+    console.log("List-view Phase 0 dry-run completed", {
+      segmentId: report.segmentId,
+      productCount: report.productCount,
+      elapsedMs: report.elapsedMs,
+      selectedBlockSize: report.totals.selectedBlockSize,
+      recommendedBlockSize: report.recommendation.recommendedBlockSize,
+      listCount: report.totals.listCount,
+      blockCount: report.totals.blockCount,
+      totalCompressedBytes: report.totals.totalCompressedBytes,
+      estimatedCreateWrites: report.totals.estimatedCreateWrites,
+      estimatedCleanupDeletes: report.totals.estimatedCleanupDeletes,
+      estimatedDailyMutationsWithCleanup:
+        report.totals.estimatedDailyMutationsWithCleanup,
+      oversizedDocumentCount: report.totals.oversizedDocumentCount,
+      maxObservedHeapUsed: report.maxObservedMemory.heapUsed,
+      maxObservedRss: report.maxObservedMemory.rss,
+      warnings: report.warnings,
+    });
+  }
+
+  return {
+    status: "success",
+    dryRun: true,
+    writesPerformed: false,
+    reports,
+  };
 }

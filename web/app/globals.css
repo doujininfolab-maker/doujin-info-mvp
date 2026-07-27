@@ -109,7 +109,7 @@ img {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 0;
   flex: 0 0 auto;
   min-width: max-content;
 }
@@ -117,43 +117,16 @@ img {
 .logoIcon {
   position: relative;
   display: inline-flex;
-  width: 42px;
-  height: 38px;
+  width: 248px;
+  max-width: 100%;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, #fff 0%, #ffe6f3 100%);
-  border: 1px solid #ffd2e7;
-  box-shadow: var(--shadow-soft);
 }
 
-.logoIcon__page {
-  position: absolute;
-  bottom: 8px;
-  width: 15px;
-  height: 20px;
-  border: 2px solid var(--pink);
-  background: #fff;
-}
-
-.logoIcon__page--left {
-  left: 9px;
-  transform: skewY(-10deg) rotate(-3deg);
-  border-radius: 6px 2px 2px 6px;
-}
-
-.logoIcon__page--right {
-  right: 9px;
-  transform: skewY(10deg) rotate(3deg);
-  border-radius: 2px 6px 6px 2px;
-}
-
-.logoIcon__heart {
-  position: relative;
-  z-index: 1;
-  color: var(--pink);
-  font-size: 13px;
-  transform: translateY(-6px);
+.logoIcon img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .brand__text {
@@ -1501,8 +1474,8 @@ img {
   .siteFooter {
     width: min(100% - 24px, var(--container));
   }
-  .brand__text strong {
-    font-size: 21px;
+  .logoIcon {
+    width: 204px;
   }
   .primaryNav {
     gap: 18px;
@@ -5464,6 +5437,19 @@ img {
     width: 100%;
   }
 
+  .listPage--searchResults .searchPageForm--withTarget {
+    width: calc(100% - 28px);
+    margin: 0 14px 14px;
+  }
+
+  .listPage--searchResults .searchPageForm__keyword,
+  .listPage--searchResults .searchPageForm__targetSelect {
+    flex: 0 0 100%;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
   .detailPage {
     width: 100%;
     gap: 0;
@@ -5519,5 +5505,245 @@ img {
 
   .detailBelow > *:first-child {
     border-top: 0;
+  }
+}
+
+/* v62: public launch copy, contact form, and route feedback */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.footerAffiliateNotice {
+  max-width: 920px;
+  margin: 22px auto 0;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-soft);
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.affiliateLinkNotice {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.staticPage__updatedAt {
+  margin: 12px 0 0;
+  color: var(--muted) !important;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.contactFormCallout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 24px;
+  padding: 22px;
+  border: 1px solid #efc4d8;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fff7fb, #f8f4ff);
+}
+
+.contactFormCallout h2,
+.contactFormCallout p {
+  margin: 0;
+}
+
+.contactFormCallout p {
+  margin-top: 6px;
+}
+
+.contactFormCallout .button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 18px;
+  white-space: nowrap;
+}
+
+.contactFormCallout__pending {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-soft);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.routeLoading,
+.routeError {
+  width: min(var(--container), calc(100% - 40px));
+  margin: 0 auto;
+  padding: 34px 0 64px;
+}
+
+.routeLoading__header {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.routeLoading__eyebrow,
+.routeError__eyebrow {
+  color: var(--pink);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .14em;
+}
+
+.routeLoading__title,
+.routeLoading__text,
+.routeLoading__image,
+.routeLoading__line {
+  border-radius: 8px;
+  background: linear-gradient(90deg, #f4eff3 25%, #fff 50%, #f4eff3 75%);
+  background-size: 200% 100%;
+  animation: routeLoadingShimmer 1.3s ease-in-out infinite;
+}
+
+.routeLoading__title {
+  width: min(420px, 70%);
+  height: 32px;
+}
+
+.routeLoading__text {
+  width: min(620px, 92%);
+  height: 14px;
+}
+
+.routeLoading__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.routeLoading__card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.routeLoading__image {
+  aspect-ratio: 4 / 3;
+  margin-bottom: 12px;
+}
+
+.routeLoading__line {
+  width: 78%;
+  height: 12px;
+  margin-top: 9px;
+}
+
+.routeLoading__line--wide {
+  width: 100%;
+  height: 16px;
+}
+
+.routeLoading__line--short {
+  width: 52%;
+}
+
+@keyframes routeLoadingShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.routeError__card {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: clamp(28px, 5vw, 48px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+}
+
+.routeError h1 {
+  margin: 10px 0 14px;
+  color: var(--ink);
+  font-size: clamp(26px, 4vw, 38px);
+}
+
+.routeError p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.8;
+}
+
+.routeError__actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.routeError__actions button,
+.routeError__actions a {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border: 1px solid var(--pink-soft);
+  border-radius: 9px;
+  color: var(--purple-strong);
+  background: #fff7fb;
+  font: inherit;
+  font-weight: 900;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  .routeLoading__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .contactFormCallout {
+    display: grid;
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .contactFormCallout .button,
+  .contactFormCallout__pending {
+    width: 100%;
+    text-align: center;
+  }
+
+  .routeLoading,
+  .routeError {
+    width: 100%;
+    padding: 24px 18px 44px;
+  }
+
+  .routeLoading__grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
   }
 }

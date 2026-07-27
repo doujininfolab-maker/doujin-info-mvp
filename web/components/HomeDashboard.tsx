@@ -1,10 +1,10 @@
 import Link from "next/link";
-import type { GenreSummary, HomeDashboardStats, Product, ProductCategorySummary, ProductWorkType, SellerSummary, SiteSegment } from "@/lib/types";
-import { fillProducts } from "@/lib/mockProducts";
+import type { GenreSummary, HomeDashboardStats, Product, ProductCardItem, ProductCategorySummary, ProductWorkType, SellerSummary, SiteSegment } from "@/lib/types";
 import { ProductGrid } from "./ProductGrid";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { SectionHeader } from "./SectionHeader";
 import { ScrollRail } from "./ScrollRail";
+import { ListEmptyState } from "./ListPageInfo";
 import { AudioCategoryIcon, CgCategoryIcon, CircleHighlightSectionIcon, FeaturedGenreStatIcon, FemaleCategoryIcon, GameCategoryIcon, GenreIcon, MangaCategoryIcon, MovieCategoryIcon, NewSectionIcon, OtherCategoryIcon, PeopleCategoryIcon, ProductCountStatIcon, SaleCountStatIcon, SaleSectionIcon, TodayUpdateStatIcon } from "@/components/icons/SiteIcons";
 import { WorkTypeTabs } from "./WorkTypeTabs";
 import { WORK_TYPE_OPTIONS, buildFilterHref } from "@/lib/workTypes";
@@ -29,10 +29,11 @@ function formatNumber(value: number): string {
   return value.toLocaleString("ja-JP");
 }
 
-function getProductImage(product?: Product): string {
+function getProductImage(product?: Product | ProductCardItem): string {
   if (!product) return "/no-image.svg";
 
   return (
+    ("cardImageUrl" in product ? product.cardImageUrl : undefined) ||
     product.mainImageUrl ||
     product.images?.[0]?.thumbnailUrl ||
     product.images?.[0]?.url ||
@@ -167,23 +168,19 @@ export function HomeDashboard({
 }: {
   segment: SiteSegment;
   pagePath: string;
-  rankingProducts: Product[];
+  rankingProducts: Array<Product | ProductCardItem>;
   rankingWorkType?: ProductWorkType;
   contentTypeParam?: string;
-  newProducts: Product[];
-  recentProducts: Product[];
+  newProducts: Array<Product | ProductCardItem>;
+  recentProducts: Array<Product | ProductCardItem>;
   newWorkType?: ProductWorkType;
-  saleProducts: Product[];
+  saleProducts: Array<Product | ProductCardItem>;
   stats: HomeDashboardStats;
   circleHighlights: SellerSummary[];
 }) {
-  const ranking = fillProducts(rankingProducts, 10);
-  const newest = fillProducts(newProducts, 10);
-  const sales = fillProducts(saleProducts, 10).map((product, index) => ({
-    ...product,
-    isDiscounted: product.isDiscounted ?? true,
-    discountRate: product.discountRate ?? (index % 3 === 0 ? 30 : 20),
-  }));
+  const ranking = rankingProducts.slice(0, 10);
+  const newest = newProducts.slice(0, 10);
+  const sales = saleProducts.slice(0, 10);
   const popularGenres = stats.popularGenres.slice(0, 10);
   const popularCategories = (stats.popularCategories.length ? stats.popularCategories : defaultCategorySummaries()).slice(0, 12);
   const rankingListHref = buildFilterHref(`${segment.path}/ranking`, {}, {
@@ -210,7 +207,11 @@ export function HomeDashboard({
                 />
               </div>
             </SectionHeader>
-            <ProductGrid products={ranking} showRank variant="ranking" rail ariaLabel="人気ランキングの商品リスト" contentTypeParam={contentTypeParam} />
+            {ranking.length ? (
+              <ProductGrid products={ranking} showRank variant="ranking" rail ariaLabel="人気ランキングの商品リスト" contentTypeParam={contentTypeParam} />
+            ) : (
+              <ListEmptyState title="ランキング作品が見つかりませんでした。" description="データ更新後に再度ご確認ください。" />
+            )}
           </section>
 
           <section className="contentSection">
@@ -227,12 +228,20 @@ export function HomeDashboard({
                 />
               </div>
             </SectionHeader>
-            <ProductGrid products={newest} variant="new" rail ariaLabel="新着作品の商品リスト" contentTypeParam={contentTypeParam} />
+            {newest.length ? (
+              <ProductGrid products={newest} variant="new" rail ariaLabel="新着作品の商品リスト" contentTypeParam={contentTypeParam} />
+            ) : (
+              <ListEmptyState title="新着作品が見つかりませんでした。" description="データ更新後に再度ご確認ください。" />
+            )}
           </section>
 
           <section className="contentSection">
             <SectionHeader title="セール・値引き中" href={buildFilterHref(`${segment.path}/sale`, {}, { contentType: contentTypeParam })} icon={<SaleSectionIcon />} />
-            <ProductGrid products={sales} variant="sale" rail ariaLabel="セール作品の商品リスト" contentTypeParam={contentTypeParam} />
+            {sales.length ? (
+              <ProductGrid products={sales} variant="sale" rail ariaLabel="セール作品の商品リスト" contentTypeParam={contentTypeParam} />
+            ) : (
+              <ListEmptyState title="セール作品が見つかりませんでした。" description="現在取得済みのセール作品はありません。" />
+            )}
           </section>
 
         </div>

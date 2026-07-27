@@ -2,7 +2,7 @@ import type { ProductRankingMode } from "./types";
 import { buildFilterHref } from "./workTypes";
 
 export const RANKING_MODE_OPTIONS: Array<{ label: string; value: ProductRankingMode }> = [
-  { label: "日間売上", value: "dailyRevenue" },
+  { label: "推定日間売上", value: "dailyRevenue" },
   { label: "日間", value: "daily" },
   { label: "週間", value: "weekly" },
   { label: "月間", value: "monthly" },

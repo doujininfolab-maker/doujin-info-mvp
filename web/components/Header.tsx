@@ -60,10 +60,6 @@ export function Header() {
         <div className="siteHeader__top">
           <Link className="brand" href={scopedHref("/")} aria-label="Doujin Info サイトトップ">
             <LogoIcon />
-            <span className="brand__text">
-              <strong>Doujin Info</strong>
-              <small>同人インフォ</small>
-            </span>
           </Link>
 
           <form className="searchBox" role="search" action="/search" method="get">

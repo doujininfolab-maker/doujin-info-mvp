@@ -1,6 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata = { title: "利用規約" };
+export const metadata: Metadata = {
+  title: "利用規約",
+  alternates: { canonical: "/terms" },
+};
 
 export default function TermsPage() {
   return (
@@ -11,6 +15,7 @@ export default function TermsPage() {
         <p>
           本規約は、Doujin Infoの利用条件を定めるものです。本サイトを利用する場合、本規約に同意したものとみなします。
         </p>
+        <p className="staticPage__updatedAt">制定日・最終更新日：2026年7月26日</p>
 
         <div className="staticPage__grid">
           <div>
@@ -34,7 +39,7 @@ export default function TermsPage() {
           <div>
             <h2>アフィリエイト</h2>
             <p>
-              本サイト内の外部リンクには、アフィリエイトリンクが含まれる場合があります。リンク経由の購入により、運営者に報酬が発生する場合があります。
+              本サイトはDLsiteアフィリエイトプログラムを利用しています。作品リンク経由で購入された場合、運営者に報酬が発生することがあります。
             </p>
           </div>
           <div>
@@ -52,7 +57,7 @@ export default function TermsPage() {
           <div>
             <h2>免責事項</h2>
             <p>
-              本サイトの情報を利用したこと、または利用できなかったことにより生じた損害について、運営者は責任を負いません。
+              法令上認められる範囲で、本サイトの情報を利用したこと、または利用できなかったことにより生じた損害について、運営者は責任を負いません。
               重要な判断や購入前には、必ず公式サイトで最新情報をご確認ください。
             </p>
           </div>

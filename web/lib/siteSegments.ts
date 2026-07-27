@@ -10,7 +10,7 @@ export const SITE_SEGMENTS: SiteSegment[] = [
     category: "doujin",
     path: "/dlsite/female/doujin",
     enabled: true,
-    description: "DLsiteの女性向け同人作品をランキング・新着・セールから探せるMVPです。",
+    description: "DLsiteのTL・BL同人作品を、ランキング、新着、セール、ジャンル、サークルから探せる情報サイトです。",
   },
   {
     key: "dlsite_male_doujin",

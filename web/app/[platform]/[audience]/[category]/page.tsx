@@ -1,17 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { HomeDashboard } from "@/components/HomeDashboard";
-import { getSegment } from "@/lib/siteSegments";
+import { DEFAULT_SEGMENT, getSegment } from "@/lib/siteSegments";
 import { parseWorkType } from "@/lib/workTypes";
 import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
-import {
-  getHomeDashboardData,
-  getHomeRandomNewProducts,
-  getHomeRandomRecentAddedProducts,
-  getHomeRandomSaleProducts,
-  getHomeRandomWeeklyCircleHighlights,
-  getLatestRankingProducts,
-} from "@/lib/firebase/products";
+import { getHomeDashboardPageData } from "@/lib/firebase/products";
 
 export const dynamic = "force-dynamic";
 
@@ -25,13 +18,17 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const segment = getSegment(platform, audience, category);
   if (!segment) return {};
 
+  const canonical = segment.key === DEFAULT_SEGMENT.key ? "/" : segment.path;
+
   return {
     title: segment.label,
     description: segment.description,
+    alternates: { canonical },
     openGraph: {
       title: segment.label,
       description: segment.description,
       type: "website",
+      url: canonical,
     },
   };
 }
@@ -53,16 +50,19 @@ export default async function SegmentTopPage({ params, searchParams }: PageProps
     category: segment.category,
   };
 
-  const [rankingProducts, newProducts, recentProducts, saleProducts, homeData, weeklyCircleHighlights] = await Promise.all([
-    getLatestRankingProducts({ ...filter, limitCount: 10, workType: rankingWorkType, contentType }),
-    getHomeRandomNewProducts({ ...filter, limitCount: 10, workType: newWorkType, contentType }),
-    getHomeRandomRecentAddedProducts({ ...filter, limitCount: 5, contentType }),
-    getHomeRandomSaleProducts({ ...filter, limitCount: 10, contentType }),
-    getHomeDashboardData({ ...filter, limitCount: 10, contentType }),
-    getHomeRandomWeeklyCircleHighlights({ ...filter, limitCount: 10, contentType }),
-  ]);
-  const { stats } = homeData;
-  const circleHighlights = weeklyCircleHighlights.length ? weeklyCircleHighlights : homeData.circleHighlights;
+  const {
+    stats,
+    rankingProducts,
+    newProducts,
+    recentProducts,
+    saleProducts,
+    circleHighlights,
+  } = await getHomeDashboardPageData({
+    ...filter,
+    contentType,
+    rankingWorkType,
+    newWorkType,
+  });
 
   return (
     <HomeDashboard

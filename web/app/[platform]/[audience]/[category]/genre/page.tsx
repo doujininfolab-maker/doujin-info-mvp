@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { GenreRankingCard } from "@/components/GenreRankingCard";
 import { SectionHeader } from "@/components/SectionHeader";
 import { PageSizeSelect } from "@/components/PageSizeSelect";
+import { SortSelect } from "@/components/SortSelect";
 import { ListPagination } from "@/components/ListPagination";
 import { ListEmptyState, ListPageInfo } from "@/components/ListPageInfo";
 import { WorkTypeTabs } from "@/components/WorkTypeTabs";
@@ -14,7 +15,7 @@ import { getWorkTypeLabel, parseWorkType } from "@/lib/workTypes";
 import { buildFilterHref } from "@/lib/workTypes";
 import { contentTypeForFilter, contentTypeParamForScope, getContentScopeLabel, parseContentScope } from "@/lib/contentCategories";
 import { parseRankingMode } from "@/lib/rankingModes";
-import type { ProductRankingMode } from "@/lib/types";
+import type { GenreSortMode, ProductRankingMode } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,18 @@ const GENRE_RANKING_MODE_OPTIONS: Array<{ label: string; value: ProductRankingMo
   { label: "月間", value: "monthly" },
   { label: "累計", value: "cumulative" },
 ];
+
+
+const GENRE_SORT_OPTIONS: ReadonlyArray<{ label: string; value: GenreSortMode }> = [
+  { label: "作品数順", value: "productCount" },
+  { label: "推定売上順", value: "revenue" },
+  { label: "販売数順", value: "sales" },
+];
+
+function parseGenreSort(value: string | string[] | undefined): GenreSortMode {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return GENRE_SORT_OPTIONS.some((option) => option.value === raw) ? raw as GenreSortMode : "sales";
+}
 
 type PageProps = {
   params: Promise<{ platform: string; audience: string; category: string }>;
@@ -64,7 +77,10 @@ function GenreRankingModeTabs({
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { platform, audience, category } = await params;
   const segment = getSegment(platform, audience, category);
-  return { title: segment ? `${segment.label}ジャンルランキング` : "ジャンルランキング" };
+  return {
+    title: segment ? `${segment.label}ジャンルランキング` : "ジャンルランキング",
+    alternates: segment ? { canonical: `${segment.path}/genre` } : undefined,
+  };
 }
 
 export default async function GenreRankingPage({ params, searchParams }: PageProps) {
@@ -78,6 +94,7 @@ export default async function GenreRankingPage({ params, searchParams }: PagePro
   const contentType = contentTypeForFilter(contentScope);
   const contentTypeParam = contentTypeParamForScope(contentScope);
   const rankingMode = parseGenreRankingMode(query.rankingMode);
+  const sortMode = parseGenreSort(query.sort);
   const segment = getSegment(platform, audience, category);
   if (!segment || !segment.enabled) notFound();
 
@@ -90,6 +107,7 @@ export default async function GenreRankingPage({ params, searchParams }: PagePro
     workType,
     contentType,
     rankingMode,
+    sortMode,
   });
   const rankingModeLabel = GENRE_RANKING_MODE_OPTIONS.find((option) => option.value === rankingMode)?.label ?? "日間";
   const visibleRange = items.length ? `${offsetCount + 1}〜${offsetCount + items.length}件` : "0件";
@@ -107,6 +125,7 @@ export default async function GenreRankingPage({ params, searchParams }: PagePro
                 contentType: contentTypeParam,
                 limit: String(limitCount),
                 page: "1",
+                sort: sortMode === "sales" ? undefined : sortMode,
               }}
             />
             <WorkTypeTabs
@@ -117,6 +136,7 @@ export default async function GenreRankingPage({ params, searchParams }: PagePro
                 contentType: contentTypeParam,
                 limit: String(limitCount),
                 page: "1",
+                sort: sortMode === "sales" ? undefined : sortMode,
               }}
             />
           </div>
@@ -128,17 +148,19 @@ export default async function GenreRankingPage({ params, searchParams }: PagePro
             { label: "対象", value: getContentScopeLabel(contentScope) },
             { label: "作品形式", value: getWorkTypeLabel(workType) },
             { label: "集計", value: rankingModeLabel },
+            { label: "並び順", value: GENRE_SORT_OPTIONS.find((option) => option.value === sortMode)?.label ?? "販売数順" },
             { label: "表示中", value: visibleRange },
           ]}
         />
         <div className="listToolbar listToolbar--below">
+          <SortSelect value={sortMode} options={GENRE_SORT_OPTIONS} defaultValue="sales" />
           <PageSizeSelect value={limitCount} />
           <ListPagination page={pageNumber} limit={limitCount} hasNext={items.length === limitCount} />
         </div>
         {items.length ? (
           <div className="genreRankingList">
             {items.map((item) => (
-              <GenreRankingCard item={item} segment={segment} key={item.genreId} showRevenue={rankingMode === "dailyRevenue"} contentTypeParam={contentTypeParam} />
+              <GenreRankingCard item={item} segment={segment} key={item.genreId} rankingMode={rankingMode} sortMode={sortMode} contentTypeParam={contentTypeParam} />
             ))}
           </div>
         ) : (

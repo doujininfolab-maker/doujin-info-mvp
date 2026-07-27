@@ -38,3 +38,21 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  - variable: NEXT_PUBLIC_SITE_URL
+    value: "REPLACE_WITH_PUBLIC_SITE_ORIGIN"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: CONTACT_FORM_URL
+    value: "https://forms.gle/MPH9jyVfsaiaNsc97"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: LIST_VIEW_MODE
+    value: "prefer"
+    availability:
+      - RUNTIME
+  - variable: LIST_VIEW_DEBUG
+    value: "false"
+    availability:
+      - RUNTIME

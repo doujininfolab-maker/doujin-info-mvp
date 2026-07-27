@@ -1,16 +1,37 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductGrid } from "@/components/ProductGrid";
 import { ListPageInfo } from "@/components/ListPageInfo";
 import { WorkTrendCharts } from "@/components/WorkTrendCharts";
-import { getAggregateTrendPointsForProducts, getSellerSummaryByKey, hasRecentProductTrendData } from "@/lib/firebase/products";
+import {
+  getAggregateTrendPointsForProducts,
+  getAggregateTrendPointsFromProductSnapshots,
+  getSellerSummaryByKey,
+  hasRecentProductTrendData,
+} from "@/lib/firebase/products";
 import { contentTypeForFilter, contentTypeParamForScope, getContentScopeLabel, parseContentScope } from "@/lib/contentCategories";
 import { buildFilterHref } from "@/lib/workTypes";
 import { formatDate, formatNumber } from "@/lib/format";
 import { getSegment, getSegmentPath } from "@/lib/siteSegments";
 
 export const dynamic = "force-dynamic";
+
+
+const getCachedSellerSummary = cache(async (
+  platform: string,
+  audience: string,
+  category: string,
+  sellerKey: string,
+  contentType?: "tl" | "bl",
+) => getSellerSummaryByKey({
+  platform: platform as "dlsite" | "fanza",
+  audience: audience as "female" | "male" | "general",
+  category: category as "doujin" | "game" | "video" | "ebook",
+  sellerKey,
+  contentType,
+}));
 
 type PageProps = {
   params: Promise<{ platform: string; audience: string; category: string; sellerKey: string }>;
@@ -37,28 +58,47 @@ function formatPeriod(start?: string, end?: string): string {
   return `${formatDate(start)} ～ ${formatDate(end)}`;
 }
 
-function getMonthsBetween(start?: string, end?: string): number | undefined {
-  if (!start || !end) return undefined;
+function formatAverageReleaseInterval(start: string | undefined, end: string | undefined, productCount: number): string {
+  if (!start || !end || productCount < 2) return "-";
+
   const startDate = new Date(`${start}T00:00:00+09:00`);
   const endDate = new Date(`${end}T00:00:00+09:00`);
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return undefined;
-  const months = (endDate.getFullYear() - startDate.getFullYear()) * 12 + endDate.getMonth() - startDate.getMonth() + 1;
-  return Math.max(1, months);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return "-";
+
+  const elapsedDays = Math.max(0, (endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
+  const intervalDays = elapsedDays / Math.max(productCount - 1, 1);
+
+  if (intervalDays < 30.4375) {
+    return `約${Math.max(1, Math.round(intervalDays))}日に1作品`;
+  }
+
+  const intervalMonths = intervalDays / 30.4375;
+  const roundedMonths = intervalMonths >= 10 ? Math.round(intervalMonths) : Math.round(intervalMonths * 10) / 10;
+  return `約${roundedMonths}ヶ月に1作品`;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { platform, audience, category, sellerKey } = await params;
   const segment = getSegment(platform, audience, category);
   if (!segment) return { title: "サークル詳細" };
+  const query = searchParams ? await searchParams : {};
+  const contentScope = parseContentScope(query.contentType);
+  const contentType = contentTypeForFilter(contentScope);
 
-  const summary = await getSellerSummaryByKey({
-    platform: segment.platform,
-    audience: segment.audience,
-    category: segment.category,
+  const summary = await getCachedSellerSummary(
+    segment.platform,
+    segment.audience,
+    segment.category,
     sellerKey,
-  });
+    contentType,
+  );
 
-  return { title: summary ? `${summary.sellerName}のサークル情報` : "サークル詳細" };
+  return {
+    title: summary ? `${summary.sellerName}のサークル情報` : "サークル詳細",
+    alternates: {
+      canonical: `${segment.path}/circle/${encodeURIComponent(sellerKey)}`,
+    },
+  };
 }
 
 export default async function CircleDetailPage({ params, searchParams }: PageProps) {
@@ -70,30 +110,41 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
   const segment = getSegment(platform, audience, category);
   if (!segment || !segment.enabled) notFound();
 
-  const summary = await getSellerSummaryByKey({
-    platform: segment.platform,
-    audience: segment.audience,
-    category: segment.category,
+  const summary = await getCachedSellerSummary(
+    segment.platform,
+    segment.audience,
+    segment.category,
     sellerKey,
     contentType,
-  });
+  );
 
   if (!summary) notFound();
 
   const segmentPath = getSegmentPath(summary.platform, summary.audience, summary.category);
   const imageUrl = getSellerImage(summary);
-  const months = getMonthsBetween(summary.firstReleaseDate, summary.latestReleaseDate);
+  const averageReleaseInterval = formatAverageReleaseInterval(summary.firstReleaseDate, summary.latestReleaseDate, summary.productCount);
   const sellerProducts = summary.products ?? [];
   const products = [...sellerProducts].sort((a, b) => {
     const releaseDateDiff = (b.releaseDate ?? "").localeCompare(a.releaseDate ?? "");
     if (releaseDateDiff !== 0) return releaseDateDiff;
 
-    return (a.title ?? "").localeCompare(b.title ?? "", "ja");
+    const titleDiff = (a.title ?? "").localeCompare(b.title ?? "", "ja");
+    if (titleDiff !== 0) return titleDiff;
+    return a.productId.localeCompare(b.productId);
   });
   const graphPrice = summary.averagePrice || sellerProducts.find((product) => product.priceCurrent)?.priceCurrent || 1000;
   const circleSalesCount = sellerProducts.reduce((sum, product) => sum + (product.salesCount ?? 0), 0) || summary.totalSalesCount;
-  const trendPoints = await getAggregateTrendPointsForProducts(sellerProducts);
+  const snapshotTrendPoints = getAggregateTrendPointsFromProductSnapshots(sellerProducts, 35);
+  const useSnapshotTrend = hasRecentProductTrendData(snapshotTrendPoints);
+  const trendPoints = useSnapshotTrend
+    ? snapshotTrendPoints
+    : await getAggregateTrendPointsForProducts(sellerProducts, 30);
+  const initialTrendDays = useSnapshotTrend ? 35 : 30;
   const showTrendCharts = hasRecentProductTrendData(trendPoints);
+  const sellerTrendBaseUrl = `/api/trends/seller/${encodeURIComponent(segment.platform)}/${encodeURIComponent(segment.audience)}/${encodeURIComponent(segment.category)}/${encodeURIComponent(summary.sellerKey)}`;
+  const sellerTrendUrl = contentType
+    ? `${sellerTrendBaseUrl}?contentType=${contentType}`
+    : sellerTrendBaseUrl;
 
   return (
     <div className="circleDetailPage">
@@ -133,7 +184,7 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
         <div className="circleOverview__tableWrap">
           <dl className="circleInfoTable">
             <div><dt>作品数</dt><dd>{formatNumber(summary.productCount)}</dd></div>
-            <div><dt>新作ペース</dt><dd>{months ? `${months}ヶ月` : "-"}</dd></div>
+            <div><dt>平均発売間隔</dt><dd>{averageReleaseInterval}</dd></div>
             <div><dt>合計販売数</dt><dd>{formatNumber(summary.totalSalesCount)}</dd></div>
             <div><dt>平均販売数</dt><dd>{formatNumber(summary.averageSalesCount)}</dd></div>
             <div className="circleInfoTable__wide"><dt>配信期間</dt><dd>{formatPeriod(summary.firstReleaseDate, summary.latestReleaseDate)}</dd></div>
@@ -159,6 +210,8 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
             priceOriginal={graphPrice}
             salesCount={circleSalesCount}
             trendPoints={trendPoints}
+            trendDataUrl={sellerTrendUrl}
+            initialTrendDays={initialTrendDays}
           />
         </div>
       ) : null}

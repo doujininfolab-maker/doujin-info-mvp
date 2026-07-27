@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { GenreRankingItem, SiteSegment } from "@/lib/types";
+import type { GenreRankingItem, GenreSortMode, ProductRankingMode, SiteSegment } from "@/lib/types";
 import { formatNumber } from "@/lib/format";
 import { buildFilterHref } from "@/lib/workTypes";
 
@@ -11,32 +11,36 @@ function genreHref(segment: SiteSegment, genreId: string): string {
 }
 
 function productImage(product: GenreRankingItem["topProducts"][number]): string {
-  return (
-    product.mainImageUrl ||
-    product.images?.[0]?.url ||
-    product.images?.[0]?.thumbnailUrl ||
-    product.thumbnailUrl ||
-    "/no-image.svg"
-  );
+  return product.mainImageUrl || product.thumbnailUrl || ("images" in product ? product.images?.[0]?.url || product.images?.[0]?.thumbnailUrl : undefined) || "/no-image.svg";
 }
 
 function formatCurrency(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "-円";
+  if (!Number.isFinite(value) || value <= 0) return "0円";
   return `${formatNumber(Math.round(value))}円`;
+}
+
+function periodLabel(mode: ProductRankingMode): string {
+  if (mode === "weekly") return "週間";
+  if (mode === "monthly") return "月間";
+  if (mode === "cumulative") return "累計";
+  return "日間";
 }
 
 export function GenreRankingCard({
   item,
   segment,
-  showRevenue = false,
+  rankingMode,
+  sortMode,
   contentTypeParam,
 }: {
   item: GenreRankingItem;
   segment: SiteSegment;
-  showRevenue?: boolean;
+  rankingMode: ProductRankingMode;
+  sortMode: GenreSortMode;
   contentTypeParam?: string;
 }) {
   const href = buildFilterHref(genreHref(segment, item.genreId), {}, { contentType: contentTypeParam });
+  const label = periodLabel(rankingMode);
 
   return (
     <article className="genreRankingCard">
@@ -47,9 +51,9 @@ export function GenreRankingCard({
       <div className="genreRankingCard__body">
         <Link className="genreRankingCard__title" href={href}>{item.name}</Link>
         <div className="genreRankingCard__meta">
-          <span>作品数：{formatNumber(item.productCount)}</span>
-          <span>累計販売数：{formatNumber(item.totalSalesCount)}本</span>
-          {showRevenue ? <span>推定売上額：{formatCurrency(item.estimatedRevenue)}</span> : null}
+          <span>{label}販売作品数：{formatNumber(item.productCount)}</span>
+          <span>{label}販売数：{formatNumber(item.totalSalesCount)}本</span>
+          {sortMode === "revenue" ? <span>{label}推定売上：{formatCurrency(item.estimatedRevenue)}</span> : null}
         </div>
         {item.topProducts.length ? (
           <div className="genreRankingCard__products" aria-label="代表作品">

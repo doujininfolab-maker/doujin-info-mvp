@@ -1,29 +1,32 @@
 import Link from "next/link";
-import type { SellerSummary } from "@/lib/types";
+import type { SellerCardItem, SellerSummary } from "@/lib/types";
 import { formatDate, formatNumber } from "@/lib/format";
 import { buildFilterHref } from "@/lib/workTypes";
 
-function getSellerImage(seller: SellerSummary): string {
+type SellerCardDisplayItem = SellerSummary | SellerCardItem;
+
+function getSellerImage(seller: SellerCardDisplayItem): string {
   return (
-    seller.topProduct?.mainImageUrl ||
-    seller.topProduct?.images?.[0]?.url ||
-    seller.topProduct?.thumbnailUrl ||
-    seller.latestProduct?.mainImageUrl ||
-    seller.latestProduct?.thumbnailUrl ||
+    ("cardImageUrl" in seller ? seller.cardImageUrl : undefined) ||
+    ("topProduct" in seller ? seller.topProduct?.mainImageUrl : undefined) ||
+    ("topProduct" in seller ? seller.topProduct?.images?.[0]?.url : undefined) ||
+    ("topProduct" in seller ? seller.topProduct?.thumbnailUrl : undefined) ||
+    ("latestProduct" in seller ? seller.latestProduct?.mainImageUrl : undefined) ||
+    ("latestProduct" in seller ? seller.latestProduct?.thumbnailUrl : undefined) ||
     "/no-image.svg"
   );
 }
 
-function buildCircleHref(seller: SellerSummary, contentTypeParam?: string): string {
+function buildCircleHref(seller: SellerCardDisplayItem, contentTypeParam?: string): string {
   return buildFilterHref(`/${seller.platform}/${seller.audience}/${seller.category}/circle/${encodeURIComponent(seller.sellerKey)}`, {}, { contentType: contentTypeParam });
 }
 
-function buildGenreHref(seller: SellerSummary, genreName: string, contentTypeParam?: string): string {
+function buildGenreHref(seller: SellerCardDisplayItem, genreName: string, contentTypeParam?: string): string {
   const normalizedGenre = genreName.trim().toLowerCase();
   return buildFilterHref(`/${seller.platform}/${seller.audience}/${seller.category}/genre/dlsite:${encodeURIComponent(normalizedGenre)}`, {}, { contentType: contentTypeParam });
 }
 
-export function SellerCard({ seller, contentTypeParam }: { seller: SellerSummary; contentTypeParam?: string }) {
+export function SellerCard({ seller, contentTypeParam }: { seller: SellerCardDisplayItem; contentTypeParam?: string }) {
   const href = buildCircleHref(seller, contentTypeParam);
   const tags = seller.tags.slice(0, 8);
 
@@ -57,7 +60,7 @@ export function SellerCard({ seller, contentTypeParam }: { seller: SellerSummary
   );
 }
 
-export function SellerList({ sellers, contentTypeParam }: { sellers: SellerSummary[]; contentTypeParam?: string }) {
+export function SellerList({ sellers, contentTypeParam }: { sellers: SellerCardDisplayItem[]; contentTypeParam?: string }) {
   return (
     <div className="sellerList">
       {sellers.map((seller) => <SellerCard key={seller.sellerKey} seller={seller} contentTypeParam={contentTypeParam} />)}

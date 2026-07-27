@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ProductTrendPoint } from "@/lib/types";
 
 const RANGE_OPTIONS = [
@@ -34,6 +34,8 @@ type WorkTrendChartsProps = {
   priceOriginal?: number | null;
   salesCount?: number | null;
   trendPoints?: ProductTrendPoint[];
+  trendDataUrl?: string;
+  initialTrendDays?: number;
 };
 
 const SALES_REVENUE_WIDTH = 900;
@@ -48,6 +50,21 @@ const PAD = {
 
 function getRangeDays(range: RangeValue): number {
   return RANGE_OPTIONS.find((option) => option.value === range)?.days ?? 30;
+}
+
+function getRequiredLookbackDays(range: RangeValue): number {
+  const today = new Date();
+  if (range === "thisMonth") return today.getDate();
+  if (range === "lastMonth") {
+    const previousMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+    return today.getDate() + previousMonthEnd.getDate();
+  }
+  if (range === "twoMonthsAgo") {
+    const previousMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+    const twoMonthsAgoEnd = new Date(today.getFullYear(), today.getMonth() - 1, 0);
+    return today.getDate() + previousMonthEnd.getDate() + twoMonthsAgoEnd.getDate();
+  }
+  return getRangeDays(range);
 }
 
 function formatCurrency(value: number): string {
@@ -476,14 +493,72 @@ function PriceChart({ data }: { data: TrendPoint[] }) {
   );
 }
 
-export function WorkTrendCharts({ priceCurrent, priceOriginal, salesCount, trendPoints }: WorkTrendChartsProps) {
+export function WorkTrendCharts({
+  priceCurrent,
+  priceOriginal,
+  salesCount,
+  trendPoints,
+  trendDataUrl,
+  initialTrendDays = 30,
+}: WorkTrendChartsProps) {
   const [range, setRange] = useState<RangeValue>("30d");
-  const hasActualTrendPoints = trendPoints !== undefined;
+  const [loadedTrendPoints, setLoadedTrendPoints] = useState<ProductTrendPoint[] | undefined>(trendPoints);
+  const [loadedTrendDays, setLoadedTrendDays] = useState(Math.max(1, initialTrendDays));
+  const [isTrendLoading, setIsTrendLoading] = useState(false);
+  const [trendLoadFailed, setTrendLoadFailed] = useState(false);
+
+  useEffect(() => {
+    setLoadedTrendPoints(trendPoints);
+    setLoadedTrendDays(Math.max(1, initialTrendDays));
+    setTrendLoadFailed(false);
+  }, [initialTrendDays, trendDataUrl, trendPoints]);
+
+  useEffect(() => {
+    if (!trendDataUrl || loadedTrendPoints === undefined) {
+      setIsTrendLoading(false);
+      return;
+    }
+    const requiredDays = Math.min(365, Math.max(1, getRequiredLookbackDays(range)));
+    if (requiredDays <= loadedTrendDays) {
+      setIsTrendLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const separator = trendDataUrl.includes("?") ? "&" : "?";
+    setIsTrendLoading(true);
+    setTrendLoadFailed(false);
+
+    void fetch(`${trendDataUrl}${separator}days=${requiredDays}`, {
+      signal: controller.signal,
+      headers: { accept: "application/json" },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`trend request failed: ${response.status}`);
+        return response.json() as Promise<{ points?: ProductTrendPoint[] }>;
+      })
+      .then((payload) => {
+        if (!Array.isArray(payload.points)) throw new Error("trend response is invalid");
+        setLoadedTrendPoints(payload.points);
+        setLoadedTrendDays(requiredDays);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setTrendLoadFailed(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsTrendLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [loadedTrendDays, loadedTrendPoints, range, trendDataUrl]);
+
+  const hasActualTrendPoints = loadedTrendPoints !== undefined;
   const data = useMemo(
     () => hasActualTrendPoints
-      ? createActualTrendData(trendPoints, range)
+      ? createActualTrendData(loadedTrendPoints, range)
       : createDummyTrendData(range, priceCurrent, priceOriginal, salesCount),
-    [hasActualTrendPoints, range, priceCurrent, priceOriginal, salesCount, trendPoints],
+    [hasActualTrendPoints, loadedTrendPoints, range, priceCurrent, priceOriginal, salesCount],
   );
 
   const totalSales = data.reduce((sum, point) => sum + point.sales, 0);
@@ -494,12 +569,12 @@ export function WorkTrendCharts({ priceCurrent, priceOriginal, salesCount, trend
     <section className="workTrendSection" aria-label="販売データグラフ">
       <div className="workTrendHeader">
         <div>
-          <h2>販売数・売上額</h2>
+          <h2>販売数・推定売上額</h2>
           <p>{hasActualTrendPoints ? "DLsite取得データを基に表示しています。半年・1年は月ごとの累計です。" : "過去30日〜先々月は日次、半年・1年は月ごとの累計で表示しています。現在はダミーデータです。"}</p>
         </div>
         <label className="workTrendRange">
           <span>表示範囲</span>
-          <select value={range} onChange={(event) => setRange(event.target.value as RangeValue)}>
+          <select value={range} onChange={(event) => setRange(event.target.value as RangeValue)} aria-busy={isTrendLoading}>
             {RANGE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
@@ -518,7 +593,15 @@ export function WorkTrendCharts({ priceCurrent, priceOriginal, salesCount, trend
         <span><i className="legendSales" />販売数</span>
         <span><i className="legendRevenue" />推定売上額</span>
       </div>
-      <p className="workChartNote">{hasActualTrendPoints ? "※税込 / 取得できた日次データのみ表示" : "※税込 / 欠けたデータは中間値で自動補完"}</p>
+      <p className="workChartNote">
+        {isTrendLoading
+          ? "※選択期間のデータを読み込んでいます。"
+          : trendLoadFailed
+            ? "※追加データの取得に失敗しました。取得済みの範囲を表示しています。"
+            : hasActualTrendPoints
+              ? "※税込 / 取得できた日次データのみ表示"
+              : "※税込 / 欠けたデータは中間値で自動補完"}
+      </p>
 
       <div className="workTrendHeader workTrendHeader--sub">
         <div>

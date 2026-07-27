@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { Product } from "@/lib/types";
+import type { ProductCardItem } from "@/lib/types";
 import { formatDate, formatNumber, formatRating } from "@/lib/format";
 import { PriceLabel } from "./PriceLabel";
 import { buildFilterHref } from "@/lib/workTypes";
@@ -7,8 +7,9 @@ import { CrownIcon } from "@/components/icons/SiteIcons";
 
 export type ProductCardVariant = "ranking" | "compact" | "sale" | "new" | "grid" | "list";
 
-function getProductImage(product: Product): string {
+function getProductImage(product: ProductCardItem): string {
   return (
+    product.cardImageUrl ||
     product.mainImageUrl ||
     product.images?.[0]?.url ||
     product.thumbnailUrl ||
@@ -17,7 +18,7 @@ function getProductImage(product: Product): string {
   );
 }
 
-function getTags(product: Product, count = 2, contentTypeParam?: string): Array<{ label: string; href: string }> {
+function getTags(product: ProductCardItem, count = 2, contentTypeParam?: string): Array<{ label: string; href: string }> {
   const segmentPath = getProductSegmentPath(product);
   const source = product.genres?.length ? product.genres : product.tags ?? [];
   return source.slice(0, count).map((label, index) => {
@@ -29,35 +30,35 @@ function getTags(product: Product, count = 2, contentTypeParam?: string): Array<
   });
 }
 
-function getProductSegmentPath(product: Product): string {
+function getProductSegmentPath(product: ProductCardItem): string {
   return `/${product.platform}/${product.audience}/${product.category}`;
 }
 
-function getWorkTypeHref(product: Product, contentTypeParam?: string): string {
+function getWorkTypeHref(product: ProductCardItem, contentTypeParam?: string): string {
   const segmentPath = getProductSegmentPath(product);
   return buildFilterHref(`${segmentPath}/ranking`, {}, { workType: product.workType, contentType: contentTypeParam });
 }
 
-function getSellerHref(product: Product, contentTypeParam?: string): string | undefined {
+function getSellerHref(product: ProductCardItem, contentTypeParam?: string): string | undefined {
   const sellerKey = product.seller?.sellerId?.trim() || product.seller?.sellerName?.trim();
   if (!sellerKey) return undefined;
   return buildFilterHref(`${getProductSegmentPath(product)}/circle/${encodeURIComponent(sellerKey)}`, {}, { contentType: contentTypeParam });
 }
 
-function getProductHref(product: Product, contentTypeParam?: string): string {
+function getProductHref(product: ProductCardItem, contentTypeParam?: string): string {
   return buildFilterHref(`/work/${product.productId}`, {}, { contentType: contentTypeParam });
 }
 
-function getWorkTypeLabel(product: Product): string {
+function getWorkTypeLabel(product: ProductCardItem): string {
   return product.workTypeLabel || product.workType || product.category;
 }
 
 function formatCurrencyValue(value?: number): string {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "-円";
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "-円";
   return `${formatNumber(Math.round(value))}円`;
 }
 
-function getEstimatedRevenue(product: Product): number | undefined {
+function getEstimatedRevenue(product: ProductCardItem): number | undefined {
   const price = product.priceCurrent;
   const sales = product.salesCount;
 
@@ -72,7 +73,7 @@ export function ProductCard({
   listRankMetric = "revenue",
   contentTypeParam,
 }: {
-  product: Product;
+  product: ProductCardItem;
   rank?: number;
   variant?: ProductCardVariant;
   listRankMetric?: "revenue" | "sales";
@@ -86,7 +87,12 @@ export function ProductCard({
   const isSale = variant === "sale" || product.isDiscounted || Boolean(product.discountRate);
   const isNew = variant === "new";
   const isRankingList = isList && Boolean(rank);
-  const estimatedRevenue = getEstimatedRevenue(product);
+  const rankingSalesCount = isRankingList
+    ? product.rankingMetric?.salesCount ?? product.salesCount
+    : product.salesCount;
+  const estimatedRevenue = isRankingList
+    ? product.rankingMetric?.revenue ?? getEstimatedRevenue(product)
+    : getEstimatedRevenue(product);
   const productHref = getProductHref(product, contentTypeParam);
 
   return (
@@ -135,8 +141,8 @@ export function ProductCard({
           className={`listRankBadge listRankBadge--sales${listRankMetric === "sales" ? " listRankBadge--countOnly" : ""}`}
           aria-label={
             listRankMetric === "sales"
-              ? `${rank}位 販売数 ${formatNumber(product.salesCount)}本`
-              : `${rank}位 売上額 ${formatCurrencyValue(estimatedRevenue)} 販売数 ${formatNumber(product.salesCount)}本`
+              ? `${rank}位 販売数 ${formatNumber(rankingSalesCount)}本`
+              : `${rank}位 推定売上額 ${formatCurrencyValue(estimatedRevenue)} 販売数 ${formatNumber(rankingSalesCount)}本`
           }
         >
           <div className="listRankBadge__rank">
@@ -145,11 +151,11 @@ export function ProductCard({
           </div>
           <div className="listRankBadge__metrics">
             {listRankMetric === "sales" ? (
-              <strong>{formatNumber(product.salesCount)}本</strong>
+              <strong>{formatNumber(rankingSalesCount)}本</strong>
             ) : (
               <>
                 <strong>{formatCurrencyValue(estimatedRevenue)}</strong>
-                <small>{formatNumber(product.salesCount)}本</small>
+                <small>{formatNumber(rankingSalesCount)}本</small>
               </>
             )}
           </div>

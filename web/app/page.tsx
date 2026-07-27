@@ -1,17 +1,15 @@
+import type { Metadata } from "next";
 import { HomeDashboard } from "@/components/HomeDashboard";
 import { DEFAULT_SEGMENT } from "@/lib/siteSegments";
 import { parseWorkType } from "@/lib/workTypes";
 import { contentTypeForFilter, contentTypeParamForScope, parseContentScope } from "@/lib/contentCategories";
-import {
-  getHomeDashboardData,
-  getHomeRandomNewProducts,
-  getHomeRandomRecentAddedProducts,
-  getHomeRandomSaleProducts,
-  getHomeRandomWeeklyCircleHighlights,
-  getLatestRankingProducts,
-} from "@/lib/firebase/products";
+import { getHomeDashboardPageData } from "@/lib/firebase/products";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -31,16 +29,19 @@ export default async function HomePage({ searchParams }: PageProps) {
     category: segment.category,
   };
 
-  const [rankingProducts, newProducts, recentProducts, saleProducts, homeData, weeklyCircleHighlights] = await Promise.all([
-    getLatestRankingProducts({ ...filter, limitCount: 10, workType: rankingWorkType, contentType }),
-    getHomeRandomNewProducts({ ...filter, limitCount: 10, workType: newWorkType, contentType }),
-    getHomeRandomRecentAddedProducts({ ...filter, limitCount: 5, contentType }),
-    getHomeRandomSaleProducts({ ...filter, limitCount: 10, contentType }),
-    getHomeDashboardData({ ...filter, limitCount: 10, contentType }),
-    getHomeRandomWeeklyCircleHighlights({ ...filter, limitCount: 10, contentType }),
-  ]);
-  const { stats } = homeData;
-  const circleHighlights = weeklyCircleHighlights.length ? weeklyCircleHighlights : homeData.circleHighlights;
+  const {
+    stats,
+    rankingProducts,
+    newProducts,
+    recentProducts,
+    saleProducts,
+    circleHighlights,
+  } = await getHomeDashboardPageData({
+    ...filter,
+    contentType,
+    rankingWorkType,
+    newWorkType,
+  });
 
   return (
     <HomeDashboard

@@ -35,7 +35,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { platform, audience, category, genreId } = await params;
   const segment = getSegment(platform, audience, category);
   const genreName = displayGenreName(genreId);
-  return { title: segment ? `${genreName} | ${segment.label}` : genreName };
+  return {
+    title: segment ? `${genreName} | ${segment.label}` : genreName,
+    alternates: segment
+      ? { canonical: `${segment.path}/genre/${encodeURIComponent(decodeGenreId(genreId))}` }
+      : undefined,
+  };
 }
 
 export default async function GenrePage({ params, searchParams }: PageProps) {

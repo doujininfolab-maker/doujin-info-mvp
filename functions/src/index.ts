@@ -1,4 +1,5 @@
 import { onRequest } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions";
 import { getEnabledFetchTargets } from "./adapters";
 import {
@@ -6,14 +7,27 @@ import {
   fetchDlsiteProductDetailForDebug,
   type DlsiteProductDebugFloor,
 } from "./adapters/dlsite/dlsiteFemaleDoujinAdapter";
-import { fetchDailyProducts } from "./batch/fetchDailyProducts";
 import { fetchGirlsReleaseOldProducts } from "./batch/fetchGirlsReleaseOldProducts";
 import { fetchDailyPriorityProducts } from "./batch/fetchDailyPriorityProducts";
 import { db } from "./firebaseAdmin";
-import { rebuildSiteStatsForTargets } from "./batch/rebuildSiteStats";
-import { nowTimestamp } from "./util";
+import {
+  analyzeListViewDryRunForTargets,
+  rebuildSiteStatsForTargetsDetailed,
+} from "./batch/rebuildSiteStats";
+import { backfillRankingMetrics } from "./batch/backfillRankingMetrics";
+import { rebuildNewListViewsForTargets } from "./batch/rebuildNewListView";
+import { rebuildRankingListViewsForTargets } from "./batch/rebuildRankingListView";
+import { rebuildSellerListViewsForTargets } from "./batch/rebuildSellerListView";
+import { rebuildHomeDashboardListViewsForTargets } from "./batch/rebuildHomeDashboardListView";
+import { rebuildSaleListViewsForTargets } from "./batch/rebuildSaleListView";
+import {
+  LIST_VIEW_COMPONENTS,
+  rebuildAllListViewsForTargets,
+  type ListViewComponentName,
+} from "./batch/rebuildAllListViews";
+import { addDaysToDateKey } from "./batch/rankingMetrics";
+import { nowTimestamp, toYyyyMMdd } from "./util";
 import type { FetchTarget, ProductContentType } from "./types";
-export { seedDummyProducts } from "./seed/seedDummyProducts";
 
 function firstQueryValue(value: unknown): string | undefined {
   if (typeof value === "string") return value;
@@ -37,22 +51,36 @@ function parseIntegerQuery(
   return integer;
 }
 
-function buildManualFetchOptions(
-  query: Record<string, unknown>,
-  isEmulator: boolean,
-) {
-  return {
-    listLimit: parseIntegerQuery(query.listLimit, { min: 1, max: 200 }),
-    detailLimit: parseIntegerQuery(query.detailLimit, { min: 0, max: 200 }),
-    minIntervalMs:
-      parseIntegerQuery(query.minIntervalMs, { min: 0, max: 60_000 }) ??
-      (isEmulator ? 0 : 500),
-    listOnly: parseBooleanQuery(query.listOnly, false),
-    skipFreshHours: parseIntegerQuery(query.skipFreshHours, {
-      min: 0,
-      max: 24 * 30,
-    }),
-  };
+function parseIntegerListQuery(
+  value: unknown,
+  options: { min: number; max: number },
+): number[] | undefined {
+  const raw = firstQueryValue(value);
+  if (!raw) return undefined;
+
+  const values = raw
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item))
+    .map((item) => Math.floor(item))
+    .map((item) => Math.min(options.max, Math.max(options.min, item)));
+
+  return values.length > 0 ? [...new Set(values)] : undefined;
+}
+
+function parseListViewComponentsQuery(
+  value: unknown,
+): ListViewComponentName[] | undefined {
+  const raw = firstQueryValue(value)?.trim().toLowerCase();
+  if (!raw || raw === "all") return undefined;
+
+  const allowed = new Set<ListViewComponentName>(LIST_VIEW_COMPONENTS);
+  const components = raw
+    .split(/[,.|+\s]+/)
+    .filter((part): part is ListViewComponentName =>
+      allowed.has(part as ListViewComponentName),
+    );
+  return components.length > 0 ? [...new Set(components)] : undefined;
 }
 
 function buildGirlsReleaseOldFetchOptions(
@@ -240,34 +268,6 @@ function errorToDebugPayload(error: unknown): {
   };
 }
 
-export const fetchDailyAllSourcesNow = onRequest(
-  {
-    region: "asia-northeast1",
-    cors: true,
-    memory: "512MiB",
-    timeoutSeconds: 540,
-  },
-  async (req, res): Promise<void> => {
-    const key = typeof req.query.key === "string" ? req.query.key : undefined;
-    const expected = process.env.MANUAL_FETCH_KEY;
-    const isEmulator =
-      process.env.FUNCTIONS_EMULATOR === "true" ||
-      process.env.FIRESTORE_EMULATOR_HOST != null;
-
-    if (!isEmulator && (!expected || key !== expected)) {
-      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
-      return;
-    }
-
-    const fetchOptions = buildManualFetchOptions(req.query, isEmulator);
-    const result = await fetchDailyProducts({
-      targets: getEnabledFetchTargets(),
-      ...fetchOptions,
-    });
-    res.json({ ok: true, options: fetchOptions, result });
-  },
-);
-
 export const fetchGirlsReleaseOldNow = onRequest(
   {
     region: "asia-northeast1",
@@ -438,7 +438,7 @@ export const fetchDlsiteProductDebug = onRequest(
     }
 
     const floor = parseDlsiteDebugFloor(req.query.floor);
-    const saveProduct = parseBooleanQuery(req.query.saveProduct, true);
+    const saveProduct = parseBooleanQuery(req.query.saveProduct, false);
     const saveHtml = parseBooleanQuery(req.query.saveHtml, false);
 
     try {
@@ -562,6 +562,474 @@ export const fetchDlsiteProductDebug = onRequest(
   },
 );
 
+export const analyzeListViewDryRunNow = onRequest(
+  {
+    region: "asia-northeast1",
+    cors: true,
+    memory: "1GiB",
+    timeoutSeconds: 540,
+  },
+  async (req, res): Promise<void> => {
+    const key = typeof req.query.key === "string" ? req.query.key : undefined;
+    const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator =
+      process.env.FUNCTIONS_EMULATOR === "true" ||
+      process.env.FIRESTORE_EMULATOR_HOST != null;
+
+    if (!isEmulator && (!expected || key !== expected)) {
+      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
+      return;
+    }
+
+    const confirmReads = parseBooleanQuery(req.query.confirmReads, false);
+    if (!isEmulator && !confirmReads) {
+      res.status(400).json({
+        ok: false,
+        message: "confirmReads=true is required outside the emulator because this dry-run reads all active products once",
+      });
+      return;
+    }
+
+    const includeLists = parseBooleanQuery(req.query.includeLists, false);
+    const blockSizes = parseIntegerListQuery(req.query.blockSizes, {
+      min: 10,
+      max: 2000,
+    });
+    const selectedBlockSize = parseIntegerQuery(req.query.selectedBlockSize, {
+      min: 10,
+      max: 2000,
+    });
+    const targetFunctionMemoryMiB = parseIntegerQuery(req.query.targetMemoryMiB, {
+      min: 128,
+      max: 32_768,
+    });
+    const result = await analyzeListViewDryRunForTargets(
+      getEnabledFetchTargets(),
+      {
+        includeLists,
+        blockSizes,
+        selectedBlockSize,
+        targetFunctionMemoryMiB,
+      },
+    );
+    res.json({
+      ok: true,
+      ...result,
+    });
+  },
+);
+
+export const rebuildNewListViewNow = onRequest(
+  {
+    region: "asia-northeast1",
+    cors: true,
+    memory: "1GiB",
+    timeoutSeconds: 540,
+    concurrency: 1,
+    maxInstances: 1,
+  },
+  async (req, res): Promise<void> => {
+    const key = typeof req.query.key === "string" ? req.query.key : undefined;
+    const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator =
+      process.env.FUNCTIONS_EMULATOR === "true" ||
+      process.env.FIRESTORE_EMULATOR_HOST != null;
+
+    if (!isEmulator && (!expected || key !== expected)) {
+      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
+      return;
+    }
+
+    const confirmWrites = parseBooleanQuery(req.query.confirmWrites, false);
+    if (!isEmulator && !confirmWrites) {
+      res.status(400).json({
+        ok: false,
+        message: "confirmWrites=true is required outside the emulator because this function writes new-list view versions",
+      });
+      return;
+    }
+
+    const includeLists = parseBooleanQuery(req.query.includeLists, false);
+    try {
+      const results = await rebuildNewListViewsForTargets(
+        getEnabledFetchTargets(),
+        { includeLists },
+      );
+      const rejectedListCount = results.reduce(
+        (sum, result) => sum + result.rejectedListCount,
+        0,
+      );
+      res.json({
+        ok: rejectedListCount === 0,
+        phase: 1,
+        domain: "new",
+        results,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("rebuildNewListViewNow failed", { error: message });
+      res.status(500).json({
+        ok: false,
+        phase: 1,
+        domain: "new",
+        message,
+      });
+    }
+  },
+);
+
+export const rebuildRankingListViewNow = onRequest(
+  {
+    region: "asia-northeast1",
+    cors: true,
+    memory: "1GiB",
+    timeoutSeconds: 540,
+    concurrency: 1,
+    maxInstances: 1,
+  },
+  async (req, res): Promise<void> => {
+    const key = typeof req.query.key === "string" ? req.query.key : undefined;
+    const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator =
+      process.env.FUNCTIONS_EMULATOR === "true" ||
+      process.env.FIRESTORE_EMULATOR_HOST != null;
+
+    if (!isEmulator && (!expected || key !== expected)) {
+      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
+      return;
+    }
+
+    const confirmWrites = parseBooleanQuery(req.query.confirmWrites, false);
+    if (!isEmulator && !confirmWrites) {
+      res.status(400).json({
+        ok: false,
+        message: "confirmWrites=true is required outside the emulator because this function writes ranking-list view versions",
+      });
+      return;
+    }
+
+    const includeLists = parseBooleanQuery(req.query.includeLists, false);
+    try {
+      const results = await rebuildRankingListViewsForTargets(
+        getEnabledFetchTargets(),
+        { includeLists },
+      );
+      const rejectedListCount = results.reduce(
+        (sum, result) => sum + result.rejectedListCount,
+        0,
+      );
+      res.json({
+        ok: rejectedListCount === 0,
+        phase: 2,
+        domain: "ranking",
+        results,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("rebuildRankingListViewNow failed", { error: message });
+      res.status(500).json({
+        ok: false,
+        phase: 2,
+        domain: "ranking",
+        message,
+      });
+    }
+  },
+);
+
+export const rebuildSellerListViewNow = onRequest(
+  {
+    region: "asia-northeast1",
+    cors: true,
+    memory: "1GiB",
+    timeoutSeconds: 540,
+    concurrency: 1,
+    maxInstances: 1,
+  },
+  async (req, res): Promise<void> => {
+    const key = typeof req.query.key === "string" ? req.query.key : undefined;
+    const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator =
+      process.env.FUNCTIONS_EMULATOR === "true" ||
+      process.env.FIRESTORE_EMULATOR_HOST != null;
+
+    if (!isEmulator && (!expected || key !== expected)) {
+      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
+      return;
+    }
+
+    const confirmWrites = parseBooleanQuery(req.query.confirmWrites, false);
+    if (!isEmulator && !confirmWrites) {
+      res.status(400).json({
+        ok: false,
+        message: "confirmWrites=true is required outside the emulator because this function writes seller-list view versions",
+      });
+      return;
+    }
+
+    const includeLists = parseBooleanQuery(req.query.includeLists, false);
+    try {
+      const results = await rebuildSellerListViewsForTargets(
+        getEnabledFetchTargets(),
+        { includeLists },
+      );
+      const rejectedListCount = results.reduce(
+        (sum, result) => sum + result.rejectedListCount,
+        0,
+      );
+      res.json({
+        ok: rejectedListCount === 0,
+        phase: 3,
+        domain: "seller",
+        results,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("rebuildSellerListViewNow failed", { error: message });
+      res.status(500).json({
+        ok: false,
+        phase: 3,
+        domain: "seller",
+        message,
+      });
+    }
+  },
+);
+
+export const rebuildHomeDashboardListViewNow = onRequest(
+  {
+    region: "asia-northeast1",
+    cors: true,
+    memory: "1GiB",
+    timeoutSeconds: 540,
+    concurrency: 1,
+    maxInstances: 1,
+  },
+  async (req, res): Promise<void> => {
+    const key = typeof req.query.key === "string" ? req.query.key : undefined;
+    const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator =
+      process.env.FUNCTIONS_EMULATOR === "true" ||
+      process.env.FIRESTORE_EMULATOR_HOST != null;
+
+    if (!isEmulator && (!expected || key !== expected)) {
+      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
+      return;
+    }
+
+    const confirmWrites = parseBooleanQuery(req.query.confirmWrites, false);
+    if (!isEmulator && !confirmWrites) {
+      res.status(400).json({
+        ok: false,
+        message: "confirmWrites=true is required outside the emulator because this function writes home-dashboard list view versions",
+      });
+      return;
+    }
+
+    const includeScopes = parseBooleanQuery(req.query.includeScopes, false);
+    try {
+      const results = await rebuildHomeDashboardListViewsForTargets(
+        getEnabledFetchTargets(),
+        { includeScopes },
+      );
+      const rejectedScopeCount = results.reduce(
+        (sum, result) => sum + result.rejectedScopeCount,
+        0,
+      );
+      res.json({
+        ok: rejectedScopeCount === 0,
+        phase: 4,
+        domain: "home",
+        results,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("rebuildHomeDashboardListViewNow failed", { error: message });
+      res.status(500).json({
+        ok: false,
+        phase: 4,
+        domain: "home",
+        message,
+      });
+    }
+  },
+);
+
+export const rebuildSaleListViewNow = onRequest(
+  {
+    region: "asia-northeast1",
+    cors: true,
+    memory: "1GiB",
+    timeoutSeconds: 540,
+    concurrency: 1,
+    maxInstances: 1,
+  },
+  async (req, res): Promise<void> => {
+    const key = typeof req.query.key === "string" ? req.query.key : undefined;
+    const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator =
+      process.env.FUNCTIONS_EMULATOR === "true" ||
+      process.env.FIRESTORE_EMULATOR_HOST != null;
+
+    if (!isEmulator && (!expected || key !== expected)) {
+      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
+      return;
+    }
+
+    const confirmWrites = parseBooleanQuery(req.query.confirmWrites, false);
+    if (!isEmulator && !confirmWrites) {
+      res.status(400).json({
+        ok: false,
+        message: "confirmWrites=true is required outside the emulator because this function writes sale-list view versions",
+      });
+      return;
+    }
+
+    const includeLists = parseBooleanQuery(req.query.includeLists, false);
+    try {
+      const results = await rebuildSaleListViewsForTargets(
+        getEnabledFetchTargets(),
+        { includeLists },
+      );
+      const rejectedListCount = results.reduce(
+        (sum, result) => sum + result.rejectedListCount,
+        0,
+      );
+      res.json({
+        ok: rejectedListCount === 0,
+        phase: 5,
+        domain: "sale",
+        results,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("rebuildSaleListViewNow failed", { error: message });
+      res.status(500).json({
+        ok: false,
+        phase: 5,
+        domain: "sale",
+        message,
+      });
+    }
+  },
+);
+
+export const rebuildAllListViewsNow = onRequest(
+  {
+    region: "asia-northeast1",
+    cors: true,
+    memory: "1GiB",
+    timeoutSeconds: 1800,
+    concurrency: 1,
+    maxInstances: 1,
+  },
+  async (req, res): Promise<void> => {
+    const key = typeof req.query.key === "string" ? req.query.key : undefined;
+    const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator =
+      process.env.FUNCTIONS_EMULATOR === "true" ||
+      process.env.FIRESTORE_EMULATOR_HOST != null;
+
+    if (!isEmulator && (!expected || key !== expected)) {
+      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
+      return;
+    }
+
+    const confirmWrites = parseBooleanQuery(req.query.confirmWrites, false);
+    if (!isEmulator && !confirmWrites) {
+      res.status(400).json({
+        ok: false,
+        message:
+          "confirmWrites=true is required outside the emulator because this function rebuilds all list-view versions",
+      });
+      return;
+    }
+
+    const includeDetails = parseBooleanQuery(req.query.includeDetails, false);
+    const components = parseListViewComponentsQuery(req.query.components);
+
+    try {
+      const result = await rebuildAllListViewsForTargets(
+        getEnabledFetchTargets(),
+        {
+          includeDetails,
+          components,
+          triggerType: "manual",
+        },
+      );
+      if (result.status === "blocked") {
+        res.status(409).json({ ok: false, phase: 6, domain: "all", ...result });
+        return;
+      }
+      res.json({
+        ok: result.status === "success",
+        phase: 6,
+        domain: "all",
+        ...result,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("rebuildAllListViewsNow failed", { error: message });
+      res.status(500).json({
+        ok: false,
+        phase: 6,
+        domain: "all",
+        message,
+      });
+    }
+  },
+);
+
+export const scheduledRebuildAllListViews = onSchedule(
+  {
+    schedule: "0 4 * * *",
+    timeZone: "Asia/Tokyo",
+    region: "asia-northeast1",
+    memory: "1GiB",
+    timeoutSeconds: 1800,
+    concurrency: 1,
+    maxInstances: 1,
+    retryCount: 8,
+    maxRetrySeconds: 4 * 60 * 60,
+    minBackoffSeconds: 10 * 60,
+    maxBackoffSeconds: 30 * 60,
+    maxDoublings: 2,
+  },
+  async (event): Promise<void> => {
+    const triggerId = `schedule:${event.scheduleTime}`;
+    const result = await rebuildAllListViewsForTargets(
+      getEnabledFetchTargets(),
+      {
+        triggerType: "schedule",
+        triggerId,
+        resumeFailedComponents: true,
+      },
+    );
+
+    if (result.status !== "success") {
+      logger.error("scheduledRebuildAllListViews did not complete successfully", {
+        triggerId,
+        status: result.status,
+        blockedReason: result.blockedReason,
+        retryComponents: result.retryComponents,
+        activeSourceBatchRuns: result.activeSourceBatchRuns,
+      });
+      throw new Error(
+        `scheduled list-view rebuild ${result.status}: ${
+          result.blockedReason ?? result.retryComponents.join(",")
+        }`,
+      );
+    }
+
+    logger.info("scheduledRebuildAllListViews finished", {
+      triggerId,
+      runId: result.runId,
+      elapsedMs: result.elapsedMs,
+      selectedComponents: result.selectedComponents,
+    });
+  },
+);
+
 export const rebuildSiteStatsNow = onRequest(
   {
     region: "asia-northeast1",
@@ -581,9 +1049,82 @@ export const rebuildSiteStatsNow = onRequest(
       return;
     }
 
-    const siteStatsIds = await rebuildSiteStatsForTargets(
+    const result = await rebuildSiteStatsForTargetsDetailed(
       getEnabledFetchTargets(),
     );
-    res.json({ ok: true, siteStatsIds });
+    res.json({
+      ok: result.status === "success",
+      ...result,
+    });
+  },
+);
+
+export const backfillRankingMetricsNow = onRequest(
+  {
+    region: "asia-northeast1",
+    cors: true,
+    memory: "1GiB",
+    timeoutSeconds: 3600,
+  },
+  async (req, res): Promise<void> => {
+    const key = typeof req.query.key === "string" ? req.query.key : undefined;
+    const expected = process.env.MANUAL_FETCH_KEY;
+    const isEmulator =
+      process.env.FUNCTIONS_EMULATOR === "true" ||
+      process.env.FIRESTORE_EMULATOR_HOST != null;
+
+    if (!isEmulator && (!expected || key !== expected)) {
+      res.status(403).json({ ok: false, message: "invalid manual fetch key" });
+      return;
+    }
+
+    const sourceDate = parseYyyyMMddQuery(req.query.sourceDate) ??
+      addDaysToDateKey(toYyyyMMdd(), -1);
+    const maxProducts = parseIntegerQuery(req.query.maxProducts, {
+      min: 1,
+      max: 20_000,
+    }) ?? 20_000;
+    const startAfterProductId = firstQueryValue(req.query.startAfterProductId)?.trim() || undefined;
+    const rebuildStats = parseBooleanQuery(req.query.rebuildStats, true);
+    const uniqueSegments = new Map<string, Pick<FetchTarget, "platform" | "audience" | "category">>();
+
+    for (const target of getEnabledFetchTargets()) {
+      const segment = {
+        platform: target.platform,
+        audience: target.audience,
+        category: target.category,
+      };
+      uniqueSegments.set(`${segment.platform}_${segment.audience}_${segment.category}`, segment);
+    }
+
+    const results = [];
+    for (const segment of uniqueSegments.values()) {
+      results.push(await backfillRankingMetrics(segment, {
+        sourceDate,
+        maxProducts,
+        startAfterProductId,
+      }));
+    }
+
+    const complete = results.every((result) => result.complete);
+    const siteStatsRebuild = rebuildStats && complete
+      ? await rebuildSiteStatsForTargetsDetailed(
+          [...uniqueSegments.values()].map((segment) => ({
+            ...segment,
+            rankingType: "daily" as const,
+          })),
+        )
+      : undefined;
+
+    res.json({
+      ok: complete && (!siteStatsRebuild || siteStatsRebuild.status === "success"),
+      sourceDate,
+      maxProducts,
+      rebuildStats,
+      complete,
+      results,
+      siteStatsIds: siteStatsRebuild?.siteStatsIds ?? [],
+      siteStatsRebuild,
+    });
   },
 );

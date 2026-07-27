@@ -8,6 +8,8 @@ type CircleSearchBoxProps = {
   value?: string;
 };
 
+const SEARCH_DEBOUNCE_MS = 300;
+
 export function CircleSearchBox({ value = "" }: CircleSearchBoxProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -15,14 +17,33 @@ export function CircleSearchBox({ value = "" }: CircleSearchBoxProps) {
   const [keyword, setKeyword] = useState(value);
   const [isPending, startTransition] = useTransition();
   const isComposingRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     setKeyword(value);
   }, [value]);
 
+  useEffect(() => () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+  }, []);
+
+  const clearScheduledUpdate = () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = undefined;
+    }
+  };
+
   const updateQuery = (nextKeyword: string) => {
+    clearScheduledUpdate();
+
     const params = new URLSearchParams(searchParams.toString());
     const normalizedKeyword = nextKeyword.trim();
+    const currentKeyword = (params.get("q") ?? "").trim();
+
+    if (normalizedKeyword === currentKeyword) return;
 
     params.delete("page");
 
@@ -36,6 +57,13 @@ export function CircleSearchBox({ value = "" }: CircleSearchBoxProps) {
     startTransition(() => {
       router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     });
+  };
+
+  const scheduleQueryUpdate = (nextKeyword: string) => {
+    clearScheduledUpdate();
+    debounceTimerRef.current = setTimeout(() => {
+      updateQuery(nextKeyword);
+    }, SEARCH_DEBOUNCE_MS);
   };
 
   return (
@@ -56,15 +84,16 @@ export function CircleSearchBox({ value = "" }: CircleSearchBoxProps) {
           const nextKeyword = event.target.value;
           setKeyword(nextKeyword);
           if (!isComposingRef.current) {
-            updateQuery(nextKeyword);
+            scheduleQueryUpdate(nextKeyword);
           }
         }}
         onCompositionStart={() => {
           isComposingRef.current = true;
+          clearScheduledUpdate();
         }}
         onCompositionEnd={(event) => {
           isComposingRef.current = false;
-          updateQuery(event.currentTarget.value);
+          scheduleQueryUpdate(event.currentTarget.value);
         }}
       />
       <button type="submit" aria-label="サークルを検索する" disabled={isPending}>

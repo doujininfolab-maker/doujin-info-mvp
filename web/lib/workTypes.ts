@@ -3,6 +3,7 @@ import type { ProductWorkType } from "./types";
 export const WORK_TYPE_OPTIONS: Array<{ label: string; value: ProductWorkType | "all" }> = [
   { label: "全て", value: "all" },
   { label: "マンガ", value: "comic" },
+  { label: "ノベル", value: "novel" },
   { label: "CG", value: "cg" },
   { label: "動画", value: "movie" },
   { label: "ゲーム", value: "game" },

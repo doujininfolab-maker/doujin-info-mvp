@@ -1,4 +1,4 @@
-import type { Product } from "@/lib/types";
+import type { ProductCardItem } from "@/lib/types";
 import { ProductCard, type ProductCardVariant } from "./ProductCard";
 import { ScrollRail } from "./ScrollRail";
 
@@ -12,7 +12,7 @@ export function ProductGrid({
   listRankMetric = "revenue",
   contentTypeParam,
 }: {
-  products: Product[];
+  products: ProductCardItem[];
   showRank?: boolean;
   rankOffset?: number;
   variant?: ProductCardVariant;

@@ -25,6 +25,8 @@ type SearchPageProps = {
 export const metadata = {
   title: "検索",
   description: "作品名・サークル名・ジャンルで検索できます。",
+  alternates: { canonical: "/search" },
+  robots: { index: false, follow: true },
 };
 
 function getFirstParam(value: string | string[] | undefined): string | undefined {
@@ -78,7 +80,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const hasNext = offsetCount + products.length < totalCount;
 
   return (
-    <div className="listPage listPage--wide">
+    <div className="listPage listPage--wide listPage--mobileProductList listPage--searchResults">
       <section className="contentSection listSection searchResultSection">
         <SectionHeader
           title="検索結果"

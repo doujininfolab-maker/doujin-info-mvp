@@ -6,7 +6,14 @@ import { WorkTrendCharts } from "@/components/WorkTrendCharts";
 import { ProductGrid } from "@/components/ProductGrid";
 import { PriceLabel } from "@/components/PriceLabel";
 import { PlatformBadge } from "@/components/PlatformBadge";
-import { getProductById, getProductTrendPoints, getProductsBySameSeller, hasRecentProductTrendData } from "@/lib/firebase/products";
+import {
+  getProductById,
+  getProductTrendPoints,
+  getProductTrendPointsFromSnapshots,
+  getProductsBySameSeller,
+  hasRecentProductTrendData,
+} from "@/lib/firebase/products";
+import { getProductOutboundUrl } from "@/lib/affiliate";
 import { formatDate, formatNumber, formatRating } from "@/lib/format";
 import { getSegmentPath } from "@/lib/siteSegments";
 
@@ -27,13 +34,17 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const description = product.description || `${product.title}の価格・ランキング・ジャンル情報を確認できます。`;
   const image = product.thumbnailUrl || product.mainImageUrl || product.images?.[0]?.url;
 
+  const canonical = `/work/${encodeURIComponent(product.productId)}`;
+
   return {
     title: product.title,
     description,
+    alternates: { canonical },
     openGraph: {
       title: product.title,
       description,
       type: "article",
+      url: canonical,
       images: image ? [{ url: image }] : undefined,
     },
   };
@@ -44,6 +55,10 @@ function getPrimaryGenreLabel(genres: string[], category: string): string {
 
   if (normalizedGenres.some((genre) => ["マンガ", "漫画", "コミック"].includes(genre))) {
     return "マンガ";
+  }
+
+  if (normalizedGenres.some((genre) => genre.includes("ノベル") || genre.includes("小説"))) {
+    return "ノベル";
   }
 
   if (normalizedGenres.some((genre) => genre.includes("音声") || genre.includes("ASMR"))) {
@@ -84,13 +99,15 @@ export default async function WorkDetailPage({ params }: PageProps) {
   const product = await getProductById(productId);
   if (!product) notFound();
 
-  const officialUrl = product.affiliateUrl || product.sourceUrl;
+  const officialUrl = getProductOutboundUrl(product);
   const segmentPath = getSegmentPath(product.platform, product.audience, product.category);
   const headerImage = product.thumbnailUrl || product.mainImageUrl || product.images?.[0]?.url || "/no-image.svg";
   const primaryGenreLabel = product.workTypeLabel || getPrimaryGenreLabel(product.genres ?? [], product.category);
   const workTypeHref = buildWorkTypeHref(segmentPath, product.workType);
   const sellerHref = buildSellerHref(segmentPath, product.seller?.sellerId, product.seller?.sellerName);
   const dailyRank = getDailyRank(product);
+  const snapshotTrendPoints = getProductTrendPointsFromSnapshots(product, 35);
+  const useSnapshotTrend = hasRecentProductTrendData(snapshotTrendPoints);
   const [sameSellerProducts, trendPoints] = await Promise.all([
     getProductsBySameSeller({
       platform: product.platform,
@@ -100,8 +117,11 @@ export default async function WorkDetailPage({ params }: PageProps) {
       sellerName: product.seller?.sellerName,
       excludeProductId: product.productId,
     }),
-    getProductTrendPoints(product.productId),
+    useSnapshotTrend
+      ? Promise.resolve(snapshotTrendPoints)
+      : getProductTrendPoints(product.productId, 30),
   ]);
+  const initialTrendDays = useSnapshotTrend ? 35 : 30;
   const showTrendCharts = hasRecentProductTrendData(trendPoints);
 
   return (
@@ -157,12 +177,13 @@ export default async function WorkDetailPage({ params }: PageProps) {
 
           <div className="buttonRow buttonRow--side">
             <a className="button button--official" href={officialUrl} target="_blank" rel="sponsored noreferrer">
-              公式サイトで見る
+              DLsiteで詳細を見る（PR）
             </a>
             <Link className="button button--ghost" href={segmentPath}>
               一覧へ戻る
             </Link>
           </div>
+          <p className="affiliateLinkNotice">この作品リンクはDLsiteアフィリエイトリンクです。</p>
 
           {product.genres.length > 0 ? (
             <section className="detailSideSection">
@@ -186,6 +207,8 @@ export default async function WorkDetailPage({ params }: PageProps) {
             priceOriginal={product.priceOriginal}
             salesCount={product.salesCount}
             trendPoints={trendPoints}
+            trendDataUrl={`/api/trends/product/${encodeURIComponent(product.productId)}`}
+            initialTrendDays={initialTrendDays}
           />
         ) : null}
 

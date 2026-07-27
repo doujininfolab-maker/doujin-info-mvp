@@ -533,6 +533,11 @@ function extractProductSources(
 
 export type DlsiteDailyPriorityListOrder = "release_d" | "trend" | "dl_d";
 
+export type DlsiteDailyPriorityWorkTypeCategory = Extract<
+  ProductWorkType,
+  "game" | "cg" | "movie" | "other"
+>;
+
 export type DlsiteDailyPriorityProductSource = DiscoveredProductSource & {
   releaseDate?: string;
   releaseDateKey?: string;
@@ -542,6 +547,7 @@ export type DlsiteDailyPriorityProductSource = DiscoveredProductSource & {
 export type FetchDlsiteDailyPriorityProductSourcesOptions = {
   contentType?: ProductContentType;
   orderType: DlsiteDailyPriorityListOrder;
+  workTypeCategory?: DlsiteDailyPriorityWorkTypeCategory;
   limit: number;
   delayMs?: number;
   targetReleaseDateKey?: string;
@@ -552,6 +558,7 @@ export type FetchDlsiteDailyPriorityProductSourcesOptions = {
 export type FetchDlsiteDailyPriorityProductSourcesResult = {
   contentType: ProductContentType;
   orderType: DlsiteDailyPriorityListOrder;
+  workTypeCategory?: DlsiteDailyPriorityWorkTypeCategory;
   sourceUrl: string;
   requestedLimit: number;
   fetchedPageCount: number;
@@ -575,7 +582,26 @@ function resolveDailyPriorityContentType(
 function buildDailyPriorityListUrl(
   contentType: ProductContentType | undefined,
   orderType: DlsiteDailyPriorityListOrder,
+  workTypeCategory?: DlsiteDailyPriorityWorkTypeCategory,
 ): string {
+  if (workTypeCategory) {
+    const category = {
+      game: { path: "game", label: "ゲーム" },
+      cg: { path: "illust", label: "CG・イラスト" },
+      movie: { path: "movie", label: "動画" },
+      other: { path: "etc", label: "その他" },
+    }[workTypeCategory];
+    const resolvedContentType = resolveDailyPriorityContentType(contentType);
+    const baseUrl =
+      resolvedContentType === "bl" ? DLSITE_BL_BASE_URL : DLSITE_GIRLS_BASE_URL;
+    const floorOptions =
+      resolvedContentType === "bl"
+        ? "is_bl/1/is_gay/1/show_type/3"
+        : "is_tl/1/show_type/3";
+
+    return `${baseUrl}/fsr/=/language/jp/sex_category%5B0%5D/female/sex_category%5B1%5D/gay/work_category%5B0%5D/doujin/order%5B0%5D/${orderType}/work_type_category%5B0%5D/${category.path}/work_type_category_name%5B0%5D/${encodeURIComponent(category.label)}/options_and_or/and/options%5B0%5D/JPN/options%5B1%5D/NM/options_name%5B0%5D/%E6%97%A5%E6%9C%AC%E8%AA%9E%E4%BD%9C%E5%93%81/options_name%5B1%5D/%E8%A8%80%E8%AA%9E%E4%B8%8D%E5%95%8F%E4%BD%9C%E5%93%81/per_page/100/page/1/${floorOptions}`;
+  }
+
   const template =
     resolveDailyPriorityContentType(contentType) === "bl"
       ? DLSITE_BL_DAILY_PRIORITY_LIST_URL_TEMPLATE
@@ -587,9 +613,14 @@ function buildDailyPriorityListPageUrl(
   contentType: ProductContentType | undefined,
   orderType: DlsiteDailyPriorityListOrder,
   pageNumber: number,
+  workTypeCategory?: DlsiteDailyPriorityWorkTypeCategory,
 ): string {
   const safePage = Math.max(1, Math.floor(pageNumber));
-  return buildDailyPriorityListUrl(contentType, orderType).replace(
+  return buildDailyPriorityListUrl(
+    contentType,
+    orderType,
+    workTypeCategory,
+  ).replace(
     /\/page\/\d+(?=\/|$)/i,
     `/page/${safePage}`,
   );
@@ -714,6 +745,11 @@ function extractProductSourcesWithReleaseDates(
   return products;
 }
 
+function isDlsiteNotFoundFetchError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /DLsite fetch(?: request)? failed:[\s\S]*status=404/i.test(message);
+}
+
 export async function fetchDlsiteDailyPriorityProductSources(
   options: FetchDlsiteDailyPriorityProductSourcesOptions,
 ): Promise<FetchDlsiteDailyPriorityProductSourcesResult> {
@@ -727,6 +763,7 @@ export async function fetchDlsiteDailyPriorityProductSources(
     contentType,
     options.orderType,
     1,
+    options.workTypeCategory,
   );
   const products: DlsiteDailyPriorityProductSource[] = [];
   const seenProductIds = new Set<string>();
@@ -746,9 +783,39 @@ export async function fetchDlsiteDailyPriorityProductSources(
   ) {
     const page = startPage + pageOffset;
     if (pageOffset > 0 && delayMs > 0) await delay(delayMs);
-    const url = buildDailyPriorityListPageUrl(contentType, options.orderType, page);
+    const url = buildDailyPriorityListPageUrl(
+      contentType,
+      options.orderType,
+      page,
+      options.workTypeCategory,
+    );
     const fetchStartedAt = Date.now();
-    const html = await fetchPublicHtml(url);
+    let html: string;
+    try {
+      html = await fetchPublicHtml(url);
+    } catch (error) {
+      if (error instanceof BlockedAccessError) throw error;
+
+      const expectedCategoryEnd =
+        options.workTypeCategory !== undefined &&
+        page > startPage &&
+        isDlsiteNotFoundFetchError(error);
+      if (!expectedCategoryEnd) throw error;
+
+      logger.info(
+        "DLsite work-type list pagination finished because the next page does not exist",
+        {
+          contentType,
+          orderType: options.orderType,
+          workTypeCategory: options.workTypeCategory,
+          page,
+          url,
+          totalCount: products.length,
+          limit,
+        },
+      );
+      break;
+    }
     listPageFetchTotalMs += Date.now() - fetchStartedAt;
     fetchedPageCount += 1;
 
@@ -791,6 +858,7 @@ export async function fetchDlsiteDailyPriorityProductSources(
     logger.info("DLsite daily priority list page fetched", {
       contentType,
       orderType: options.orderType,
+      workTypeCategory: options.workTypeCategory,
       page,
       url,
       extractedCount: pageProducts.length,
@@ -809,6 +877,7 @@ export async function fetchDlsiteDailyPriorityProductSources(
   return {
     contentType,
     orderType: options.orderType,
+    workTypeCategory: options.workTypeCategory,
     sourceUrl,
     requestedLimit: limit,
     fetchedPageCount,
@@ -1602,7 +1671,7 @@ function extractAnchorTexts(
 function isDlsiteGenreNoise(value: string): boolean {
   return (
     /^\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}\s*まで$/.test(value) ||
-    /^(R18|全年齢|マンガ|漫画|コミック|JPEG|JPG|PNG|PDF|ZIP|MP3|WAV|動画|ゲーム|音声|ドラマCD|乙女向け|女性向け|男性向け|成人向け)$/i.test(
+    /^(R18|全年齢|マンガ|漫画|コミック|ノベル|小説|JPEG|JPG|PNG|PDF|ZIP|MP3|WAV|動画|ゲーム|音声|ドラマCD|乙女向け|女性向け|男性向け|成人向け)$/i.test(
       value,
     )
   );
@@ -1616,6 +1685,7 @@ type NormalizedWorkType = {
 const DLSITE_WORK_TYPE_CODE_MAP: Record<string, NormalizedWorkType> = {
   MNG: { workType: "comic", workTypeLabel: "マンガ" },
   COM: { workType: "comic", workTypeLabel: "マンガ" },
+  NRE: { workType: "novel", workTypeLabel: "ノベル" },
   ICG: { workType: "cg", workTypeLabel: "CG" },
   CG: { workType: "cg", workTypeLabel: "CG" },
   MOV: { workType: "movie", workTypeLabel: "動画" },
@@ -1642,6 +1712,8 @@ function normalizeWorkTypeFromText(
 
   if (/マンガ|漫画|コミック|manga|comic/.test(text))
     return { workType: "comic", workTypeLabel: "マンガ" };
+  if (/ノベル|小説|novel/.test(text))
+    return { workType: "novel", workTypeLabel: "ノベル" };
   if (/cg|イラスト|illust|画像/.test(text))
     return { workType: "cg", workTypeLabel: "CG" };
   if (/動画|ムービー|movie|video|アニメーション/.test(text))

@@ -4,6 +4,7 @@ import {
   dlsiteFemaleDoujinAdapter,
   fetchDlsiteDailyPriorityProductSources,
   type DlsiteDailyPriorityProductSource,
+  type DlsiteDailyPriorityWorkTypeCategory,
 } from "../adapters/dlsite/dlsiteFemaleDoujinAdapter";
 import { BlockedAccessError, type ProductDetailTiming } from "../adapters/types";
 import type {
@@ -12,9 +13,22 @@ import type {
   Product,
   ProductContentType,
   ProductDailyMetric,
+  RankingSnapshot,
+  RankingSnapshotItem,
+  RankingSummary,
 } from "../types";
-import { createRunId, nowTimestamp, sleep, toYyyyMMdd } from "../util";
-import { rebuildSiteStatsForTargets } from "./rebuildSiteStats";
+import {
+  buildRankingKey,
+  buildSnapshotId,
+  createRunId,
+  nowTimestamp,
+  sleep,
+  toYyyyMMdd,
+} from "../util";
+import {
+  rebuildSiteStatsForTargetsDetailed,
+} from "./rebuildSiteStats";
+import { buildRankingState } from "./rankingMetrics";
 
 const FIRESTORE_BATCH_WRITE_LIMIT = 400;
 const DEFAULT_ORDER_LIMIT = 5000;
@@ -25,8 +39,25 @@ const DEFAULT_EXISTING_PRODUCT_READ_COUNT = 500;
 const DEFAULT_CONTENT_TYPE_SLEEP_MS = 120_000;
 const DEFAULT_RETRY_SLEEP_MS = 90_000;
 const DEFAULT_RETRY_COUNT = 1;
+const DEFAULT_RANKING_SNAPSHOT_LIMIT = 300;
+const WORK_TYPE_POPULAR_LIMIT = 300;
+const WORK_TYPE_POPULAR_CATEGORIES: DlsiteDailyPriorityWorkTypeCategory[] = [
+  "game",
+  "cg",
+  "movie",
+  "other",
+];
 
-type TargetReason = "newRelease" | "popular" | "salesCount";
+type TargetReason =
+  | "newRelease"
+  | "popular"
+  | "salesCount"
+  | "workTypePopular";
+
+type WorkTypePopularCounts = Record<
+  DlsiteDailyPriorityWorkTypeCategory,
+  number
+>;
 
 type DailyPriorityProductSourceWithPrefetch = DlsiteDailyPriorityProductSource & {
   prefetchedProduct?: Product;
@@ -111,6 +142,8 @@ type DailyPriorityContentResult = {
   contentType: ProductContentType;
   newReleaseCount: number;
   popularCount: number;
+  workTypePopularCount: number;
+  workTypePopularCounts: WorkTypePopularCounts;
   salesCountOrderCount: number;
   targetCount: number;
   duplicateRemovedCount: number;
@@ -122,6 +155,9 @@ type DailyPriorityContentResult = {
   writeCount: number;
   dailyMetricWriteCount: number;
   commitCount: number;
+  rankingSnapshotId?: string;
+  rankingSnapshotItemCount: number;
+  rankingSnapshotWriteCount: number;
   performance: DailyPriorityPerformanceSummary;
   elapsedMs: number;
 };
@@ -155,6 +191,7 @@ export type FetchDailyPriorityProductsResult = {
   batchDate: string;
   previousDate: string;
   contentResults: DailyPriorityContentResult[];
+  rankingSnapshotIds: string[];
   siteStatsIds: string[];
 };
 
@@ -430,6 +467,107 @@ class FirestoreWriteBuffer {
   }
 }
 
+function buildDailyRankingTarget(
+  contentType: ProductContentType,
+): FetchTarget {
+  return {
+    platform: "dlsite",
+    audience: "female",
+    category: "doujin",
+    rankingType: "daily",
+    contentType,
+  };
+}
+
+function buildStableRankItemId(rank: number): string {
+  return rank.toString().padStart(4, "0");
+}
+
+async function saveDailyRankingSnapshot(params: {
+  contentType: ProductContentType;
+  date: string;
+  sourceUrl?: string;
+  products: Product[];
+  status: RankingSnapshot["status"];
+}): Promise<{
+  snapshotId: string;
+  itemCount: number;
+  writeCount: number;
+  capturedAt: FirebaseFirestore.Timestamp;
+}> {
+  const target = buildDailyRankingTarget(params.contentType);
+  const rankingKey = buildRankingKey(target);
+  const snapshotId = buildSnapshotId(params.date, rankingKey);
+  const capturedAt = nowTimestamp();
+  const snapshotRef = db.collection("rankingSnapshots").doc(snapshotId);
+  const writeBuffer = new FirestoreWriteBuffer(FIRESTORE_BATCH_WRITE_LIMIT);
+
+  const snapshot: RankingSnapshot = {
+    snapshotId,
+    platform: target.platform,
+    audience: target.audience,
+    category: target.category,
+    rankingType: target.rankingType,
+    rankingKey,
+    date: params.date,
+    sourceUrl: params.sourceUrl,
+    capturedAt,
+    fetchedAt: capturedAt,
+    itemCount: params.products.length,
+    status: params.status,
+  };
+
+  await writeBuffer.set(snapshotRef, snapshot, { merge: true });
+
+  for (const [index, product] of params.products.entries()) {
+    const rank = index + 1;
+    const item: RankingSnapshotItem = {
+      snapshotId,
+      platform: target.platform,
+      audience: target.audience,
+      category: target.category,
+      rankingType: target.rankingType,
+      rankingKey,
+      rank,
+      productId: product.productId,
+      sourceProductId: product.sourceProductId,
+      capturedAt,
+    };
+    const rankingSummary: RankingSummary = {
+      rankingKey,
+      type: target.rankingType,
+      rank,
+      capturedAt,
+    };
+    const latestRankings = [
+      rankingSummary,
+      ...(product.latestRankings ?? []).filter(
+        (summary) => summary.rankingKey !== rankingKey,
+      ),
+    ].slice(0, 20);
+
+    await writeBuffer.set(
+      snapshotRef.collection("items").doc(buildStableRankItemId(rank)),
+      item,
+      { merge: true },
+    );
+    await writeBuffer.set(
+      db.collection("products").doc(product.productId),
+      { latestRankings, updatedAt: capturedAt },
+      { merge: true },
+    );
+  }
+
+  await writeBuffer.flush();
+
+  return {
+    snapshotId,
+    itemCount: params.products.length,
+    writeCount: writeBuffer.writeOperationCount,
+    capturedAt,
+  };
+}
+
 function chunkArray<T>(values: T[], chunkSize: number): T[][] {
   const chunks: T[][] = [];
   for (let index = 0; index < values.length; index += chunkSize) {
@@ -498,17 +636,47 @@ async function saveProductAndMetric(params: {
   product: Product;
   metricDate: string;
   existingProduct?: Product;
-}): Promise<{ writeCount: number; dailyMetricWriteCount: number }> {
+}): Promise<{ product: Product; writeCount: number; dailyMetricWriteCount: number }> {
   const productRef = db.collection("products").doc(params.product.productId);
+  const calculatedAt = nowTimestamp();
   const delta = buildDailySalesPatch({
     product: params.product,
     metricDate: params.metricDate,
     existingProduct: params.existingProduct,
-    calculatedAt: nowTimestamp(),
+    calculatedAt,
   });
+  const priceCurrent = isFiniteNumber(params.product.priceCurrent)
+    ? params.product.priceCurrent
+    : 0;
+  const sourceSalesCount = isFiniteNumber(params.product.salesCount)
+    ? params.product.salesCount
+    : undefined;
+  const rankingState = sourceSalesCount === undefined
+    ? undefined
+    : buildRankingState({
+        product: params.existingProduct
+          ? {
+              ...params.product,
+              recentSalesSnapshots: params.existingProduct.recentSalesSnapshots,
+              rankingMetrics: params.existingProduct.rankingMetrics,
+              lastDailySalesSnapshotDate: params.existingProduct.lastDailySalesSnapshotDate,
+              lastDailySalesSnapshotCount: params.existingProduct.lastDailySalesSnapshotCount,
+            }
+          : params.product,
+        sourceDate: params.metricDate,
+        sourceSalesCount,
+        priceCurrent,
+        dailySalesCount:
+          delta.metricPatch.dailySalesStatus === "calculated" &&
+          isFiniteNumber(delta.metricPatch.dailySalesCount)
+            ? delta.metricPatch.dailySalesCount
+            : undefined,
+        calculatedAt,
+      });
   const productToSave = buildProductForSave({
     ...params.product,
     ...delta.productPatch,
+    ...(rankingState ?? {}),
   });
 
   await params.writeBuffer.set(productRef, productToSave, { merge: true });
@@ -518,7 +686,7 @@ async function saveProductAndMetric(params: {
     { merge: true },
   );
 
-  return { writeCount: 1, dailyMetricWriteCount: 1 };
+  return { product: productToSave, writeCount: 1, dailyMetricWriteCount: 1 };
 }
 
 async function fetchAndSaveTarget(params: {
@@ -598,7 +766,7 @@ async function fetchAndSaveTarget(params: {
   });
   performance.saveEnqueueMs += Date.now() - saveStartedAt;
 
-  return { product, ...saveResult, performance };
+  return { product: saveResult.product, writeCount: saveResult.writeCount, dailyMetricWriteCount: saveResult.dailyMetricWriteCount, performance };
 }
 
 
@@ -765,6 +933,9 @@ async function discoverTargetsForContentType(params: {
 }): Promise<{
   newRelease: DailyPriorityProductSourceWithPrefetch[];
   popular: DlsiteDailyPriorityProductSource[];
+  popularSourceUrl?: string;
+  workTypePopular: DlsiteDailyPriorityProductSource[];
+  workTypePopularCounts: WorkTypePopularCounts;
   salesCountOrder: DlsiteDailyPriorityProductSource[];
   merged: DailyPriorityTarget[];
 }> {
@@ -781,6 +952,24 @@ async function discoverTargetsForContentType(params: {
     limit: params.popularLimit,
     delayMs: params.delayMs,
   });
+  const workTypePopular: DlsiteDailyPriorityProductSource[] = [];
+  const workTypePopularCounts: WorkTypePopularCounts = {
+    game: 0,
+    cg: 0,
+    movie: 0,
+    other: 0,
+  };
+  for (const workTypeCategory of WORK_TYPE_POPULAR_CATEGORIES) {
+    const result = await fetchDlsiteDailyPriorityProductSources({
+      contentType: params.contentType,
+      orderType: "trend",
+      workTypeCategory,
+      limit: WORK_TYPE_POPULAR_LIMIT,
+      delayMs: params.delayMs,
+    });
+    workTypePopular.push(...result.products);
+    workTypePopularCounts[workTypeCategory] = result.products.length;
+  }
   const salesCountResult = await fetchDlsiteDailyPriorityProductSources({
     contentType: params.contentType,
     orderType: "dl_d",
@@ -791,6 +980,7 @@ async function discoverTargetsForContentType(params: {
   const merged = mergeTargetsByProductId(params.contentType, [
     { reason: "newRelease", products: newReleaseResult.products },
     { reason: "popular", products: popularResult.products },
+    { reason: "workTypePopular", products: workTypePopular },
     { reason: "salesCount", products: salesCountResult.products },
   ]);
 
@@ -804,11 +994,14 @@ async function discoverTargetsForContentType(params: {
     newReleaseOlderReleaseDateFound: newReleaseResult.olderReleaseDateFound,
     newReleaseDetailFetchTotalMs: newReleaseResult.detailFetchTotalMs,
     popularCount: popularResult.products.length,
+    workTypePopularCount: workTypePopular.length,
+    workTypePopularCounts,
     salesCountOrderCount: salesCountResult.products.length,
     mergedTargetCount: merged.length,
     duplicateRemovedCount:
       newReleaseResult.products.length +
       popularResult.products.length +
+      workTypePopular.length +
       salesCountResult.products.length -
       merged.length,
   });
@@ -816,6 +1009,9 @@ async function discoverTargetsForContentType(params: {
   return {
     newRelease: newReleaseResult.products,
     popular: popularResult.products,
+    popularSourceUrl: popularResult.sourceUrl,
+    workTypePopular,
+    workTypePopularCounts,
     salesCountOrder: salesCountResult.products,
     merged,
   };
@@ -835,14 +1031,20 @@ async function processTargetsForContentType(params: {
     DailyPriorityContentResult,
     | "newReleaseCount"
     | "popularCount"
+    | "workTypePopularCount"
+    | "workTypePopularCounts"
     | "salesCountOrderCount"
     | "targetCount"
     | "duplicateRemovedCount"
     | "retrySuccessCount"
     | "retryFailedCount"
+    | "rankingSnapshotId"
+    | "rankingSnapshotItemCount"
+    | "rankingSnapshotWriteCount"
     | "elapsedMs"
   >;
   failedTargets: DailyPriorityTarget[];
+  productsBySourceProductId: Map<string, Product>;
 }> {
   const target = buildTarget(params.contentType);
   const failedTargets: DailyPriorityTarget[] = [];
@@ -853,6 +1055,7 @@ async function processTargetsForContentType(params: {
   const writeBuffer = new FirestoreWriteBuffer(FIRESTORE_BATCH_WRITE_LIMIT);
   const failedProductIds: string[] = [];
   const performance = createPerformanceAccumulator();
+  const productsBySourceProductId = new Map<string, Product>();
   const existingProductReadCount = Math.max(
     params.commitProductCount,
     params.existingProductReadCount,
@@ -892,16 +1095,25 @@ async function processTargetsForContentType(params: {
             target,
             dailyTarget.sourceProductId,
           );
+          const existingProduct = existingProductsById.get(productId);
           const saveResult = await fetchAndSaveTarget({
             target,
             dailyTarget,
             writeBuffer,
-            existingProduct: existingProductsById.get(productId),
+            existingProduct,
             previousDate: params.previousDate,
             delayMs: params.delayMs,
             dryRun: params.dryRun,
             parseMode: params.parseMode,
           });
+          if (saveResult.product) {
+            productsBySourceProductId.set(dailyTarget.sourceProductId, {
+              ...saveResult.product,
+              latestRankings:
+                saveResult.product.latestRankings ??
+                existingProduct?.latestRankings,
+            });
+          }
           fetchedProductCount += 1;
           chunkFetchedProductCount += 1;
           writeCount += saveResult.writeCount;
@@ -972,6 +1184,7 @@ async function processTargetsForContentType(params: {
       performance: summarizePerformance(performance, fetchedProductCount),
     },
     failedTargets,
+    productsBySourceProductId,
   };
 }
 
@@ -984,11 +1197,20 @@ async function retryFailedTargets(params: {
   existingProductReadCount: number;
   dryRun: boolean;
   parseMode: "full" | "fast";
-}): Promise<{ retrySuccessCount: number; retryFailedCount: number; failedProductIds: string[] }> {
+}): Promise<{
+  retrySuccessCount: number;
+  retryFailedCount: number;
+  failedProductIds: string[];
+  productsByContentType: Map<ProductContentType, Map<string, Product>>;
+}> {
   let retrySuccessCount = 0;
   let retryFailedCount = 0;
   let remainingTargets = params.failedTargets;
   const failedProductIds: string[] = [];
+  const productsByContentType = new Map<
+    ProductContentType,
+    Map<string, Product>
+  >();
 
   for (let attempt = 1; attempt <= params.retryCount && remainingTargets.length > 0; attempt += 1) {
     await sleep(params.retrySleepMs);
@@ -1013,6 +1235,11 @@ async function retryFailedTargets(params: {
       });
       retrySuccessCount += processResult.result.fetchedProductCount;
       nextRemaining.push(...processResult.failedTargets);
+      const products = productsByContentType.get(contentType) ?? new Map<string, Product>();
+      for (const [sourceProductId, product] of processResult.productsBySourceProductId) {
+        products.set(sourceProductId, product);
+      }
+      productsByContentType.set(contentType, products);
     }
 
     remainingTargets = nextRemaining;
@@ -1020,7 +1247,12 @@ async function retryFailedTargets(params: {
 
   retryFailedCount = remainingTargets.length;
   failedProductIds.push(...remainingTargets.map((target) => target.sourceProductId));
-  return { retrySuccessCount, retryFailedCount, failedProductIds };
+  return {
+    retrySuccessCount,
+    retryFailedCount,
+    failedProductIds,
+    productsByContentType,
+  };
 }
 
 function resolveOptions(
@@ -1077,6 +1309,15 @@ export async function fetchDailyPriorityProducts(
 
   const contentResults: DailyPriorityContentResult[] = [];
   const allFailedTargets: DailyPriorityTarget[] = [];
+  const rankingSnapshotIds: string[] = [];
+  const rankingSourcesByContentType = new Map<
+    ProductContentType,
+    { products: DlsiteDailyPriorityProductSource[]; sourceUrl?: string }
+  >();
+  const processedProductsByContentType = new Map<
+    ProductContentType,
+    Map<string, Product>
+  >();
   let totalFetchedProductCount = 0;
   let totalFailedProductCount = 0;
   const errorMessages: string[] = [];
@@ -1105,6 +1346,7 @@ export async function fetchDailyPriorityProducts(
       const duplicateRemovedCount =
         discovered.newRelease.length +
         discovered.popular.length +
+        discovered.workTypePopular.length +
         discovered.salesCountOrder.length -
         discovered.merged.length;
 
@@ -1120,10 +1362,20 @@ export async function fetchDailyPriorityProducts(
       });
 
       allFailedTargets.push(...processResult.failedTargets);
+      rankingSourcesByContentType.set(contentType, {
+        products: discovered.popular,
+        sourceUrl: discovered.popularSourceUrl,
+      });
+      processedProductsByContentType.set(
+        contentType,
+        processResult.productsBySourceProductId,
+      );
       const contentResult: DailyPriorityContentResult = {
         contentType,
         newReleaseCount: discovered.newRelease.length,
         popularCount: discovered.popular.length,
+        workTypePopularCount: discovered.workTypePopular.length,
+        workTypePopularCounts: discovered.workTypePopularCounts,
         salesCountOrderCount: discovered.salesCountOrder.length,
         targetCount: discovered.merged.length,
         duplicateRemovedCount,
@@ -1135,6 +1387,8 @@ export async function fetchDailyPriorityProducts(
         writeCount: processResult.result.writeCount,
         dailyMetricWriteCount: processResult.result.dailyMetricWriteCount,
         commitCount: processResult.result.commitCount,
+        rankingSnapshotItemCount: 0,
+        rankingSnapshotWriteCount: 0,
         performance: processResult.result.performance,
         elapsedMs: Date.now() - contentStartedAt,
       };
@@ -1174,15 +1428,108 @@ export async function fetchDailyPriorityProducts(
           (sourceProductId) => failedSet.has(sourceProductId),
         ).length;
       }
+
+      for (const [contentType, retryProducts] of retryResult.productsByContentType) {
+        const products =
+          processedProductsByContentType.get(contentType) ??
+          new Map<string, Product>();
+        for (const [sourceProductId, product] of retryProducts) {
+          products.set(sourceProductId, product);
+        }
+        processedProductsByContentType.set(contentType, products);
+      }
     }
 
-    const siteStatsIds =
+    if (!resolved.dryRun) {
+      for (const contentType of resolved.contentTypes) {
+        const rankingSource = rankingSourcesByContentType.get(contentType);
+        const processedProducts =
+          processedProductsByContentType.get(contentType) ??
+          new Map<string, Product>();
+        const rankingCandidates = (rankingSource?.products ?? []).slice(
+          0,
+          DEFAULT_RANKING_SNAPSHOT_LIMIT,
+        );
+        const rankingProducts = rankingCandidates
+          .map((source) => processedProducts.get(source.sourceProductId))
+          .filter((product): product is Product => Boolean(product));
+        const contentResult = contentResults.find(
+          (result) => result.contentType === contentType,
+        );
+
+        if (rankingProducts.length === 0) {
+          const message = `ranking snapshot skipped: ${contentType}: no fetched popular products`;
+          errorMessages.push(message);
+          logger.warn("DLsite daily priority ranking snapshot skipped", {
+            contentType,
+            batchDate,
+            popularSourceCount: rankingCandidates.length,
+          });
+          continue;
+        }
+
+        try {
+          const snapshotResult = await saveDailyRankingSnapshot({
+            contentType,
+            date: batchDate,
+            sourceUrl: rankingSource?.sourceUrl,
+            products: rankingProducts,
+            status:
+              rankingProducts.length < rankingCandidates.length
+                ? "partial"
+                : "success",
+          });
+          rankingSnapshotIds.push(snapshotResult.snapshotId);
+          if (contentResult) {
+            contentResult.rankingSnapshotId = snapshotResult.snapshotId;
+            contentResult.rankingSnapshotItemCount = snapshotResult.itemCount;
+            contentResult.rankingSnapshotWriteCount = snapshotResult.writeCount;
+          }
+          logger.info("DLsite daily priority ranking snapshot saved", {
+            contentType,
+            batchDate,
+            ...snapshotResult,
+          });
+
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          errorMessages.push(
+            `ranking snapshot failed: ${contentType}: ${message}`,
+          );
+          logger.error("DLsite daily priority ranking snapshot failed", {
+            contentType,
+            batchDate,
+            message,
+          });
+        }
+      }
+    }
+
+    const siteStatsRebuild =
       resolved.rebuildStats && resolved.statsTargets
-        ? await rebuildSiteStatsForTargets(resolved.statsTargets)
-        : [];
+        ? await rebuildSiteStatsForTargetsDetailed(resolved.statsTargets)
+        : undefined;
+    const siteStatsIds = [
+      ...new Set(siteStatsRebuild?.siteStatsIds ?? []),
+    ];
+    if (siteStatsRebuild?.status === "partial") {
+      for (const segment of siteStatsRebuild.segments) {
+        for (const [componentName, component] of Object.entries(
+          segment.components,
+        )) {
+          if (component.status !== "failed") continue;
+          errorMessages.push(
+            `site stats rebuild failed: ${segment.segmentId}:${componentName}: ${component.error ?? "unknown error"}`,
+          );
+        }
+      }
+    }
 
     const status: BatchRun["status"] =
-      totalFailedProductCount > 0 ? "partial" : "success";
+      totalFailedProductCount > 0 || errorMessages.length > 0
+        ? "partial"
+        : "success";
     const finishedRun: BatchRun = {
       ...baseRun,
       status,
@@ -1190,6 +1537,7 @@ export async function fetchDailyPriorityProducts(
       fetchedProductCount: totalFetchedProductCount,
       updatedProductCount: totalFetchedProductCount,
       failedProductCount: totalFailedProductCount,
+      rankingSnapshotIds,
       siteStatsIds,
       errorMessages,
     };
@@ -1200,6 +1548,7 @@ export async function fetchDailyPriorityProducts(
         options: resolved,
         batchDate,
         previousDate,
+        siteStatsRebuild,
       },
       { merge: true },
     );
@@ -1211,8 +1560,10 @@ export async function fetchDailyPriorityProducts(
       previousDate,
       fetchedProductCount: totalFetchedProductCount,
       failedProductCount: totalFailedProductCount,
+      rankingSnapshotIds,
       siteStatsIds,
       contentResults,
+      siteStatsRebuildStatus: siteStatsRebuild?.status,
     });
 
     return {
@@ -1221,6 +1572,7 @@ export async function fetchDailyPriorityProducts(
       batchDate,
       previousDate,
       contentResults,
+      rankingSnapshotIds,
       siteStatsIds,
     };
   } catch (error) {
@@ -1235,6 +1587,7 @@ export async function fetchDailyPriorityProducts(
       fetchedProductCount: totalFetchedProductCount,
       updatedProductCount: totalFetchedProductCount,
       failedProductCount: totalFailedProductCount,
+      rankingSnapshotIds,
       errorMessages,
     };
     await runRef.set(

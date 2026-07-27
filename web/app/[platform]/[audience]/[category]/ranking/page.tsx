@@ -8,7 +8,7 @@ import { ListEmptyState, ListPageInfo } from "@/components/ListPageInfo";
 import { RankingModeTabs, WorkTypeTabs } from "@/components/WorkTypeTabs";
 import { parsePageNumber, parsePageSize } from "@/lib/pageSize";
 import { getSegment } from "@/lib/siteSegments";
-import { getLatestRankingProducts } from "@/lib/firebase/products";
+import { getRankingPageProducts } from "@/lib/firebase/products";
 import { getWorkTypeLabel, parseWorkType } from "@/lib/workTypes";
 import { contentTypeForFilter, contentTypeParamForScope, getContentScopeLabel, parseContentScope } from "@/lib/contentCategories";
 import { RANKING_MODE_OPTIONS, parseRankingMode } from "@/lib/rankingModes";
@@ -23,7 +23,10 @@ type PageProps = {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { platform, audience, category } = await params;
   const segment = getSegment(platform, audience, category);
-  return { title: segment ? `${segment.label}ランキング` : "ランキング" };
+  return {
+    title: segment ? `${segment.label}ランキング` : "ランキング",
+    alternates: segment ? { canonical: `${segment.path}/ranking` } : undefined,
+  };
 }
 
 export default async function RankingPage({ params, searchParams }: PageProps) {
@@ -40,7 +43,7 @@ export default async function RankingPage({ params, searchParams }: PageProps) {
   const segment = getSegment(platform, audience, category);
   if (!segment || !segment.enabled) notFound();
 
-  const products = await getLatestRankingProducts({
+  const products = await getRankingPageProducts({
     platform: segment.platform,
     audience: segment.audience,
     category: segment.category,
@@ -52,7 +55,7 @@ export default async function RankingPage({ params, searchParams }: PageProps) {
   });
 
   const listRankMetric = rankingMode === "dailyRevenue" ? "revenue" : "sales";
-  const rankingModeLabel = RANKING_MODE_OPTIONS.find((option) => option.value === rankingMode)?.label ?? "日間売上";
+  const rankingModeLabel = RANKING_MODE_OPTIONS.find((option) => option.value === rankingMode)?.label ?? "推定日間売上";
   const visibleRange = products.length ? `${offsetCount + 1}〜${offsetCount + products.length}件` : "0件";
 
   return (
@@ -84,14 +87,14 @@ export default async function RankingPage({ params, searchParams }: PageProps) {
         </SectionHeader>
         <ListPageInfo
           title="いま売れている作品を比較できます"
-          description="DLsiteの取得済みランキングと販売数をもとに、人気作品を一覧で確認できます。右端には順位と販売指標を表示します。"
+          description="日次バッチで集計した前日・直近7日・直近30日・累計の販売本数をもとに、人気作品を一覧で確認できます。右端には選択期間の販売指標を表示します。"
           items={[
             { label: "対象", value: getContentScopeLabel(contentScope) },
             { label: "作品形式", value: getWorkTypeLabel(workType) },
             { label: "並び順", value: rankingModeLabel },
             { label: "表示中", value: visibleRange },
           ]}
-          note="ランキングはバッチ取得時点の情報です。DLsite公式の表示とは取得タイミングで差が出る場合があります。"
+          note="ランキングはバッチ取得時点の情報です。現在価格が0円の作品は対象外です。DLsite公式の表示とは取得タイミングで差が出る場合があります。"
         />
         <div className="listToolbar listToolbar--below">
           <PageSizeSelect value={limitCount} />

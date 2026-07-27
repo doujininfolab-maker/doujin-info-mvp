@@ -1,0 +1,71 @@
+main:
+  steps:
+    - init:
+        assign:
+          - projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - region: "asia-northeast1"
+
+    - runTl:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: ${"projects/" + projectId + "/locations/" + region + "/jobs/doujin-info-collect-tl"}
+          body: {}
+          connector_params:
+            timeout: 10800
+            polling_policy:
+              initial_delay: 10
+              multiplier: 1.25
+              max_delay: 60
+        result: tlResult
+
+    - waitAfterTl:
+        call: sys.sleep
+        args:
+          seconds: 300
+
+    - runBl:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: ${"projects/" + projectId + "/locations/" + region + "/jobs/doujin-info-collect-bl"}
+          body: {}
+          connector_params:
+            timeout: 10800
+            polling_policy:
+              initial_delay: 10
+              multiplier: 1.25
+              max_delay: 60
+        result: blResult
+
+    - rebuildIndexes:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: ${"projects/" + projectId + "/locations/" + region + "/jobs/doujin-info-rebuild-indexes"}
+          body: {}
+          connector_params:
+            timeout: 7200
+            polling_policy:
+              initial_delay: 10
+              multiplier: 1.25
+              max_delay: 60
+        result: indexResult
+
+    - rebuildListViews:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: ${"projects/" + projectId + "/locations/" + region + "/jobs/doujin-info-rebuild-list-views"}
+          body: {}
+          connector_params:
+            timeout: 7200
+            polling_policy:
+              initial_delay: 10
+              multiplier: 1.25
+              max_delay: 60
+        result: listViewResult
+
+    - complete:
+        return:
+          status: "success"
+          tl: ${tlResult}
+          bl: ${blResult}
+          indexes: ${indexResult}
+          listViews: ${listViewResult}

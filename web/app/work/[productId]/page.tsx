@@ -177,13 +177,12 @@ export default async function WorkDetailPage({ params }: PageProps) {
 
           <div className="buttonRow buttonRow--side">
             <a className="button button--official" href={officialUrl} target="_blank" rel="sponsored noreferrer">
-              DLsiteで詳細を見る（PR）
+              DLsiteで詳細を見る
             </a>
             <Link className="button button--ghost" href={segmentPath}>
               一覧へ戻る
             </Link>
           </div>
-          <p className="affiliateLinkNotice">この作品リンクはDLsiteアフィリエイトリンクです。</p>
 
           {product.genres.length > 0 ? (
             <section className="detailSideSection">

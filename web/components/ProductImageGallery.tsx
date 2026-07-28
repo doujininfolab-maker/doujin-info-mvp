@@ -51,7 +51,7 @@ export function ProductImageGallery({
     <div className="gallery">
       <div className="gallery__mainFrame">
         {officialUrl ? (
-          <a className="gallery__mainLink" href={officialUrl} target="_blank" rel="sponsored noreferrer" aria-label="DLsiteで詳細を見る（PR）">
+          <a className="gallery__mainLink" href={officialUrl} target="_blank" rel="sponsored noreferrer" aria-label="DLsiteで詳細を見る">
             <img className="gallery__main" src={mainSrc} alt={title} />
           </a>
         ) : (

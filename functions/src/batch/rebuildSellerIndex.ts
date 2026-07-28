@@ -15,11 +15,15 @@ const SELLER_INDEXES_COLLECTION = "sellerIndexes";
 const SELLER_INDEX_SCHEMA_VERSION = 1;
 const TARGET_CHUNK_BYTES = 400 * 1024;
 const MAX_ITEMS_PER_CHUNK = 250;
-const WRITE_BATCH_SIZE = 400;
 const CONTENT_SCOPES = ["all", "tl", "bl"] as const;
 
 type SiteSegmentKey = Pick<FetchTarget, "platform" | "audience" | "category">;
 type ContentScope = (typeof CONTENT_SCOPES)[number];
+
+type SellerItemRange = {
+  start: number;
+  end: number;
+};
 
 export type RebuildSellerIndexResult = {
   indexId: string;
@@ -116,126 +120,212 @@ function compactProduct(product?: Product): Product | undefined {
   } as Product);
 }
 
+function buildSellerItem(
+  contentScope: ContentScope,
+  key: string,
+  sellerProducts: Product[],
+): SellerIndexItem {
+  let topProduct = sellerProducts[0];
+  let totalSalesCount = 0;
+  let estimatedRevenue = 0;
+  const tagCounts = new Map<string, number>();
+
+  for (const product of sellerProducts) {
+    const salesCount = product.salesCount ?? 0;
+    totalSalesCount += salesCount;
+    estimatedRevenue += salesCount * (product.priceCurrent ?? 0);
+    if (
+      !topProduct
+      || salesCount > (topProduct.salesCount ?? 0)
+      || (
+        salesCount === (topProduct.salesCount ?? 0)
+        && product.productId.localeCompare(topProduct.productId) < 0
+      )
+    ) {
+      topProduct = product;
+    }
+    for (const genre of product.genres ?? []) {
+      if (genre) tagCounts.set(genre, (tagCounts.get(genre) ?? 0) + 1);
+    }
+  }
+
+  sellerProducts.sort(
+    (a, b) => (b.releaseDate ?? "").localeCompare(a.releaseDate ?? "")
+      || (a.title ?? "").localeCompare(b.title ?? "", "ja")
+      || a.productId.localeCompare(b.productId),
+  );
+  const latestProduct = sellerProducts[0] ?? topProduct;
+  let firstReleaseDate: string | undefined;
+  for (let index = sellerProducts.length - 1; index >= 0; index -= 1) {
+    if (sellerProducts[index].releaseDate) {
+      firstReleaseDate = sellerProducts[index].releaseDate;
+      break;
+    }
+  }
+  const sellerName = topProduct?.seller?.sellerName ?? key;
+
+  return removeUndefinedDeep({
+    contentScope,
+    sellerKey: key,
+    sellerId: topProduct?.seller?.sellerId,
+    sellerName,
+    sellerUrl: topProduct?.seller?.sellerUrl,
+    sellerType: topProduct?.seller?.sellerType,
+    platform: topProduct?.platform ?? "dlsite",
+    audience: topProduct?.audience ?? "female",
+    category: topProduct?.category ?? "doujin",
+    productCount: sellerProducts.length,
+    totalSalesCount,
+    averageSalesCount: sellerProducts.length
+      ? Math.round(totalSalesCount / sellerProducts.length)
+      : 0,
+    estimatedRevenue,
+    averagePrice: totalSalesCount > 0
+      ? Math.round(estimatedRevenue / totalSalesCount)
+      : undefined,
+    firstReleaseDate,
+    latestReleaseDate: latestProduct?.releaseDate,
+    newestProductTitle: latestProduct?.title,
+    topProduct: compactProduct(topProduct),
+    latestProduct: compactProduct(latestProduct),
+    tags: [...tagCounts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja"))
+      .slice(0, 18)
+      .map(([name, count]) => ({ name, count })),
+    normalizedSellerName: normalizeSellerName(sellerName),
+    productIdsByReleaseDate: sellerProducts.map((product) => product.productId),
+  } as SellerIndexItem);
+}
+
+function buildItemsForScope(
+  products: Product[],
+  contentScope: ContentScope,
+): SellerIndexItem[] {
+  const groups = new Map<string, Product[]>();
+  for (const product of products) {
+    if (product.isActive === false || !hasScope(product, contentScope)) continue;
+    const key = sellerKey(product);
+    if (!key) continue;
+    const current = groups.get(key) ?? [];
+    current.push(product);
+    groups.set(key, current);
+  }
+
+  const items: SellerIndexItem[] = [];
+  for (const [key, sellerProducts] of groups) {
+    items.push(buildSellerItem(contentScope, key, sellerProducts));
+    sellerProducts.length = 0;
+  }
+  return items;
+}
+
+function toMiB(bytes: number): number {
+  return Math.round((bytes / 1024 / 1024) * 100) / 100;
+}
+
+function logScopeMemory(
+  contentScope: ContentScope,
+  scopeItemCount: number,
+  totalItemCount: number,
+): void {
+  const memory = process.memoryUsage();
+  console.log("seller index scope aggregated", {
+    contentScope,
+    scopeItemCount,
+    totalItemCount,
+    heapUsedMiB: toMiB(memory.heapUsed),
+    heapTotalMiB: toMiB(memory.heapTotal),
+    rssMiB: toMiB(memory.rss),
+    externalMiB: toMiB(memory.external),
+  });
+}
+
 function buildItems(products: Product[]): SellerIndexItem[] {
   const items: SellerIndexItem[] = [];
   for (const contentScope of CONTENT_SCOPES) {
-    const groups = new Map<string, Product[]>();
-    for (const product of products) {
-      if (product.isActive === false || !hasScope(product, contentScope)) continue;
-      const key = sellerKey(product);
-      if (!key) continue;
-      const current = groups.get(key) ?? [];
-      current.push(product);
-      groups.set(key, current);
-    }
-    for (const [key, sellerProducts] of groups) {
-      const bySales = [...sellerProducts].sort((a, b) => (b.salesCount ?? 0) - (a.salesCount ?? 0) || a.productId.localeCompare(b.productId));
-      const byRelease = [...sellerProducts].sort((a, b) => (b.releaseDate ?? "").localeCompare(a.releaseDate ?? "") || (a.title ?? "").localeCompare(b.title ?? "", "ja") || a.productId.localeCompare(b.productId));
-      const topProduct = bySales[0];
-      const latestProduct = byRelease[0] ?? topProduct;
-      const totalSalesCount = sellerProducts.reduce((sum, product) => sum + (product.salesCount ?? 0), 0);
-      const estimatedRevenue = sellerProducts.reduce((sum, product) => sum + (product.salesCount ?? 0) * (product.priceCurrent ?? 0), 0);
-      const tagCounts = new Map<string, number>();
-      for (const product of sellerProducts) {
-        for (const genre of product.genres ?? []) {
-          if (genre) tagCounts.set(genre, (tagCounts.get(genre) ?? 0) + 1);
-        }
-      }
-      const sellerName = topProduct?.seller?.sellerName ?? key;
-      items.push(removeUndefinedDeep({
-        contentScope,
-        sellerKey: key,
-        sellerId: topProduct?.seller?.sellerId,
-        sellerName,
-        sellerUrl: topProduct?.seller?.sellerUrl,
-        sellerType: topProduct?.seller?.sellerType,
-        platform: topProduct?.platform ?? "dlsite",
-        audience: topProduct?.audience ?? "female",
-        category: topProduct?.category ?? "doujin",
-        productCount: sellerProducts.length,
-        totalSalesCount,
-        averageSalesCount: sellerProducts.length ? Math.round(totalSalesCount / sellerProducts.length) : 0,
-        estimatedRevenue,
-        averagePrice: totalSalesCount > 0 ? Math.round(estimatedRevenue / totalSalesCount) : undefined,
-        firstReleaseDate: [...byRelease].reverse().find((product) => product.releaseDate)?.releaseDate,
-        latestReleaseDate: latestProduct?.releaseDate,
-        newestProductTitle: latestProduct?.title,
-        topProduct: compactProduct(topProduct),
-        latestProduct: compactProduct(latestProduct),
-        tags: [...tagCounts.entries()]
-          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja"))
-          .slice(0, 18)
-          .map(([name, count]) => ({ name, count })),
-        normalizedSellerName: normalizeSellerName(sellerName),
-        productIdsByReleaseDate: byRelease.map((product) => product.productId),
-      } as SellerIndexItem));
-    }
+    const scopeItems = buildItemsForScope(products, contentScope);
+    items.push(...scopeItems);
+    logScopeMemory(contentScope, scopeItems.length, items.length);
   }
-  return items.sort((a, b) => a.contentScope.localeCompare(b.contentScope) || a.sellerKey.localeCompare(b.sellerKey));
+  return items.sort(
+    (a, b) => a.contentScope.localeCompare(b.contentScope)
+      || a.sellerKey.localeCompare(b.sellerKey),
+  );
 }
 
 function itemBytes(item: SellerIndexItem): number {
   return Buffer.byteLength(JSON.stringify(item), "utf8") + 2;
 }
 
-function chunkItems(items: SellerIndexItem[]): SellerIndexItem[][] {
-  const chunks: SellerIndexItem[][] = [];
-  let current: SellerIndexItem[] = [];
+function buildItemRanges(items: SellerIndexItem[]): SellerItemRange[] {
+  const ranges: SellerItemRange[] = [];
+  let start = 0;
+  let count = 0;
   let bytes = 0;
-  for (const item of items) {
-    const nextBytes = itemBytes(item);
-    if (current.length > 0 && (bytes + nextBytes > TARGET_CHUNK_BYTES || current.length >= MAX_ITEMS_PER_CHUNK)) {
-      chunks.push(current);
-      current = [];
+
+  for (let index = 0; index < items.length; index += 1) {
+    const nextBytes = itemBytes(items[index]);
+    if (
+      count > 0
+      && (bytes + nextBytes > TARGET_CHUNK_BYTES || count >= MAX_ITEMS_PER_CHUNK)
+    ) {
+      ranges.push({ start, end: index });
+      start = index;
+      count = 0;
       bytes = 0;
     }
-    current.push(item);
+    count += 1;
     bytes += nextBytes;
   }
-  if (current.length > 0) chunks.push(current);
-  return chunks;
-}
 
-async function commitSets(operations: Array<{ ref: DocumentReference; data: Record<string, unknown> }>): Promise<void> {
-  for (let index = 0; index < operations.length; index += WRITE_BATCH_SIZE) {
-    const batch = db.batch();
-    for (const operation of operations.slice(index, index + WRITE_BATCH_SIZE)) batch.set(operation.ref, operation.data, { merge: false });
-    await batch.commit();
-  }
+  if (count > 0) ranges.push({ start, end: items.length });
+  return ranges;
 }
 
 async function deleteVersion(versionRef: DocumentReference): Promise<void> {
   const snapshot = await versionRef.get();
   if (!snapshot.exists) return;
   const version = snapshot.data() as Partial<SellerIndexVersionDocument>;
-  const chunkIds = Array.isArray(version.chunkIds) ? version.chunkIds : [];
-  const refs = [...chunkIds.map((id) => versionRef.collection("chunks").doc(id)), versionRef];
-  for (let index = 0; index < refs.length; index += WRITE_BATCH_SIZE) {
-    const batch = db.batch();
-    for (const ref of refs.slice(index, index + WRITE_BATCH_SIZE)) batch.delete(ref);
-    await batch.commit();
+  const chunkIds = Array.isArray(version.chunkIds)
+    ? version.chunkIds.filter((value): value is string => typeof value === "string")
+    : [];
+
+  for (const chunkId of chunkIds) {
+    await versionRef.collection("chunks").doc(chunkId).delete();
   }
+  await versionRef.delete();
 }
 
-export async function rebuildSellerIndex(segment: SiteSegmentKey, products: Product[], generatedAt: Timestamp): Promise<RebuildSellerIndexResult> {
+export async function rebuildSellerIndex(
+  segment: SiteSegmentKey,
+  products: Product[],
+  generatedAt: Timestamp,
+): Promise<RebuildSellerIndexResult> {
   const indexId = buildIndexId(segment);
   const versionId = buildVersionId(generatedAt.toDate());
   const items = buildItems(products);
-  const chunks = chunkItems(items);
-  const chunkIds = chunks.map((_, index) => index.toString().padStart(4, "0"));
+  const ranges = buildItemRanges(items);
+  const chunkIds = ranges.map((_, index) => index.toString().padStart(4, "0"));
   const rootRef = db.collection(SELLER_INDEXES_COLLECTION).doc(indexId);
   const versionsRef = rootRef.collection("versions");
   const versionRef = versionsRef.doc(versionId);
   const previousSnapshot = await rootRef.get();
-  const previous = previousSnapshot.exists ? previousSnapshot.data() as Partial<SellerIndexRootDocument> : undefined;
-  const previousActiveVersion = typeof previous?.activeVersion === "string" ? previous.activeVersion : undefined;
-  const versionToDelete = typeof previous?.previousVersion === "string" ? previous.previousVersion : undefined;
+  const previous = previousSnapshot.exists
+    ? previousSnapshot.data() as Partial<SellerIndexRootDocument>
+    : undefined;
+  const previousActiveVersion = typeof previous?.activeVersion === "string"
+    ? previous.activeVersion
+    : undefined;
+  const versionToDelete = typeof previous?.previousVersion === "string"
+    ? previous.previousVersion
+    : undefined;
   if (items.length === 0 && previousActiveVersion && (previous?.itemCount ?? 0) > 0) {
     throw new Error(
       `seller index rebuild produced no items for ${indexId}; keeping ${previousActiveVersion}`,
     );
   }
   let activated = false;
+
   try {
     const building: SellerIndexVersionDocument = {
       indexId,
@@ -248,19 +338,30 @@ export async function rebuildSellerIndex(segment: SiteSegmentKey, products: Prod
       updatedAt: generatedAt,
     };
     await versionRef.set(removeUndefinedDeep(building), { merge: false });
-    await commitSets(chunks.map((chunkItems, index) => ({
-      ref: versionRef.collection("chunks").doc(chunkIds[index]),
-      data: removeUndefinedDeep({
+
+    for (let index = 0; index < ranges.length; index += 1) {
+      const range = ranges[index];
+      const chunkId = chunkIds[index];
+      const chunkItems = items.slice(range.start, range.end);
+      const chunkDocument: SellerIndexChunkDocument = {
         indexId,
         versionId,
-        chunkId: chunkIds[index],
+        chunkId,
         index,
         itemCount: chunkItems.length,
         items: chunkItems,
         generatedAt,
-      } satisfies SellerIndexChunkDocument) as Record<string, unknown>,
-    })));
-    await versionRef.set(removeUndefinedDeep({ ...building, status: "ready", updatedAt: generatedAt }), { merge: false });
+      };
+      await versionRef
+        .collection("chunks")
+        .doc(chunkId)
+        .set(removeUndefinedDeep(chunkDocument), { merge: false });
+    }
+
+    await versionRef.set(
+      removeUndefinedDeep({ ...building, status: "ready", updatedAt: generatedAt }),
+      { merge: false },
+    );
     const root: SellerIndexRootDocument = {
       indexId,
       schemaVersion: SELLER_INDEX_SCHEMA_VERSION,
@@ -273,16 +374,35 @@ export async function rebuildSellerIndex(segment: SiteSegmentKey, products: Prod
     };
     await rootRef.set(removeUndefinedDeep(root), { merge: false });
     activated = true;
+
     if (versionToDelete && versionToDelete !== previousActiveVersion && versionToDelete !== versionId) {
-      try { await deleteVersion(versionsRef.doc(versionToDelete)); } catch (error) {
-        console.warn("Failed to delete old seller index version", { indexId, versionToDelete, error });
+      try {
+        await deleteVersion(versionsRef.doc(versionToDelete));
+      } catch (error) {
+        console.warn("Failed to delete old seller index version", {
+          indexId,
+          versionToDelete,
+          error,
+        });
       }
     }
-    return { indexId, versionId, itemCount: items.length, chunkCount: chunks.length };
+
+    return {
+      indexId,
+      versionId,
+      itemCount: items.length,
+      chunkCount: ranges.length,
+    };
   } catch (error) {
     if (!activated) {
-      try { await deleteVersion(versionRef); } catch (cleanupError) {
-        console.warn("Failed to clean up incomplete seller index", { indexId, versionId, cleanupError });
+      try {
+        await deleteVersion(versionRef);
+      } catch (cleanupError) {
+        console.warn("Failed to clean up incomplete seller index", {
+          indexId,
+          versionId,
+          cleanupError,
+        });
       }
     }
     throw error;

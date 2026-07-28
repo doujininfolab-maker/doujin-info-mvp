@@ -152,6 +152,27 @@ function buildSiteStatsId(segment: SiteSegmentKey, contentScope: ContentStatsSco
   return contentScope === "all" ? baseId : `${baseId}_${contentScope}`;
 }
 
+function toMiB(bytes: number): number {
+  return Math.round((bytes / 1024 / 1024) * 100) / 100;
+}
+
+function logRebuildMemoryUsage(
+  stage: string,
+  segment: SiteSegmentKey,
+  productCount: number,
+): void {
+  const memory = process.memoryUsage();
+  console.log("rebuild indexes memory usage", {
+    stage,
+    segmentId: buildSiteStatsId(segment),
+    productCount,
+    heapUsedMiB: toMiB(memory.heapUsed),
+    heapTotalMiB: toMiB(memory.heapTotal),
+    rssMiB: toMiB(memory.rss),
+    externalMiB: toMiB(memory.external),
+  });
+}
+
 function toJstDateKey(date: Date): string {
   return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
@@ -750,6 +771,7 @@ function toErrorMessage(error: unknown): string {
 async function runRebuildComponent<T>(
   name: string,
   segment: SiteSegmentKey,
+  productCount: number,
   operation: () => Promise<T>,
 ): Promise<RebuildComponentResult> {
   try {
@@ -763,6 +785,8 @@ async function runRebuildComponent<T>(
       error: message,
     });
     return { status: "failed", error: message };
+  } finally {
+    logRebuildMemoryUsage(name, segment, productCount);
   }
 }
 
@@ -788,6 +812,7 @@ export async function rebuildSiteStatsForTargetsDetailed(
     const allProducts = await getProductsForSiteStats(segment);
     const generatedAt = nowTimestamp();
     const segmentStatIds: string[] = [];
+    logRebuildMemoryUsage("products loaded", segment, allProducts.length);
 
     for (const contentScope of CONTENT_STATS_SCOPES) {
       segmentStatIds.push(
@@ -800,6 +825,7 @@ export async function rebuildSiteStatsForTargetsDetailed(
       );
     }
     statIds.push(...segmentStatIds);
+    logRebuildMemoryUsage("site stats", segment, allProducts.length);
 
     const components: RebuildSiteStatsSegmentResult["components"] = {
       siteStats: {
@@ -809,6 +835,7 @@ export async function rebuildSiteStatsForTargetsDetailed(
       homeViews: await runRebuildComponent(
         "home dashboard views",
         segment,
+        allProducts.length,
         () =>
           rebuildHomeDashboardViews(
             segment,
@@ -820,21 +847,25 @@ export async function rebuildSiteStatsForTargetsDetailed(
       searchIndex: await runRebuildComponent(
         "search index",
         segment,
+        allProducts.length,
         () => rebuildSearchIndex(segment, allProducts, generatedAt),
       ),
       rankingIndex: await runRebuildComponent(
         "ranking index",
         segment,
+        allProducts.length,
         () => rebuildRankingIndex(segment, allProducts, generatedAt),
       ),
       genreIndex: await runRebuildComponent(
         "genre index",
         segment,
+        allProducts.length,
         () => rebuildGenreIndex(segment, allProducts, generatedAt),
       ),
       sellerIndex: await runRebuildComponent(
         "seller index",
         segment,
+        allProducts.length,
         () => rebuildSellerIndex(segment, allProducts, generatedAt),
       ),
     };

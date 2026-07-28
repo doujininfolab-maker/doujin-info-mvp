@@ -14,7 +14,6 @@ const SEARCH_INDEXES_COLLECTION = "searchIndexes";
 const SEARCH_INDEX_SCHEMA_VERSION = 2;
 const SEARCH_INDEX_TARGET_CHUNK_BYTES = 400 * 1024;
 const SEARCH_INDEX_MAX_ITEMS_PER_CHUNK = 500;
-const SEARCH_INDEX_WRITE_BATCH_SIZE = 400;
 
 type SiteSegmentKey = Pick<FetchTarget, "platform" | "audience" | "category">;
 type SearchIndexSourceProduct = Product & { contentType?: string };
@@ -140,18 +139,6 @@ function calculateChecksum(items: SearchIndexItem[]): string {
   return hash.digest("hex");
 }
 
-async function commitSetOperations(
-  operations: Array<{ ref: DocumentReference; data: Record<string, unknown> }>,
-): Promise<void> {
-  for (let index = 0; index < operations.length; index += SEARCH_INDEX_WRITE_BATCH_SIZE) {
-    const batch = db.batch();
-    for (const operation of operations.slice(index, index + SEARCH_INDEX_WRITE_BATCH_SIZE)) {
-      batch.set(operation.ref, operation.data, { merge: false });
-    }
-    await batch.commit();
-  }
-}
-
 async function deleteVersion(versionRef: DocumentReference): Promise<void> {
   const versionSnapshot = await versionRef.get();
   if (!versionSnapshot.exists) return;
@@ -160,18 +147,10 @@ async function deleteVersion(versionRef: DocumentReference): Promise<void> {
   const chunkIds = Array.isArray(version.chunkIds)
     ? version.chunkIds.filter((value): value is string => typeof value === "string")
     : [];
-  const deleteRefs = [
-    ...chunkIds.map((chunkId) => versionRef.collection("chunks").doc(chunkId)),
-    versionRef,
-  ];
-
-  for (let index = 0; index < deleteRefs.length; index += SEARCH_INDEX_WRITE_BATCH_SIZE) {
-    const batch = db.batch();
-    for (const ref of deleteRefs.slice(index, index + SEARCH_INDEX_WRITE_BATCH_SIZE)) {
-      batch.delete(ref);
-    }
-    await batch.commit();
+  for (const chunkId of chunkIds) {
+    await versionRef.collection("chunks").doc(chunkId).delete();
   }
+  await versionRef.delete();
 }
 
 export async function rebuildSearchIndex(
@@ -229,7 +208,8 @@ export async function rebuildSearchIndex(
     };
     await versionRef.set(removeUndefinedDeep(buildingVersion), { merge: false });
 
-    const chunkOperations = chunks.map((chunkItems, index) => {
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunkItems = chunks[index];
       const chunkId = chunkIds[index];
       const chunkDocument: SearchIndexChunkDocument = {
         versionId,
@@ -239,12 +219,11 @@ export async function rebuildSearchIndex(
         items: chunkItems,
         generatedAt,
       };
-      return {
-        ref: versionRef.collection("chunks").doc(chunkId),
-        data: removeUndefinedDeep(chunkDocument) as Record<string, unknown>,
-      };
-    });
-    await commitSetOperations(chunkOperations);
+      await versionRef
+        .collection("chunks")
+        .doc(chunkId)
+        .set(removeUndefinedDeep(chunkDocument), { merge: false });
+    }
 
     const readyVersion: SearchIndexVersionDocument = {
       ...buildingVersion,

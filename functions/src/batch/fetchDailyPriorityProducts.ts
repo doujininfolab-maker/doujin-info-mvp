@@ -1020,6 +1020,7 @@ async function discoverTargetsForContentType(params: {
 async function processTargetsForContentType(params: {
   contentType: ProductContentType;
   targets: DailyPriorityTarget[];
+  rankingSnapshotCandidateIds: ReadonlySet<string>;
   previousDate: string;
   delayMs: number;
   commitProductCount: number;
@@ -1106,7 +1107,14 @@ async function processTargetsForContentType(params: {
             dryRun: params.dryRun,
             parseMode: params.parseMode,
           });
-          if (saveResult.product) {
+          // Every fetched product is still written to Firestore above. Keep only
+          // the products needed by the legacy ranking snapshot in memory.
+          if (
+            saveResult.product &&
+            params.rankingSnapshotCandidateIds.has(
+              dailyTarget.sourceProductId,
+            )
+          ) {
             productsBySourceProductId.set(dailyTarget.sourceProductId, {
               ...saveResult.product,
               latestRankings:
@@ -1164,6 +1172,7 @@ async function processTargetsForContentType(params: {
         writeCount,
         dailyMetricWriteCount,
         commitCount: writeBuffer.commitCount,
+        retainedRankingProductCount: productsBySourceProductId.size,
         performance: summarizePerformance(
           chunkPerformance,
           chunkFetchedProductCount,
@@ -1190,6 +1199,10 @@ async function processTargetsForContentType(params: {
 
 async function retryFailedTargets(params: {
   failedTargets: DailyPriorityTarget[];
+  rankingSnapshotCandidateIdsByContentType: ReadonlyMap<
+    ProductContentType,
+    ReadonlySet<string>
+  >;
   previousDate: string;
   delayMs: number;
   retrySleepMs: number;
@@ -1226,6 +1239,9 @@ async function retryFailedTargets(params: {
       const processResult = await processTargetsForContentType({
         contentType,
         targets,
+        rankingSnapshotCandidateIds:
+          params.rankingSnapshotCandidateIdsByContentType.get(contentType) ??
+          new Set<string>(),
         previousDate: params.previousDate,
         delayMs: params.delayMs,
         commitProductCount: DEFAULT_COMMIT_PRODUCT_COUNT,
@@ -1318,6 +1334,10 @@ export async function fetchDailyPriorityProducts(
     ProductContentType,
     Map<string, Product>
   >();
+  const rankingSnapshotCandidateIdsByContentType = new Map<
+    ProductContentType,
+    ReadonlySet<string>
+  >();
   let totalFetchedProductCount = 0;
   let totalFailedProductCount = 0;
   const errorMessages: string[] = [];
@@ -1349,10 +1369,22 @@ export async function fetchDailyPriorityProducts(
         discovered.workTypePopular.length +
         discovered.salesCountOrder.length -
         discovered.merged.length;
+      // The main rankingIndexes job reads all saved products from Firestore.
+      // This set is only for the existing top-300 rankingSnapshots output.
+      const rankingSnapshotCandidateIds = new Set(
+        discovered.popular
+          .slice(0, DEFAULT_RANKING_SNAPSHOT_LIMIT)
+          .map((source) => source.sourceProductId),
+      );
+      rankingSnapshotCandidateIdsByContentType.set(
+        contentType,
+        rankingSnapshotCandidateIds,
+      );
 
       const processResult = await processTargetsForContentType({
         contentType,
         targets: discovered.merged,
+        rankingSnapshotCandidateIds,
         previousDate,
         delayMs: resolved.delayMs,
         commitProductCount: resolved.commitProductCount,
@@ -1402,6 +1434,7 @@ export async function fetchDailyPriorityProducts(
     if (allFailedTargets.length > 0 && resolved.retryCount > 0) {
       const retryResult = await retryFailedTargets({
         failedTargets: allFailedTargets,
+        rankingSnapshotCandidateIdsByContentType,
         previousDate,
         delayMs: resolved.delayMs,
         retrySleepMs: resolved.retrySleepMs,

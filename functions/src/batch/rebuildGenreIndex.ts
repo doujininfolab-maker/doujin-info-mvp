@@ -17,7 +17,6 @@ import type {
 
 const GENRE_INDEXES_COLLECTION = "genreIndexes";
 const GENRE_INDEX_SCHEMA_VERSION = 1;
-const WRITE_BATCH_SIZE = 400;
 const TARGET_CHUNK_BYTES = 300 * 1024;
 const MAX_ENTRIES_PER_CHUNK = 150;
 const CONTENT_SCOPES = ["all", "tl", "bl"] as const;
@@ -245,35 +244,31 @@ function chunkEntries(entries: GenreIndexEntry[]): GenreIndexEntry[][] {
   return chunks;
 }
 
-async function commitSets(operations: Array<{ ref: DocumentReference; data: Record<string, unknown> }>): Promise<void> {
-  for (let index = 0; index < operations.length; index += WRITE_BATCH_SIZE) {
-    const batch = db.batch();
-    for (const operation of operations.slice(index, index + WRITE_BATCH_SIZE)) {
-      batch.set(operation.ref, operation.data, { merge: false });
-    }
-    await batch.commit();
-  }
-}
-
 async function deleteVersion(versionRef: DocumentReference): Promise<void> {
   const snapshot = await versionRef.get();
   if (!snapshot.exists) return;
   const version = snapshot.data() as Partial<GenreIndexVersionDocument>;
-  const listIds = Array.isArray(version.listIds) ? version.listIds : [];
-  const refs: DocumentReference[] = [];
+  const listIds = Array.isArray(version.listIds)
+    ? version.listIds.filter((value): value is string => typeof value === "string")
+    : [];
+
   for (const listId of listIds) {
     const listRef = versionRef.collection("lists").doc(listId);
     const listSnapshot = await listRef.get();
-    const list = listSnapshot.exists ? listSnapshot.data() as Partial<GenreIndexListDocument> : undefined;
-    const chunkIds = Array.isArray(list?.chunkIds) ? list.chunkIds : [];
-    refs.push(...chunkIds.map((chunkId) => listRef.collection("chunks").doc(chunkId)), listRef);
+    const list = listSnapshot.exists
+      ? listSnapshot.data() as Partial<GenreIndexListDocument>
+      : undefined;
+    const chunkIds = Array.isArray(list?.chunkIds)
+      ? list.chunkIds.filter((value): value is string => typeof value === "string")
+      : [];
+
+    for (const chunkId of chunkIds) {
+      await listRef.collection("chunks").doc(chunkId).delete();
+    }
+    await listRef.delete();
   }
-  refs.push(versionRef);
-  for (let index = 0; index < refs.length; index += WRITE_BATCH_SIZE) {
-    const batch = db.batch();
-    for (const ref of refs.slice(index, index + WRITE_BATCH_SIZE)) batch.delete(ref);
-    await batch.commit();
-  }
+
+  await versionRef.delete();
 }
 
 export async function rebuildGenreIndex(
@@ -343,14 +338,12 @@ export async function rebuildGenreIndex(
       updatedAt: generatedAt,
     };
     await versionRef.set(removeUndefinedDeep(building), { merge: false });
-    const listOperations: Array<{ ref: DocumentReference; data: Record<string, unknown> }> = [];
     for (const list of lists) {
       const listRef = versionRef.collection("lists").doc(list.document.listId);
-      listOperations.push({
-        ref: listRef,
-        data: removeUndefinedDeep(list.document) as Record<string, unknown>,
-      });
-      list.chunks.forEach((entries, index) => {
+      await listRef.set(removeUndefinedDeep(list.document), { merge: false });
+
+      for (let index = 0; index < list.chunks.length; index += 1) {
+        const entries = list.chunks[index];
         const chunkId = list.document.chunkIds[index];
         const chunk: GenreIndexChunkDocument = {
           segmentId,
@@ -362,13 +355,12 @@ export async function rebuildGenreIndex(
           entries,
           generatedAt,
         };
-        listOperations.push({
-          ref: listRef.collection("chunks").doc(chunkId),
-          data: removeUndefinedDeep(chunk) as Record<string, unknown>,
-        });
-      });
+        await listRef
+          .collection("chunks")
+          .doc(chunkId)
+          .set(removeUndefinedDeep(chunk), { merge: false });
+      }
     }
-    await commitSets(listOperations);
     await versionRef.set(removeUndefinedDeep({ ...building, status: "ready", updatedAt: generatedAt }), { merge: false });
     const root: GenreIndexRootDocument = {
       segmentId,

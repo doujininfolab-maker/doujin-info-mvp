@@ -32,5 +32,32 @@
       "port": 4000
     },
     "singleProjectMode": true
+  },
+  "apphosting": {
+    "backendId": "doujin-info-prod",
+    "rootDir": "web",
+    "ignore": [
+      "node_modules",
+      ".git",
+      ".emulator-data",
+      ".firebase",
+      ".next",
+      "web/.next",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      "firestore-debug.log",
+      "firestore-debug.*.log",
+      "ui-debug.log",
+      "ui-debug.*.log",
+      "functions",
+      "logs",
+      "docs",
+      "workflows",
+      "list-view-dry-run*.json",
+      "phase*-result.json",
+      "*.log",
+      "*.zip",
+      "*.tsbuildinfo"
+    ]
   }
 }

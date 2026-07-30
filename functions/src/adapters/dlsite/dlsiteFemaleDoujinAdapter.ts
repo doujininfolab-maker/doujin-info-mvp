@@ -46,6 +46,7 @@ const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 200;
 const MAX_LIST_PAGE_COUNT = 20;
 const USER_AGENT =
+  process.env.DLSITE_USER_AGENT?.trim() ||
   "doujin-info-mvp/0.1 (+https://doujin-info-mvp.web.app; low-frequency public-page fetcher)";
 const FETCH_TIMEOUT_MS = 30_000;
 const FETCH_RETRY_COUNT = 2;

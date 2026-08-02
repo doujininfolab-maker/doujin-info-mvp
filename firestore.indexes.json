@@ -562,6 +562,41 @@
       "collectionGroup": "saleListViewVersions",
       "fieldPath": "thresholdCounts",
       "indexes": []
+    },
+    {
+      "collectionGroup": "products",
+      "fieldPath": "totalSalesCount",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "products",
+      "fieldPath": "salesEditions",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "products",
+      "fieldPath": "ratingBreakdown",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "products",
+      "fieldPath": "sourceRankings",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyMetrics",
+      "fieldPath": "totalSalesCount",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyMetrics",
+      "fieldPath": "salesEditionCounts",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyMetrics",
+      "fieldPath": "ratingBreakdown",
+      "indexes": []
     }
   ]
 }

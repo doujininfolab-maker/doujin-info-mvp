@@ -73,10 +73,25 @@ function buildMetric(product: Product, date: string): ProductDailyMetric {
     isDiscounted: product.isDiscounted,
     isOnSale: product.isOnSale,
     salesCount: product.salesCount,
+    totalSalesCount: product.totalSalesCount,
+    currentEditionSalesCount: product.currentEditionSalesCount,
+    salesEditionCounts:
+      product.salesEditions === undefined
+        ? undefined
+        : product.salesEditions.length > 1 ||
+            product.totalSalesCount !== product.currentEditionSalesCount
+          ? product.salesEditions.map((edition) => ({
+              sourceProductId: edition.sourceProductId,
+              languageCode: edition.languageCode,
+              salesCount: edition.salesCount,
+            }))
+          : [],
     wishlistCount: product.wishlistCount,
     rating: product.rating,
     ratingAverage: product.ratingAverage,
     reviewCount: product.reviewCount,
+    ratingCount: product.ratingCount,
+    textReviewCount: product.textReviewCount,
     ratingBreakdown: product.ratingBreakdown,
     workType: product.workType,
     workTypeLabel: product.workTypeLabel,

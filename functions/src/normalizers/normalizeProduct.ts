@@ -13,11 +13,18 @@ type RawNormalizedProduct = RawProductDetail & {
   priceOriginal?: number;
   discountRate?: number;
   salesCount?: number;
+  totalSalesCount?: number;
+  currentEditionSalesCount?: number;
+  salesEditionGroupId?: string | null;
+  salesEditions?: Product["salesEditions"];
   wishlistCount?: number;
   rating?: number;
   ratingAverage?: number;
   reviewCount?: number;
+  ratingCount?: number;
+  textReviewCount?: number;
   ratingBreakdown?: Product["ratingBreakdown"];
+  sourceRankings?: Product["sourceRankings"];
   isOnSale?: boolean;
   releaseDate?: string;
   ageRating?: "all" | "r15" | "r18" | "adult";
@@ -54,7 +61,19 @@ export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Pr
   const priceCurrent = value.priceCurrent;
   const priceOriginal = value.priceOriginal;
   const discountRate = value.discountRate;
-  const isDiscounted = Boolean(discountRate && discountRate > 0 && priceOriginal && priceCurrent && priceOriginal > priceCurrent);
+  const hasDynamicPriceData =
+    priceCurrent !== undefined ||
+    priceOriginal !== undefined ||
+    discountRate !== undefined;
+  const isDiscounted = hasDynamicPriceData
+    ? Boolean(
+        discountRate &&
+          discountRate > 0 &&
+          priceOriginal &&
+          priceCurrent &&
+          priceOriginal > priceCurrent,
+      )
+    : undefined;
   const genres = value.genres ?? [];
   const tags = value.tags ?? [];
   const genreIds = value.genreIds ?? [];
@@ -87,11 +106,18 @@ export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Pr
     isOnSale: value.isOnSale ?? isDiscounted,
     currency: "JPY",
     salesCount: value.salesCount,
+    totalSalesCount: value.totalSalesCount,
+    currentEditionSalesCount: value.currentEditionSalesCount,
+    salesEditionGroupId: value.salesEditionGroupId,
+    salesEditions: value.salesEditions,
     wishlistCount: value.wishlistCount,
     rating: value.rating ?? value.ratingAverage,
     ratingAverage: value.ratingAverage ?? value.rating,
     reviewCount: value.reviewCount,
-    ratingBreakdown: value.ratingBreakdown ?? [],
+    ratingCount: value.ratingCount ?? value.reviewCount,
+    textReviewCount: value.textReviewCount,
+    ratingBreakdown: value.ratingBreakdown,
+    sourceRankings: value.sourceRankings,
     releaseDate: value.releaseDate,
     ageRating: value.ageRating ?? (target.audience === "adult" ? "adult" : "all"),
     isAdult: value.ageRating === "r18" || value.ageRating === "adult" || target.audience === "adult",

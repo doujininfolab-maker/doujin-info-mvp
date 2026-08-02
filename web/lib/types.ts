@@ -400,6 +400,29 @@ export type ProductRatingBreakdown = {
   count: number;
 };
 
+export type ProductSalesEdition = {
+  sourceProductId: string;
+  editionId?: number;
+  editionType?: string;
+  languageCode?: string;
+  languageLabel?: string;
+  salesCount: number;
+  displayOrder?: number;
+};
+
+export type ProductDailySalesEdition = {
+  sourceProductId: string;
+  languageCode?: string;
+  salesCount: number;
+};
+
+export type SourceRankingEntry = {
+  term: "day" | "week" | "month" | "total";
+  category: string;
+  rank: number;
+  rankDate?: string;
+};
+
 export type Seller = {
   sellerId?: string;
   sellerName?: string;
@@ -441,13 +464,21 @@ export type Product = {
   currency: "JPY";
 
   salesCount?: number;
+  /** 全言語・全エディション合計（DLsite dl_count_total）。 */
+  totalSalesCount?: number;
+  currentEditionSalesCount?: number;
+  salesEditionGroupId?: string | null;
+  salesEditions?: ProductSalesEdition[];
   wishlistCount?: number;
   recentSalesSnapshots?: ProductSalesSnapshot[];
   rankingMetrics?: ProductRankingMetrics;
   rankingMetric?: ProductRankingDisplayMetric;
   rating?: number;
   ratingAverage?: number;
+  /** 既存互換: 評価件数（DLsite rate_count）。 */
   reviewCount?: number;
+  ratingCount?: number;
+  textReviewCount?: number;
   ratingBreakdown?: ProductRatingBreakdown[];
 
   releaseDate?: string;
@@ -476,6 +507,7 @@ export type Product = {
 
   searchTokens?: string[];
   latestRankings?: RankingSummary[];
+  sourceRankings?: SourceRankingEntry[];
 
   isActive: boolean;
   fetchStatus: FetchStatus;
@@ -589,6 +621,10 @@ export type ProductDailyMetric = {
   isOnSale?: boolean;
 
   salesCount?: number;
+  /** 全言語・全エディション合計（DLsite dl_count_total）。 */
+  totalSalesCount?: number;
+  currentEditionSalesCount?: number;
+  salesEditionCounts?: ProductDailySalesEdition[];
   wishlistCount?: number;
 
   dailySalesCount?: number | null;
@@ -612,7 +648,10 @@ export type ProductDailyMetric = {
 
   rating?: number;
   ratingAverage?: number;
+  /** 既存互換: 評価件数（DLsite rate_count）。 */
   reviewCount?: number;
+  ratingCount?: number;
+  textReviewCount?: number;
   ratingBreakdown?: ProductRatingBreakdown[];
 
   workType?: ProductWorkType;

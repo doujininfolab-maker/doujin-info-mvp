@@ -11,7 +11,9 @@
     "watch": "tsc -w",
     "serve": "npm run build && firebase emulators:start --only functions,firestore",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "inspect:dlsite-product-sources": "npm run build && node lib/tools/inspectDlsiteProductSources.js",
+    "test:dlsite-ajax-parser": "npm run build && node lib/tools/testDlsiteAjaxParser.js"
   },
   "dependencies": {
     "@types/node": "^24.0.0",

@@ -169,9 +169,9 @@ export default async function WorkDetailPage({ params }: PageProps) {
               <dt>サークル</dt>
               <dd>{product.seller?.sellerName ? (sellerHref ? <Link href={sellerHref}>{product.seller.sellerName}</Link> : product.seller.sellerName) : "-"}</dd>
             </div>
-            <div><dt>販売数</dt><dd>{formatNumber(product.salesCount)}</dd></div>
+            <div><dt>総DL数</dt><dd>{formatNumber(product.totalSalesCount ?? product.salesCount)}</dd></div>
             <div><dt>評価</dt><dd>{formatRating(product.rating ?? product.ratingAverage)}</dd></div>
-            <div><dt>評価数</dt><dd>{formatNumber(product.reviewCount)}</dd></div>
+            <div><dt>評価数</dt><dd>{formatNumber(product.ratingCount ?? product.reviewCount)}</dd></div>
             <div><dt>発売日</dt><dd>{formatDate(product.releaseDate)}</dd></div>
           </dl>
 

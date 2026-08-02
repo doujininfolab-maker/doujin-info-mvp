@@ -292,10 +292,25 @@ function buildMetric(
     isDiscounted: product.isDiscounted,
     isOnSale: product.isOnSale,
     salesCount: product.salesCount,
+    totalSalesCount: product.totalSalesCount,
+    currentEditionSalesCount: product.currentEditionSalesCount,
+    salesEditionCounts:
+      product.salesEditions === undefined
+        ? undefined
+        : product.salesEditions.length > 1 ||
+            product.totalSalesCount !== product.currentEditionSalesCount
+          ? product.salesEditions.map((edition) => ({
+              sourceProductId: edition.sourceProductId,
+              languageCode: edition.languageCode,
+              salesCount: edition.salesCount,
+            }))
+          : [],
     wishlistCount: product.wishlistCount,
     rating: product.rating,
     ratingAverage: product.ratingAverage,
     reviewCount: product.reviewCount,
+    ratingCount: product.ratingCount,
+    textReviewCount: product.textReviewCount,
     ratingBreakdown: product.ratingBreakdown,
     workType: product.workType,
     workTypeLabel: product.workTypeLabel,
@@ -1027,6 +1042,7 @@ async function processTargetsForContentType(params: {
   existingProductReadCount: number;
   dryRun: boolean;
   parseMode: "full" | "fast";
+  onProductFetched?: (product: Product) => void;
 }): Promise<{
   result: Omit<
     DailyPriorityContentResult,
@@ -1107,6 +1123,9 @@ async function processTargetsForContentType(params: {
             dryRun: params.dryRun,
             parseMode: params.parseMode,
           });
+          if (saveResult.product) {
+            params.onProductFetched?.(saveResult.product);
+          }
           // Every fetched product is still written to Firestore above. Keep only
           // the products needed by the legacy ranking snapshot in memory.
           if (
@@ -1210,6 +1229,7 @@ async function retryFailedTargets(params: {
   existingProductReadCount: number;
   dryRun: boolean;
   parseMode: "full" | "fast";
+  onProductFetched?: (product: Product) => void;
 }): Promise<{
   retrySuccessCount: number;
   retryFailedCount: number;
@@ -1248,6 +1268,7 @@ async function retryFailedTargets(params: {
         existingProductReadCount: params.existingProductReadCount,
         dryRun: params.dryRun,
         parseMode: params.parseMode,
+        onProductFetched: params.onProductFetched,
       });
       retrySuccessCount += processResult.result.fetchedProductCount;
       nextRemaining.push(...processResult.failedTargets);
@@ -1341,6 +1362,42 @@ export async function fetchDailyPriorityProducts(
   let totalFetchedProductCount = 0;
   let totalFailedProductCount = 0;
   const errorMessages: string[] = [];
+  const firstProductBySalesEditionGroup = new Map<string, string>();
+  const duplicateSalesEditionGroups = new Map<string, Set<string>>();
+  const recordSalesEditionGroup = (product: Product): void => {
+    if (
+      !product.salesEditionGroupId ||
+      !product.salesEditions ||
+      product.salesEditions.length <= 1
+    ) {
+      return;
+    }
+
+    const firstProductId = firstProductBySalesEditionGroup.get(
+      product.salesEditionGroupId,
+    );
+    if (!firstProductId) {
+      firstProductBySalesEditionGroup.set(
+        product.salesEditionGroupId,
+        product.sourceProductId,
+      );
+      return;
+    }
+    if (firstProductId === product.sourceProductId) return;
+
+    const duplicates =
+      duplicateSalesEditionGroups.get(product.salesEditionGroupId) ??
+      new Set<string>([firstProductId]);
+    const previousSize = duplicates.size;
+    duplicates.add(product.sourceProductId);
+    duplicateSalesEditionGroups.set(product.salesEditionGroupId, duplicates);
+    if (duplicates.size !== previousSize) {
+      logger.info("DLsite edition group duplicate detected", {
+        salesEditionGroupId: product.salesEditionGroupId,
+        productIds: [...duplicates].sort(),
+      });
+    }
+  };
 
   try {
     for (const [index, contentType] of resolved.contentTypes.entries()) {
@@ -1391,6 +1448,7 @@ export async function fetchDailyPriorityProducts(
         existingProductReadCount: resolved.existingProductReadCount,
         dryRun: resolved.dryRun,
         parseMode: resolved.parseMode,
+        onProductFetched: recordSalesEditionGroup,
       });
 
       allFailedTargets.push(...processResult.failedTargets);
@@ -1442,6 +1500,7 @@ export async function fetchDailyPriorityProducts(
         existingProductReadCount: resolved.existingProductReadCount,
         dryRun: resolved.dryRun,
         parseMode: resolved.parseMode,
+        onProductFetched: recordSalesEditionGroup,
       });
       totalFetchedProductCount += retryResult.retrySuccessCount;
       totalFailedProductCount = retryResult.retryFailedCount;
@@ -1471,6 +1530,23 @@ export async function fetchDailyPriorityProducts(
         }
         processedProductsByContentType.set(contentType, products);
       }
+    }
+
+    if (duplicateSalesEditionGroups.size > 0) {
+      logger.info("DLsite duplicate edition groups found in this run", {
+        duplicateGroupCount: duplicateSalesEditionGroups.size,
+        groups: [...duplicateSalesEditionGroups.entries()]
+          .slice(0, 50)
+          .map(([salesEditionGroupId, productIds]) => ({
+            salesEditionGroupId,
+            productIds: [...productIds].sort(),
+          })),
+      });
+    } else {
+      logger.info("DLsite duplicate edition group check passed", {
+        checkedMultiEditionGroupCount:
+          firstProductBySalesEditionGroup.size,
+      });
     }
 
     if (!resolved.dryRun) {

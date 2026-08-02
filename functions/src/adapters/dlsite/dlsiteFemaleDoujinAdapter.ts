@@ -2,7 +2,9 @@ import type {
   ProductContentType,
   ProductImage,
   ProductRatingBreakdown,
+  ProductSalesEdition,
   ProductWorkType,
+  SourceRankingEntry,
   RawProductDetail,
   RankingType,
 } from "../../types";
@@ -2049,13 +2051,22 @@ function pushImageCandidate(
 }
 
 type DlsiteAjaxInfo = {
+  status: "success" | "unavailable";
   priceCurrent?: number;
   priceOriginal?: number;
   discountRate?: number;
   salesCount?: number;
+  totalSalesCount?: number;
+  currentEditionSalesCount?: number;
+  salesEditionGroupId?: string | null;
+  salesEditions?: ProductSalesEdition[];
   rating?: number;
+  /** 既存互換: 評価件数（DLsite rate_count）。 */
   reviewCount?: number;
+  ratingCount?: number;
+  textReviewCount?: number;
   ratingBreakdown?: ProductRatingBreakdown[];
+  sourceRankings?: SourceRankingEntry[];
   releaseDate?: string;
 };
 
@@ -2323,88 +2334,317 @@ function extractImageUrlsFromHtml(
   return candidatePairs;
 }
 
-function mergeDlsiteAjaxInfo(
-  base: DlsiteAjaxInfo,
-  next: DlsiteAjaxInfo,
+function parseOptionalNonNegativeInteger(value: unknown): number | undefined {
+  const parsed = numberFromUnknown(value);
+  if (parsed === undefined || !Number.isFinite(parsed) || parsed < 0) {
+    return undefined;
+  }
+  return Math.floor(parsed);
+}
+
+function parseDlsiteSalesEditions(value: unknown): ProductSalesEdition[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const result: ProductSalesEdition[] = [];
+  const seenSourceProductIds = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+    const sourceProductId =
+      typeof record.workno === "string" ? record.workno.trim().toUpperCase() : "";
+    const salesCount = parseOptionalNonNegativeInteger(record.dl_count);
+    if (!/^RJ\d{6,10}$/i.test(sourceProductId) || salesCount === undefined) {
+      continue;
+    }
+    if (seenSourceProductIds.has(sourceProductId)) {
+      logger.warn("Duplicate DLsite sales edition ignored", {
+        sourceProductId,
+      });
+      continue;
+    }
+    seenSourceProductIds.add(sourceProductId);
+
+    const editionId = parseOptionalNonNegativeInteger(record.edition_id);
+    const displayOrder = parseOptionalNonNegativeInteger(record.display_order);
+    const editionType =
+      typeof record.edition_type === "string" && record.edition_type.trim()
+        ? record.edition_type.trim()
+        : undefined;
+    const languageCode =
+      typeof record.lang === "string" && record.lang.trim()
+        ? record.lang.trim()
+        : undefined;
+    const languageLabelRaw = record.display_label ?? record.label;
+    const languageLabel =
+      typeof languageLabelRaw === "string" && languageLabelRaw.trim()
+        ? languageLabelRaw.trim()
+        : undefined;
+
+    result.push({
+      sourceProductId,
+      editionId,
+      editionType,
+      languageCode,
+      languageLabel,
+      salesCount,
+      displayOrder,
+    });
+  }
+
+  return result.sort(
+    (left, right) =>
+      (left.displayOrder ?? Number.MAX_SAFE_INTEGER) -
+        (right.displayOrder ?? Number.MAX_SAFE_INTEGER) ||
+      left.sourceProductId.localeCompare(right.sourceProductId),
+  );
+}
+
+function buildSalesEditionGroupId(
+  editions: ProductSalesEdition[] | undefined,
+): string | undefined {
+  if (!editions || editions.length === 0) return undefined;
+  const editionIds = new Set(
+    editions
+      .map((edition) => edition.editionId)
+      .filter((value): value is number => value !== undefined),
+  );
+  if (editionIds.size !== 1) return undefined;
+  const [editionId] = editionIds;
+  return editionId === undefined ? undefined : `dlsite-edition-${editionId}`;
+}
+
+function parseDirectRatingBreakdown(
+  value: unknown,
+  ratingCount: number | undefined,
+  sourceProductId: string,
+): ProductRatingBreakdown[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    logger.warn("Invalid DLsite rating breakdown ignored", {
+      sourceProductId,
+      rawType: typeof value,
+    });
+    return [];
+  }
+
+  const byStar = new Map<1 | 2 | 3 | 4 | 5, number>();
+  let validEntryCount = 0;
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+    const star = parseOptionalNonNegativeInteger(record.review_point);
+    const count = parseOptionalNonNegativeInteger(record.count);
+    if (star === undefined || star < 1 || star > 5 || count === undefined) {
+      continue;
+    }
+    byStar.set(star as 1 | 2 | 3 | 4 | 5, count);
+    validEntryCount += 1;
+  }
+
+  if (validEntryCount === 0) return [];
+  if (validEntryCount !== value.length || byStar.size !== validEntryCount) {
+    logger.warn("Invalid DLsite rating breakdown ignored", {
+      sourceProductId,
+      rawEntryCount: value.length,
+      validEntryCount,
+      distinctStarCount: byStar.size,
+    });
+    return [];
+  }
+
+  const result = ([1, 2, 3, 4, 5] as const).map((star) => ({
+    star,
+    count: byStar.get(star) ?? 0,
+  }));
+  const breakdownTotal = result.reduce((sum, item) => sum + item.count, 0);
+  if (ratingCount !== undefined && breakdownTotal !== ratingCount) {
+    logger.warn("DLsite rating breakdown total mismatch", {
+      sourceProductId,
+      ratingCount,
+      breakdownTotal,
+    });
+    return [];
+  }
+  return result;
+}
+
+function parseSourceRankings(
+  value: unknown,
+  sourceProductId: string,
+): SourceRankingEntry[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const result: SourceRankingEntry[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+    const term = typeof record.term === "string" ? record.term.trim() : "";
+    const category =
+      typeof record.category === "string" ? record.category.trim() : "";
+    const rank = parseOptionalNonNegativeInteger(record.rank);
+    if (
+      !(["day", "week", "month", "total"] as const).includes(
+        term as "day" | "week" | "month" | "total",
+      ) ||
+      !category ||
+      rank === undefined ||
+      rank < 1
+    ) {
+      continue;
+    }
+
+    const key = `${term}:${category}`;
+    if (seen.has(key)) {
+      logger.warn("Duplicate DLsite source ranking ignored", {
+        sourceProductId,
+        term,
+        category,
+      });
+      continue;
+    }
+    seen.add(key);
+
+    const rankDate = normalizeReleaseDate(
+      typeof record.rank_date === "string" ? record.rank_date : undefined,
+    );
+    result.push({
+      term: term as "day" | "week" | "month" | "total",
+      category,
+      rank,
+      rankDate,
+    });
+  }
+
+  return result;
+}
+
+function parseDlsiteAjaxInfo(
+  parsed: unknown,
+  sourceProductId: string,
 ): DlsiteAjaxInfo {
+  const target = findProductPayload(parsed, sourceProductId);
+  if (!target) return { status: "unavailable" };
+
+  const payload = target.value;
+  const currentEditionSalesCount = parseOptionalNonNegativeInteger(
+    payload.dl_count,
+  );
+  const rawSalesEditionItems = Array.isArray(payload.dl_count_items)
+    ? payload.dl_count_items
+    : undefined;
+  const salesEditions = parseDlsiteSalesEditions(payload.dl_count_items);
+  const salesEditionItemsComplete =
+    rawSalesEditionItems === undefined ||
+    salesEditions?.length === rawSalesEditionItems.length;
+  if (!salesEditionItemsComplete) {
+    logger.warn("Invalid DLsite sales edition entries ignored", {
+      sourceProductId,
+      rawEntryCount: rawSalesEditionItems?.length,
+      parsedEntryCount: salesEditions?.length,
+    });
+  }
+  const completeSalesEditions = salesEditionItemsComplete
+    ? (salesEditions ?? [])
+    : undefined;
+  const salesEditionCountTotal =
+    completeSalesEditions && completeSalesEditions.length > 0
+      ? completeSalesEditions.reduce(
+          (sum, edition) => sum + edition.salesCount,
+          0,
+        )
+      : undefined;
+  const directTotalSalesCount = parseOptionalNonNegativeInteger(
+    payload.dl_count_total,
+  );
+  if (
+    directTotalSalesCount !== undefined &&
+    salesEditionCountTotal !== undefined &&
+    directTotalSalesCount !== salesEditionCountTotal
+  ) {
+    logger.warn("DLsite edition sales total mismatch", {
+      sourceProductId,
+      dlCountTotal: directTotalSalesCount,
+      salesEditionCountTotal,
+    });
+  }
+
+  const currentEditionCountFromItems = completeSalesEditions?.find(
+    (edition) => edition.sourceProductId === sourceProductId,
+  )?.salesCount;
+  const salesCount =
+    currentEditionSalesCount ??
+    currentEditionCountFromItems ??
+    ((completeSalesEditions?.length ?? 0) === 0
+      ? directTotalSalesCount
+      : undefined);
+  const totalSalesCount =
+    directTotalSalesCount ??
+    salesEditionCountTotal ??
+    salesCount;
+  const ratingCount = parseOptionalNonNegativeInteger(payload.rate_count);
+  const textReviewCount = parseOptionalNonNegativeInteger(
+    payload.review_count,
+  );
+  const priceCurrent = numberFromUnknown(payload.price);
+  const priceOriginal = numberFromUnknown(payload.official_price);
+  const directDiscountRate = numberFromUnknown(payload.discount_rate);
+  const discountRate =
+    directDiscountRate ??
+    (payload.is_discount === false ||
+    (priceCurrent !== undefined &&
+      priceOriginal !== undefined &&
+      priceCurrent >= priceOriginal)
+      ? 0
+      : undefined);
+
   return {
-    priceCurrent: base.priceCurrent ?? next.priceCurrent,
-    priceOriginal: base.priceOriginal ?? next.priceOriginal,
-    discountRate: base.discountRate ?? next.discountRate,
-    salesCount: base.salesCount ?? next.salesCount,
-    rating: base.rating ?? next.rating,
-    reviewCount: base.reviewCount ?? next.reviewCount,
-    ratingBreakdown:
-      base.ratingBreakdown && base.ratingBreakdown.length > 0
-        ? base.ratingBreakdown
-        : next.ratingBreakdown,
-    releaseDate: base.releaseDate ?? next.releaseDate,
+    status: "success",
+    priceCurrent,
+    priceOriginal,
+    discountRate,
+    salesCount,
+    totalSalesCount,
+    currentEditionSalesCount: salesCount,
+    salesEditionGroupId:
+      completeSalesEditions === undefined
+        ? undefined
+        : buildSalesEditionGroupId(completeSalesEditions) ?? null,
+    salesEditions: completeSalesEditions,
+    rating:
+      numberFromUnknown(payload.rate_average_2dp) ??
+      numberFromUnknown(payload.rate_average),
+    reviewCount: ratingCount,
+    ratingCount,
+    textReviewCount,
+    ratingBreakdown: parseDirectRatingBreakdown(
+      payload.rate_count_detail,
+      ratingCount,
+      sourceProductId,
+    ),
+    sourceRankings: parseSourceRankings(payload.rank ?? [], sourceProductId),
+    releaseDate: normalizeReleaseDate(
+      typeof payload.regist_date === "string"
+        ? payload.regist_date
+        : typeof payload.release_date === "string"
+          ? payload.release_date
+          : undefined,
+    ),
   };
 }
 
-function parseDlsiteAjaxInfo(parsed: unknown): DlsiteAjaxInfo {
-  const values = flattenJsonValues(parsed);
-  const info: DlsiteAjaxInfo = {};
-
-  info.salesCount = firstNumberByKey(values, [
-    "dl_count",
-    "dlCount",
-    "download_count",
-    "downloadCount",
-    "sales_count",
-    "salesCount",
-  ]);
-  info.rating = firstNumberByKey(values, [
-    "rate_average_2dp",
-    "rateAverage2dp",
-    "rate_average",
-    "rateAverage",
-    "ratingValue",
-  ]);
-  info.reviewCount = firstNumberByKey(values, [
-    "rate_count",
-    "rateCount",
-    "rating_count",
-    "ratingCount",
-    "review_count",
-    "reviewCount",
-  ]);
-  info.priceCurrent = firstNumberByKey(values, [
-    "price",
-    "priceCurrent",
-    "price_current",
-    "work_price",
-  ]);
-  info.priceOriginal = firstNumberByKey(values, [
-    "official_price",
-    "priceOriginal",
-    "price_original",
-    "regular_price",
-    "base_price",
-  ]);
-  info.discountRate = firstNumberByKey(values, [
-    "discount_rate",
-    "discountRate",
-    "discount",
-  ]);
-  info.releaseDate = normalizeReleaseDate(
-    firstStringByKey(values, [
-      "regist_date",
-      "release_date",
-      "releaseDate",
-      "datePublished",
-    ]),
-  );
-  info.ratingBreakdown = findRatingBreakdownInJson(parsed, info.rating);
-
-  return info;
+export function parseDlsiteAjaxInfoForTesting(
+  parsed: unknown,
+  sourceProductId: string,
+): DlsiteAjaxInfo {
+  return parseDlsiteAjaxInfo(parsed, sourceProductId);
 }
 
 async function fetchProductInfoAjax(
   sourceProductId: string,
   options?: { parseMode?: ProductParseMode; sourceUrl?: string },
 ): Promise<DlsiteAjaxInfo> {
-  const parseMode = options?.parseMode ?? "full";
+  void options?.parseMode;
   const ajaxBaseUrl = /\/bl(?:-touch)?\//i.test(options?.sourceUrl ?? "")
     ? DLSITE_BL_BASE_URL
     : DLSITE_GIRLS_BASE_URL;
@@ -2417,8 +2657,6 @@ async function fetchProductInfoAjax(
     `${ajaxBaseUrl}/product/info/ajax?product_id=${sourceProductId}`,
     `${ajaxBaseUrl}/product/info/ajax?product_id[]=${sourceProductId}`,
   ];
-
-  let merged: DlsiteAjaxInfo = {};
 
   for (const url of urls) {
     try {
@@ -2435,83 +2673,14 @@ async function fetchProductInfoAjax(
 
       const text = await response.text();
       const parsed = JSON.parse(text) as unknown;
-      merged = mergeDlsiteAjaxInfo(merged, parseDlsiteAjaxInfo(parsed));
-
-      // fastでは初回全量取得向けに、追加のAjax補完を行わない。
-      // sales/price/ratingなどの主要項目は最初に成功したレスポンスとHTMLフォールバックで取得する。
-      if (parseMode === "fast") {
-        return merged;
-      }
-
-      // product_id と product_id[] で返る項目が微妙に違うことがある。
-      // 評価内訳が取れた時点では十分だが、取れない場合は次のURLも試す。
-      if (merged.ratingBreakdown && merged.ratingBreakdown.length > 0) {
-        return merged;
-      }
+      const info = parseDlsiteAjaxInfo(parsed, sourceProductId);
+      if (info.status === "success") return info;
     } catch {
-      // 公開ページHTMLのパース結果を優先して処理継続する。
+      // 動的数値は誤解析を避けるためHTMLへフォールバックせず、次のAjax候補を試す。
     }
   }
 
-  return merged;
-}
-
-function flattenJsonValues(value: unknown, prefix = ""): Map<string, unknown> {
-  const result = new Map<string, unknown>();
-
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => {
-      for (const [key, childValue] of flattenJsonValues(
-        item,
-        `${prefix}${index}.`,
-      )) {
-        result.set(key, childValue);
-      }
-    });
-    return result;
-  }
-
-  if (value && typeof value === "object") {
-    for (const [key, childValue] of Object.entries(
-      value as Record<string, unknown>,
-    )) {
-      result.set(key, childValue);
-      for (const [childKey, grandChildValue] of flattenJsonValues(
-        childValue,
-        `${prefix}${key}.`,
-      )) {
-        result.set(childKey, grandChildValue);
-      }
-    }
-  }
-
-  return result;
-}
-
-function firstNumberByKey(
-  values: Map<string, unknown>,
-  keys: string[],
-): number | undefined {
-  for (const key of keys) {
-    const value = values.get(key);
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string") {
-      const parsed = toNumber(value);
-      if (parsed !== undefined) return parsed;
-    }
-  }
-  return undefined;
-}
-
-function firstStringByKey(
-  values: Map<string, unknown>,
-  keys: string[],
-): string | undefined {
-  for (const key of keys) {
-    const value = values.get(key);
-    if (typeof value === "string" && value.trim()) return value;
-  }
-  return undefined;
+  return { status: "unavailable" };
 }
 
 async function extractImages(
@@ -3344,45 +3513,39 @@ async function extractProductDetail(
     });
   }
 
-  const priceInfo = measureParseStep(timing, "parsePriceMs", () => {
-    const priceCurrent =
-      ajaxInfo.priceCurrent ?? extractPriceCurrent(html, text);
-    const priceOriginal =
-      ajaxInfo.priceOriginal ??
-      toNumber(
-        matchFirst(html, [
-          /class=["'][^"']*(?:base_price|default_price|strike|regular_price)[^"']*["'][^>]*>([\s\S]*?)<\//i,
-        ]),
-      ) ??
-      toNumber(text.match(/(?:通常価格|定価)\s*[:：]?\s*([0-9,]+)\s*円/)?.[1]);
-    const discountRate =
-      ajaxInfo.discountRate ??
-      toNumber(text.match(/([0-9]{1,2})\s*%\s*OFF/i)?.[1]) ??
-      toNumber(text.match(/([0-9]{1,2})\s*％\s*OFF/i)?.[1]);
-
-    return { priceCurrent, priceOriginal, discountRate };
-  });
+  const priceInfo = measureParseStep(timing, "parsePriceMs", () => ({
+    priceCurrent:
+      ajaxInfo.status === "success" ? ajaxInfo.priceCurrent : undefined,
+    priceOriginal:
+      ajaxInfo.status === "success" ? ajaxInfo.priceOriginal : undefined,
+    discountRate:
+      ajaxInfo.status === "success" ? ajaxInfo.discountRate : undefined,
+  }));
 
   const salesCount = measureParseStep(
     timing,
     "parseSalesMs",
-    () => ajaxInfo.salesCount ?? extractSalesCount(html, text),
+    () => (ajaxInfo.status === "success" ? ajaxInfo.salesCount : undefined),
   );
 
   const ratingInfo = measureParseStep(timing, "parseRatingMs", () => {
-    // DLsiteの評価内訳はpopup/template/埋め込み断片を広く走査するため重い。
-    // 画面からは評価内訳を外しているため、初回全量取得向けfastでは平均評価・評価数までに留める。
-    const reviewCount =
-      ajaxInfo.reviewCount ?? extractEvaluationCount(html, text);
-    const rating = ajaxInfo.rating ?? extractRating(html, text);
-    const ratingBreakdown =
-      parseMode === "fast"
-        ? []
-        : (ajaxInfo.ratingBreakdown ??
-          extractRatingBreakdown(html, text, rating) ??
-          []);
+    if (ajaxInfo.status !== "success") {
+      return {
+        reviewCount: undefined,
+        ratingCount: undefined,
+        textReviewCount: undefined,
+        rating: undefined,
+        ratingBreakdown: undefined,
+      };
+    }
 
-    return { reviewCount, rating, ratingBreakdown };
+    return {
+      reviewCount: ajaxInfo.reviewCount,
+      ratingCount: ajaxInfo.ratingCount,
+      textReviewCount: ajaxInfo.textReviewCount,
+      rating: ajaxInfo.rating,
+      ratingBreakdown: ajaxInfo.ratingBreakdown,
+    };
   });
 
   const releaseDate = measureParseStep(
@@ -3423,10 +3586,23 @@ async function extractProductDetail(
     priceOriginal: priceInfo.priceOriginal,
     discountRate: priceInfo.discountRate,
     salesCount,
+    totalSalesCount:
+      ajaxInfo.status === "success" ? ajaxInfo.totalSalesCount : undefined,
+    currentEditionSalesCount:
+      ajaxInfo.status === "success"
+        ? ajaxInfo.currentEditionSalesCount
+        : undefined,
+    salesEditionGroupId: ajaxInfo.salesEditionGroupId,
+    salesEditions:
+      ajaxInfo.status === "success" ? ajaxInfo.salesEditions : undefined,
     rating: ratingInfo.rating,
     ratingAverage: ratingInfo.rating,
     reviewCount: ratingInfo.reviewCount,
+    ratingCount: ratingInfo.ratingCount,
+    textReviewCount: ratingInfo.textReviewCount,
     ratingBreakdown: ratingInfo.ratingBreakdown,
+    sourceRankings:
+      ajaxInfo.status === "success" ? ajaxInfo.sourceRankings : undefined,
     releaseDate,
     ageRating: basicInfo.isAdult ? "r18" : "all",
     workType: basicInfo.workTypeInfo.workType,
@@ -3449,8 +3625,10 @@ async function extractProductDetail(
     tagIds: [],
     isNew: basicInfo.hintTypes.has("new"),
     isOnSale:
-      basicInfo.hintTypes.has("sale") ||
-      Boolean(priceInfo.discountRate && priceInfo.discountRate > 0),
+      ajaxInfo.status === "success"
+        ? basicInfo.hintTypes.has("sale") ||
+          Boolean(priceInfo.discountRate && priceInfo.discountRate > 0)
+        : undefined,
   };
 
   options?.onParseTiming?.(timing);
@@ -3686,6 +3864,489 @@ export async function fetchDlsiteProductDetailForDebug(params: {
     hasProductSlider: candidate.hasProductSlider,
     hasWorkSlider: candidate.hasWorkSlider,
     rawProductDetail,
+  };
+}
+
+
+export type DlsiteInspectionAjaxEndpoint = {
+  url: string;
+  status?: number;
+  ok: boolean;
+  contentType?: string;
+  rawText?: string;
+  parsedJson?: unknown;
+  error?: string;
+};
+
+export type DlsiteInspectionHtmlValues = {
+  title?: string;
+  sellerId?: string;
+  sellerName?: string;
+  sellerUrl?: string;
+  workType: ProductWorkType;
+  workTypeLabel: string;
+  contentTypes: string[];
+  genres: string[];
+  isAdult: boolean;
+  priceCurrent?: number;
+  priceOriginal?: number;
+  discountRate?: number;
+  salesCount?: number;
+  rating?: number;
+  reviewCount?: number;
+  ratingBreakdown: ProductRatingBreakdown[];
+  releaseDate?: string;
+  description?: string;
+  images: ProductImage[];
+};
+
+export type DlsiteInspectionAjaxValues = {
+  endpointUrl: string;
+  currentParser: DlsiteAjaxInfo;
+  targetPayloadFound: boolean;
+  targetPayloadPath?: string;
+  directFields: Record<string, unknown>;
+  scalarFieldInventory: Array<{ path: string; value: string | number | boolean | null }>;
+};
+
+export type DlsiteProductDataSourceInspection = {
+  sourceProductId: string;
+  requestedFloor: DlsiteProductDebugFloor;
+  selectedFloor: DlsiteFloor;
+  sourceUrl: string;
+  fetchedAt: string;
+  requestCount: number;
+  rawHtml: string;
+  html: DlsiteInspectionHtmlValues;
+  ajaxEndpoints: DlsiteInspectionAjaxEndpoint[];
+  ajax: DlsiteInspectionAjaxValues[];
+  comparison: Record<string, unknown>;
+};
+
+const DLSITE_INSPECTION_AJAX_DIRECT_KEYS = [
+  "dl_count",
+  "dl_count_total",
+  "dl_count_items",
+  "price",
+  "price_str",
+  "price_without_tax",
+  "official_price",
+  "official_price_str",
+  "discount_rate",
+  "discount_end_date",
+  "discount_to",
+  "is_sale",
+  "is_discount",
+  "is_timesale",
+  "is_free",
+  "on_sale",
+  "rate_average",
+  "rate_average_2dp",
+  "rate_average_star",
+  "rate_count",
+  "rate_count_detail",
+  "review_count",
+  "wishlist_count",
+  "rank",
+  "regist_date",
+  "release_date",
+  "maker_id",
+  "maker_name",
+  "work_name",
+  "work_type",
+  "age_category",
+  "translation_info",
+  "sales_end_info",
+  "is_sold_out",
+  "is_reserve_work",
+  "is_reservable",
+] as const;
+
+function inspectHtmlValues(
+  html: string,
+  sourceProductId: string,
+): DlsiteInspectionHtmlValues {
+  const text = stripTags(html);
+  const seller = extractSeller(html);
+  const workType = extractDlsiteWorkType(html, text);
+  const contentTypes = extractDlsiteContentTypes(html);
+  const rating = extractRating(html, text);
+  const priceOriginal =
+    toNumber(
+      matchFirst(html, [
+        /class=["'][^"']*(?:base_price|default_price|strike|regular_price)[^"']*["'][^>]*>([\s\S]*?)<\//i,
+      ]),
+    ) ??
+    toNumber(text.match(/(?:通常価格|定価)\s*[:：]?\s*([0-9,]+)\s*円/)?.[1]);
+  const discountRate =
+    toNumber(text.match(/([0-9]{1,2})\s*%\s*OFF/i)?.[1]) ??
+    toNumber(text.match(/([0-9]{1,2})\s*％\s*OFF/i)?.[1]);
+  const releaseDate = normalizeReleaseDate(
+    text.match(
+      /(?:販売日|発売日)\s*[:：]?\s*(\d{4}[/.年-]\d{1,2}[/.月-]\d{1,2})/,
+    )?.[1] ??
+      matchFirst(html, [
+        /itemprop=["']datePublished["'][^>]+content=["']([^"']+)["']/i,
+      ]),
+  );
+
+  return {
+    title: extractProductTitle(html, sourceProductId, seller.sellerName),
+    sellerId: seller.sellerId,
+    sellerName: seller.sellerName,
+    sellerUrl: seller.sellerUrl,
+    workType: workType.workType,
+    workTypeLabel: workType.workTypeLabel,
+    contentTypes: contentTypes.map((item) => item.contentTypeLabel),
+    genres: extractDlsiteMainGenres(html),
+    isAdult: /R18|18禁|成人向け|年齢確認/.test(text),
+    priceCurrent: extractPriceCurrent(html, text),
+    priceOriginal,
+    discountRate,
+    salesCount: extractSalesCount(html, text),
+    rating,
+    reviewCount: extractEvaluationCount(html, text),
+    ratingBreakdown: extractRatingBreakdown(html, text, rating) ?? [],
+    releaseDate,
+    description: cleanText(findMetaContent(html, "description"))?.slice(0, 500),
+    images: extractImageUrlsFromHtml(html, sourceProductId)
+      .slice(0, 16)
+      .map((image, index) => ({
+        url: image.displayUrl,
+        thumbnailUrl: image.thumbnailUrl,
+        type: index === 0 ? "main" : "sample",
+        displayOrder: index,
+      })),
+  };
+}
+
+function findProductPayload(
+  value: unknown,
+  sourceProductId: string,
+  path = "$",
+  depth = 0,
+): { path: string; value: Record<string, unknown> } | undefined {
+  if (depth > 8 || !value || typeof value !== "object") return undefined;
+
+  if (!Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    for (const [key, child] of Object.entries(record)) {
+      if (
+        key.toUpperCase() === sourceProductId &&
+        child &&
+        typeof child === "object" &&
+        !Array.isArray(child)
+      ) {
+        return {
+          path: `${path}.${key}`,
+          value: child as Record<string, unknown>,
+        };
+      }
+    }
+
+    const candidateIds = [
+      record.product_id,
+      record.productId,
+      record.workno,
+      record.work_no,
+      record.id,
+    ];
+    if (
+      candidateIds.some(
+        (candidate) =>
+          typeof candidate === "string" &&
+          candidate.toUpperCase() === sourceProductId,
+      )
+    ) {
+      return { path, value: record };
+    }
+  }
+
+  const entries = Array.isArray(value)
+    ? value.map((child, index) => [String(index), child] as const)
+    : Object.entries(value as Record<string, unknown>);
+
+  for (const [key, child] of entries) {
+    const found = findProductPayload(
+      child,
+      sourceProductId,
+      `${path}.${key}`,
+      depth + 1,
+    );
+    if (found) return found;
+  }
+
+  return undefined;
+}
+
+function collectScalarFieldInventory(
+  value: unknown,
+  path = "$",
+  result: Array<{
+    path: string;
+    value: string | number | boolean | null;
+  }> = [],
+  depth = 0,
+): Array<{ path: string; value: string | number | boolean | null }> {
+  if (depth > 8 || result.length >= 1000) return result;
+
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    result.push({ path, value });
+    return result;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((child, index) => {
+      collectScalarFieldInventory(child, `${path}[${index}]`, result, depth + 1);
+    });
+    return result;
+  }
+
+  if (value && typeof value === "object") {
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      collectScalarFieldInventory(child, `${path}.${key}`, result, depth + 1);
+    }
+  }
+
+  return result;
+}
+
+function pickDirectAjaxFields(
+  payload: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!payload) return {};
+  const result: Record<string, unknown> = {};
+  for (const key of DLSITE_INSPECTION_AJAX_DIRECT_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+      result[key] = payload[key];
+    }
+  }
+  return result;
+}
+
+function valueByDirectField(
+  ajax: DlsiteInspectionAjaxValues[],
+  key: string,
+): unknown {
+  for (const item of ajax) {
+    const value = item.directFields[key];
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function numberFromUnknown(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") return toNumber(value);
+  return undefined;
+}
+
+function sumDlCountItems(value: unknown): number | undefined {
+  if (!Array.isArray(value)) return undefined;
+  let sum = 0;
+  let found = false;
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const count = numberFromUnknown(
+      (item as Record<string, unknown>).dl_count,
+    );
+    if (count === undefined) continue;
+    sum += count;
+    found = true;
+  }
+  return found ? sum : undefined;
+}
+
+async function fetchInspectionAjaxEndpoint(params: {
+  url: string;
+  referer: string;
+}): Promise<DlsiteInspectionAjaxEndpoint> {
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(params.url, {
+      method: "GET",
+      redirect: "follow",
+      signal: abortController.signal,
+      headers: {
+        "user-agent": process.env.DLSITE_USER_AGENT?.trim() || USER_AGENT,
+        accept: "application/json,text/javascript,*/*;q=0.8",
+        "accept-language": "ja,en;q=0.8",
+        referer: params.referer,
+        "cache-control": "no-cache",
+        pragma: "no-cache",
+      },
+    });
+    const rawText = await response.text();
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(rawText) as unknown;
+    } catch {
+      parsedJson = undefined;
+    }
+
+    return {
+      url: params.url,
+      status: response.status,
+      ok: response.ok,
+      contentType: response.headers.get("content-type") ?? undefined,
+      rawText,
+      parsedJson,
+      error:
+        response.ok && parsedJson !== undefined
+          ? undefined
+          : `HTTP ${response.status}${parsedJson === undefined ? "; response is not valid JSON" : ""}`,
+    };
+  } catch (error) {
+    return {
+      url: params.url,
+      ok: false,
+      error: errorToDiagnostic(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function inspectDlsiteProductDataSources(params: {
+  sourceProductId: string;
+  floor?: DlsiteProductDebugFloor;
+  includeArrayAjaxEndpoint?: boolean;
+}): Promise<DlsiteProductDataSourceInspection> {
+  const sourceProductId = normalizeDlsiteProductId(params.sourceProductId);
+  const requestedFloor = params.floor ?? "auto";
+  const candidate =
+    requestedFloor === "auto"
+      ? await fetchBestProductDetailHtml(sourceProductId)
+      : await (async (): Promise<ProductDetailHtmlCandidate> => {
+          const url = buildSourceUrlForDebugFloor(sourceProductId, requestedFloor);
+          const html = await fetchPublicHtml(url);
+          return {
+            url,
+            html,
+            imageCount: countExtractedProductImages(html, sourceProductId),
+            hasProductSlider: /class=["'][^"']*\bproduct-slider\b/i.test(html),
+            hasWorkSlider: /class=["'][^"']*\bwork_slider\b/i.test(html),
+          };
+        })();
+  const selectedFloor = selectedFloorFromUrl(candidate.url);
+  const ajaxBaseUrl = selectedFloor === "bl" ? DLSITE_BL_BASE_URL : DLSITE_GIRLS_BASE_URL;
+  const ajaxUrls = [
+    `${ajaxBaseUrl}/product/info/ajax?product_id=${sourceProductId}`,
+  ];
+  if (params.includeArrayAjaxEndpoint) {
+    ajaxUrls.push(
+      `${ajaxBaseUrl}/product/info/ajax?product_id[]=${sourceProductId}`,
+    );
+  }
+
+  const ajaxEndpoints: DlsiteInspectionAjaxEndpoint[] = [];
+  for (const url of ajaxUrls) {
+    ajaxEndpoints.push(
+      await fetchInspectionAjaxEndpoint({ url, referer: candidate.url }),
+    );
+  }
+
+  const ajax: DlsiteInspectionAjaxValues[] = ajaxEndpoints
+    .filter(
+      (endpoint): endpoint is DlsiteInspectionAjaxEndpoint & { parsedJson: unknown } =>
+        endpoint.parsedJson !== undefined,
+    )
+    .map((endpoint) => {
+      const target = findProductPayload(endpoint.parsedJson, sourceProductId);
+      const payload = target?.value;
+      return {
+        endpointUrl: endpoint.url,
+        currentParser: parseDlsiteAjaxInfo(endpoint.parsedJson, sourceProductId),
+        targetPayloadFound: Boolean(target),
+        targetPayloadPath: target?.path,
+        directFields: pickDirectAjaxFields(payload),
+        scalarFieldInventory: collectScalarFieldInventory(
+          payload ?? endpoint.parsedJson,
+        ),
+      };
+    });
+  const htmlValues = inspectHtmlValues(candidate.html, sourceProductId);
+  const ajaxDlCount = numberFromUnknown(valueByDirectField(ajax, "dl_count"));
+  const ajaxDlCountTotal = numberFromUnknown(
+    valueByDirectField(ajax, "dl_count_total"),
+  );
+  const ajaxDlCountItems = valueByDirectField(ajax, "dl_count_items");
+  const currentParserSalesCount = ajax
+    .map((item) => item.currentParser.salesCount)
+    .find((value) => value !== undefined);
+  const currentParserTotalSalesCount = ajax
+    .map((item) => item.currentParser.totalSalesCount)
+    .find((value) => value !== undefined);
+
+  return {
+    sourceProductId,
+    requestedFloor,
+    selectedFloor,
+    sourceUrl: candidate.url,
+    fetchedAt: new Date().toISOString(),
+    requestCount: 1 + ajaxEndpoints.length,
+    rawHtml: candidate.html,
+    html: htmlValues,
+    ajaxEndpoints,
+    ajax,
+    comparison: {
+      sales: {
+        htmlSalesCount: htmlValues.salesCount,
+        currentAjaxParserSalesCount: currentParserSalesCount,
+        currentAjaxParserTotalSalesCount: currentParserTotalSalesCount,
+        ajaxDlCount,
+        ajaxDlCountTotal,
+        ajaxDlCountItems,
+        ajaxDlCountItemsSum: sumDlCountItems(ajaxDlCountItems),
+        htmlMatchesDlCount:
+          htmlValues.salesCount !== undefined && ajaxDlCount !== undefined
+            ? htmlValues.salesCount === ajaxDlCount
+            : undefined,
+        htmlMatchesDlCountTotal:
+          htmlValues.salesCount !== undefined && ajaxDlCountTotal !== undefined
+            ? htmlValues.salesCount === ajaxDlCountTotal
+            : undefined,
+      },
+      price: {
+        htmlCurrent: htmlValues.priceCurrent,
+        htmlOriginal: htmlValues.priceOriginal,
+        htmlDiscountRate: htmlValues.discountRate,
+        ajaxCurrent: numberFromUnknown(valueByDirectField(ajax, "price")),
+        ajaxOriginal: numberFromUnknown(
+          valueByDirectField(ajax, "official_price"),
+        ),
+        ajaxDiscountRate: numberFromUnknown(
+          valueByDirectField(ajax, "discount_rate"),
+        ),
+      },
+      rating: {
+        htmlAverage: htmlValues.rating,
+        htmlCount: htmlValues.reviewCount,
+        ajaxAverage: numberFromUnknown(
+          valueByDirectField(ajax, "rate_average_2dp") ??
+            valueByDirectField(ajax, "rate_average"),
+        ),
+        ajaxRateCount: numberFromUnknown(
+          valueByDirectField(ajax, "rate_count"),
+        ),
+        ajaxReviewCount: numberFromUnknown(
+          valueByDirectField(ajax, "review_count"),
+        ),
+        ajaxRateCountDetail: valueByDirectField(ajax, "rate_count_detail"),
+      },
+      releaseDate: {
+        html: htmlValues.releaseDate,
+        ajaxRegistDate: valueByDirectField(ajax, "regist_date"),
+        ajaxReleaseDate: valueByDirectField(ajax, "release_date"),
+      },
+    },
   };
 }
 

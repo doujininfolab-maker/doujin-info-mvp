@@ -2578,10 +2578,20 @@ function parseDlsiteAjaxInfo(
     ((completeSalesEditions?.length ?? 0) === 0
       ? directTotalSalesCount
       : undefined);
+  const knownTotalCandidates = [
+    salesCount,
+    salesEditionCountTotal,
+  ].filter((value): value is number => value !== undefined);
+  const knownMinimumTotal =
+    knownTotalCandidates.length > 0
+      ? Math.max(...knownTotalCandidates)
+      : undefined;
   const totalSalesCount =
-    directTotalSalesCount ??
-    salesEditionCountTotal ??
-    salesCount;
+    directTotalSalesCount !== undefined &&
+    (knownMinimumTotal === undefined ||
+      directTotalSalesCount >= knownMinimumTotal)
+      ? directTotalSalesCount
+      : knownMinimumTotal;
   const ratingCount = parseOptionalNonNegativeInteger(payload.rate_count);
   const textReviewCount = parseOptionalNonNegativeInteger(
     payload.review_count,

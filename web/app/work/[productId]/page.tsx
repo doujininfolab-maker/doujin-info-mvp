@@ -93,6 +93,33 @@ function buildSellerHref(segmentPath: string, sellerId?: string, sellerName?: st
   return sellerKey ? `${segmentPath}/circle/${encodeURIComponent(sellerKey)}` : undefined;
 }
 
+function resolveDisplayTotalSalesCount(
+  totalSalesCount?: number,
+  salesCount?: number,
+): number | undefined {
+  const validSalesCount =
+    typeof salesCount === "number" &&
+    Number.isFinite(salesCount) &&
+    salesCount >= 0
+      ? salesCount
+      : undefined;
+  const validTotalSalesCount =
+    typeof totalSalesCount === "number" &&
+    Number.isFinite(totalSalesCount) &&
+    totalSalesCount >= 0
+      ? totalSalesCount
+      : undefined;
+
+  if (
+    validTotalSalesCount !== undefined &&
+    (validSalesCount === undefined || validTotalSalesCount >= validSalesCount)
+  ) {
+    return validTotalSalesCount;
+  }
+
+  return validSalesCount;
+}
+
 
 export default async function WorkDetailPage({ params }: PageProps) {
   const { productId } = await params;
@@ -169,7 +196,10 @@ export default async function WorkDetailPage({ params }: PageProps) {
               <dt>サークル</dt>
               <dd>{product.seller?.sellerName ? (sellerHref ? <Link href={sellerHref}>{product.seller.sellerName}</Link> : product.seller.sellerName) : "-"}</dd>
             </div>
-            <div><dt>総DL数</dt><dd>{formatNumber(product.totalSalesCount ?? product.salesCount)}</dd></div>
+            <div>
+              <dt>総DL数</dt>
+              <dd>{formatNumber(resolveDisplayTotalSalesCount(product.totalSalesCount, product.salesCount))}</dd>
+            </div>
             <div><dt>評価</dt><dd>{formatRating(product.rating ?? product.ratingAverage)}</dd></div>
             <div><dt>評価数</dt><dd>{formatNumber(product.ratingCount ?? product.reviewCount)}</dd></div>
             <div><dt>発売日</dt><dd>{formatDate(product.releaseDate)}</dd></div>

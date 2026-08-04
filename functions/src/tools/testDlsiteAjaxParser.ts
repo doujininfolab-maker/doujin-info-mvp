@@ -131,6 +131,63 @@ assert.equal(noTranslations.salesEditionGroupId, null);
 assert.deepEqual(noTranslations.ratingBreakdown, []);
 assert.deepEqual(noTranslations.sourceRankings, []);
 
+const invalidZeroTotal = parseDlsiteAjaxInfoForTesting(
+  {
+    RJ01672243: {
+      dl_count: 8974,
+      dl_count_total: 0,
+      dl_count_items: [],
+    },
+  },
+  "RJ01672243",
+);
+assert.equal(invalidZeroTotal.salesCount, 8974);
+assert.equal(invalidZeroTotal.totalSalesCount, 8974);
+
+const genuineZeroTotal = parseDlsiteAjaxInfoForTesting(
+  {
+    RJ00000007: {
+      dl_count: 0,
+      dl_count_total: 0,
+      dl_count_items: [],
+    },
+  },
+  "RJ00000007",
+);
+assert.equal(genuineZeroTotal.salesCount, 0);
+assert.equal(genuineZeroTotal.totalSalesCount, 0);
+
+const directTotalBelowEditionSum = parseDlsiteAjaxInfoForTesting(
+  {
+    RJ00000008: {
+      dl_count: 10,
+      dl_count_total: 12,
+      dl_count_items: [
+        { workno: "RJ00000008", edition_id: 3, dl_count: 10 },
+        { workno: "RJ00000009", edition_id: 3, dl_count: 5 },
+      ],
+    },
+  },
+  "RJ00000008",
+);
+assert.equal(directTotalBelowEditionSum.salesCount, 10);
+assert.equal(directTotalBelowEditionSum.totalSalesCount, 15);
+
+const missingDirectTotal = parseDlsiteAjaxInfoForTesting(
+  {
+    RJ00000010: {
+      dl_count: 10,
+      dl_count_items: [
+        { workno: "RJ00000010", edition_id: 4, dl_count: 10 },
+        { workno: "RJ00000011", edition_id: 4, dl_count: 5 },
+      ],
+    },
+  },
+  "RJ00000010",
+);
+assert.equal(missingDirectTotal.salesCount, 10);
+assert.equal(missingDirectTotal.totalSalesCount, 15);
+
 
 const currentCountFromItems = parseDlsiteAjaxInfoForTesting(
   {
@@ -182,6 +239,23 @@ assert.equal(incompleteEditions.salesCount, 10);
 assert.equal(incompleteEditions.totalSalesCount, 15);
 assert.equal(incompleteEditions.salesEditions, undefined);
 assert.equal(incompleteEditions.salesEditionGroupId, undefined);
+
+const incompleteEditionsWithZeroTotal = parseDlsiteAjaxInfoForTesting(
+  {
+    RJ00000012: {
+      dl_count: 10,
+      dl_count_total: 0,
+      dl_count_items: [
+        { workno: "RJ00000012", edition_id: 5, dl_count: 10 },
+        { workno: "invalid", edition_id: 5, dl_count: 5 },
+      ],
+    },
+  },
+  "RJ00000012",
+);
+assert.equal(incompleteEditionsWithZeroTotal.salesCount, 10);
+assert.equal(incompleteEditionsWithZeroTotal.totalSalesCount, 10);
+assert.equal(incompleteEditionsWithZeroTotal.salesEditions, undefined);
 
 const normalized = normalizeProduct(
   {

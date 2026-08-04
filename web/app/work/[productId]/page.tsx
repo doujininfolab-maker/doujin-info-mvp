@@ -16,6 +16,7 @@ import {
 import { getProductOutboundUrl } from "@/lib/affiliate";
 import { formatDate, formatNumber, formatRating } from "@/lib/format";
 import { getSegmentPath } from "@/lib/siteSegments";
+import type { Product, ProductRatingBreakdown, ProductSalesEdition, SourceRankingEntry } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -120,6 +121,182 @@ function resolveDisplayTotalSalesCount(
   return validSalesCount;
 }
 
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function getDisplayRankingDate(value?: string): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized || !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return undefined;
+
+  const [year, month, day] = normalized.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return undefined;
+  }
+
+  return normalized;
+}
+
+function getDisplayRatingBreakdown(product: Product): ProductRatingBreakdown[] {
+  const ratingCount = product.ratingCount ?? product.reviewCount;
+  if (
+    !isNonNegativeInteger(ratingCount) ||
+    ratingCount === 0 ||
+    !Array.isArray(product.ratingBreakdown)
+  ) {
+    return [];
+  }
+
+  const breakdownByStar = new Map<ProductRatingBreakdown["star"], number>();
+  for (const item of product.ratingBreakdown) {
+    if (
+      !item ||
+      !([1, 2, 3, 4, 5] as const).includes(item.star) ||
+      !isNonNegativeInteger(item.count) ||
+      breakdownByStar.has(item.star)
+    ) {
+      return [];
+    }
+    breakdownByStar.set(item.star, item.count);
+  }
+
+  if (breakdownByStar.size !== 5) return [];
+
+  const breakdown = ([5, 4, 3, 2, 1] as const).map((star) => ({
+    star,
+    count: breakdownByStar.get(star) ?? 0,
+  }));
+  const breakdownTotal = breakdown.reduce((sum, item) => sum + item.count, 0);
+
+  return breakdownTotal === ratingCount ? breakdown : [];
+}
+
+const SOURCE_RANKING_TERMS = [
+  { term: "day", label: "24時間" },
+  { term: "week", label: "7日間" },
+  { term: "month", label: "30日間" },
+  { term: "total", label: "累計" },
+] as const;
+
+const SOURCE_RANKING_CATEGORY_LABELS: Readonly<Record<string, string>> = {
+  all: "総合",
+  game: "ゲーム",
+  comic: "マンガ・ノベル",
+  illust: "CG・イラスト",
+  cg: "CG・イラスト",
+  novel: "ノベル",
+  movie: "動画",
+  audio: "ボイス・ASMR",
+  voice: "ボイス・ASMR",
+  music: "音楽",
+  tool: "ツール/アクセサリ",
+  etc: "その他",
+  other: "その他",
+};
+
+type DisplaySourceRanking = SourceRankingEntry & { label: string };
+
+function getSourceRankingCategoryLabel(category: string): string {
+  const normalizedCategory = category.trim().toLowerCase();
+  return SOURCE_RANKING_CATEGORY_LABELS[normalizedCategory] ?? category.trim();
+}
+
+function getDisplaySourceRankings(product: Product): DisplaySourceRanking[] {
+  if (!Array.isArray(product.sourceRankings)) return [];
+
+  const rankingsByKey = new Map<string, SourceRankingEntry>();
+  const categoryOrder = new Map<string, number>();
+
+  for (const ranking of product.sourceRankings) {
+    const category = ranking?.category?.trim();
+    const normalizedCategory = category?.toLowerCase();
+    if (
+      !ranking ||
+      !category ||
+      !normalizedCategory ||
+      !SOURCE_RANKING_TERMS.some(({ term }) => term === ranking.term) ||
+      !isNonNegativeInteger(ranking.rank) ||
+      ranking.rank < 1
+    ) {
+      continue;
+    }
+
+    if (!categoryOrder.has(normalizedCategory)) {
+      categoryOrder.set(normalizedCategory, categoryOrder.size);
+    }
+
+    const key = `${normalizedCategory}:${ranking.term}`;
+    if (!rankingsByKey.has(key)) {
+      rankingsByKey.set(key, { ...ranking, category });
+    }
+  }
+
+  const termOrder = new Map(
+    SOURCE_RANKING_TERMS.map(({ term }, index) => [term, index]),
+  );
+
+  return [...rankingsByKey.values()]
+    .sort((left, right) => {
+      const leftCategory = left.category.trim().toLowerCase();
+      const rightCategory = right.category.trim().toLowerCase();
+      const leftCategoryOrder =
+        leftCategory === "all" ? -1 : (categoryOrder.get(leftCategory) ?? 0);
+      const rightCategoryOrder =
+        rightCategory === "all" ? -1 : (categoryOrder.get(rightCategory) ?? 0);
+
+      return (
+        leftCategoryOrder - rightCategoryOrder ||
+        (termOrder.get(left.term) ?? Number.MAX_SAFE_INTEGER) -
+          (termOrder.get(right.term) ?? Number.MAX_SAFE_INTEGER)
+      );
+    })
+    .map((ranking) => {
+      const termLabel = SOURCE_RANKING_TERMS.find(
+        ({ term }) => term === ranking.term,
+      )?.label;
+      const categoryLabel = getSourceRankingCategoryLabel(ranking.category);
+      return {
+        ...ranking,
+        rankDate: getDisplayRankingDate(ranking.rankDate),
+        label: `${termLabel ?? ranking.term}（${categoryLabel}）`,
+      };
+    });
+}
+
+function getDisplaySalesEditions(product: Product): ProductSalesEdition[] {
+  if (!Array.isArray(product.salesEditions) || product.salesEditions.length === 0) return [];
+
+  const editions: ProductSalesEdition[] = [];
+  for (const edition of product.salesEditions) {
+    const languageLabel = edition?.languageLabel?.trim() || edition?.languageCode?.trim();
+    if (
+      !edition ||
+      typeof edition.sourceProductId !== "string" ||
+      !edition.sourceProductId.trim() ||
+      !languageLabel ||
+      !isNonNegativeInteger(edition.salesCount)
+    ) {
+      return [];
+    }
+    editions.push(edition);
+  }
+
+  editions.sort((left, right) => {
+    const leftOrder = Number.isFinite(left.displayOrder) ? left.displayOrder! : Number.MAX_SAFE_INTEGER;
+    const rightOrder = Number.isFinite(right.displayOrder) ? right.displayOrder! : Number.MAX_SAFE_INTEGER;
+    return leftOrder - rightOrder || left.sourceProductId.localeCompare(right.sourceProductId);
+  });
+
+  const editionTotal = editions.reduce((sum, edition) => sum + edition.salesCount, 0);
+  const displayTotal = resolveDisplayTotalSalesCount(product.totalSalesCount, product.salesCount);
+  return displayTotal === undefined || editionTotal === displayTotal ? editions : [];
+}
+
 
 export default async function WorkDetailPage({ params }: PageProps) {
   const { productId } = await params;
@@ -150,9 +327,16 @@ export default async function WorkDetailPage({ params }: PageProps) {
   ]);
   const initialTrendDays = useSnapshotTrend ? 35 : 30;
   const showTrendCharts = hasRecentProductTrendData(trendPoints);
+  const ratingBreakdown = getDisplayRatingBreakdown(product);
+  const ratingBreakdownMax = Math.max(0, ...ratingBreakdown.map((item) => item.count));
+  const sourceRankings = getDisplaySourceRankings(product);
+  const salesEditions = getDisplaySalesEditions(product);
+  const salesEditionsTotal = salesEditions.reduce((sum, edition) => sum + edition.salesCount, 0);
+  const showDetailDataRail =
+    ratingBreakdown.length > 0 || sourceRankings.length > 0 || salesEditions.length > 0;
 
   return (
-    <div className="detailPage">
+    <div className={`detailPage${showDetailDataRail ? " detailPage--withDataRail" : ""}`}>
       <header className="detailHeader detailHeader--compact">
         <div className="detailHeader__workThumb">
           <img src={headerImage} alt="" />
@@ -228,6 +412,74 @@ export default async function WorkDetailPage({ params }: PageProps) {
           ) : null}
         </aside>
       </div>
+
+      {showDetailDataRail ? (
+        <aside className="detailDataRail" aria-label="作品データ内訳">
+          {ratingBreakdown.length > 0 ? (
+            <section className="detailDataCard" aria-labelledby="rating-breakdown-heading">
+              <h2 id="rating-breakdown-heading" className="detailDataCard__heading">評価内訳</h2>
+              <div className="ratingBreakdown">
+                {ratingBreakdown.map((item) => {
+                  const width = ratingBreakdownMax > 0 ? (item.count / ratingBreakdownMax) * 100 : 0;
+                  return (
+                    <div className="ratingBreakdown__row" key={item.star}>
+                      <span className="ratingBreakdown__label">★{item.star}</span>
+                      <span className="ratingBreakdown__track" aria-hidden="true">
+                        <span className="ratingBreakdown__bar" style={{ width: `${width}%` }} />
+                      </span>
+                      <span className="ratingBreakdown__count">{formatNumber(item.count)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
+          {sourceRankings.length > 0 ? (
+            <section className="detailDataCard" aria-labelledby="source-rankings-heading">
+              <div className="detailDataCard__titleRow">
+                <h2 id="source-rankings-heading" className="detailDataCard__heading">ランキング内訳</h2>
+                <span className="detailDataCard__source">DLsite公式</span>
+              </div>
+              <dl className="detailDataList">
+                {sourceRankings.map((ranking) => (
+                  <div className="detailDataList__row" key={`${ranking.category}:${ranking.term}`}>
+                    <dt>{ranking.label}</dt>
+                    <dd className="detailDataList__value detailDataList__value--ranking">
+                      <span className="detailDataList__rank">{formatNumber(ranking.rank)}位</span>
+                      {ranking.rankDate ? (
+                        <time className="detailDataList__date" dateTime={ranking.rankDate}>
+                          {formatDate(ranking.rankDate)}
+                        </time>
+                      ) : null}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ) : null}
+
+          {salesEditions.length > 0 ? (
+            <section className="detailDataCard" aria-labelledby="sales-editions-heading">
+              <h2 id="sales-editions-heading" className="detailDataCard__heading">言語別販売数</h2>
+              <dl className="detailDataList">
+                {salesEditions.map((edition, index) => (
+                  <div className="detailDataList__row" key={`${edition.sourceProductId}_${index}`}>
+                    <dt>{edition.languageLabel?.trim() || edition.languageCode?.trim()}</dt>
+                    <dd className="detailDataList__value">{formatNumber(edition.salesCount)}</dd>
+                  </div>
+                ))}
+                <div className="detailDataList__row detailDataList__row--total">
+                  <dt>総DL数</dt>
+                  <dd className="detailDataList__value detailDataList__value--accent">
+                    {formatNumber(salesEditionsTotal)}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+          ) : null}
+        </aside>
+      ) : null}
 
       <article className="detailBelow">
         {showTrendCharts ? (

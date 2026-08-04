@@ -132,9 +132,27 @@ export type ProductRankingMetrics = {
   calculatedAt: Timestamp;
 };
 
+export type CurrentDailyRevenueRanking = {
+  rank: number;
+  sourceDate: string;
+};
+
+export type CurrentDailyRevenueRankingState = {
+  sourceDate: string;
+  productIds: string[];
+};
+
 export type RankingIndexContentScope = "all" | ProductContentType;
 export type RankingIndexWorkType = "all" | ProductWorkType;
 export type RankingIndexListStatus = "ready" | "insufficient_data";
+
+export type CurrentDailyRevenueRankingStateDocument = {
+  segmentId: string;
+  states: Partial<
+    Record<RankingIndexContentScope, CurrentDailyRevenueRankingState>
+  >;
+  updatedAt: Timestamp;
+};
 
 export type RankingIndexEntry = {
   rank: number;
@@ -468,6 +486,9 @@ export type Product = {
   lastDailySalesDeltaCalculatedDate?: string;
   recentSalesSnapshots?: ProductSalesSnapshot[];
   rankingMetrics?: ProductRankingMetrics;
+  currentDailyRevenueRankings?: Partial<
+    Record<RankingIndexContentScope, CurrentDailyRevenueRanking>
+  >;
 
   rating?: number;
   ratingAverage?: number;

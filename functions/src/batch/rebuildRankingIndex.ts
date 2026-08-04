@@ -1,7 +1,11 @@
 import { randomBytes } from "node:crypto";
+import { FieldValue } from "firebase-admin/firestore";
 import type { DocumentReference, Timestamp } from "firebase-admin/firestore";
 import { db } from "../firebaseAdmin";
 import type {
+  CurrentDailyRevenueRanking,
+  CurrentDailyRevenueRankingState,
+  CurrentDailyRevenueRankingStateDocument,
   FetchTarget,
   HomeDailyRankingProductIds,
   Product,
@@ -16,6 +20,10 @@ import type {
 } from "../types";
 
 const RANKING_INDEXES_COLLECTION = "rankingIndexes";
+const RANKING_INDEX_SYNC_STATES_COLLECTION = "syncStates";
+const CURRENT_DAILY_REVENUE_RANKING_STATE_DOCUMENT =
+  "currentDailyRevenueRankings";
+const PRODUCTS_COLLECTION = "products";
 const SITE_STATS_COLLECTION = "siteStats";
 const RANKING_INDEX_SCHEMA_VERSION = 1;
 const RANKING_INDEX_LIMIT = 300;
@@ -38,6 +46,14 @@ const WORK_TYPES: Array<"all" | ProductWorkType> = [
   "voice",
   "other",
 ];
+const CURRENT_DAILY_REVENUE_RANKING_TARGETS: Array<{
+  contentScope: RankingIndexContentScope;
+  listId: string;
+}> = [
+  { contentScope: "all", listId: "all_dailyRevenue_all" },
+  { contentScope: "tl", listId: "tl_dailyRevenue_all" },
+  { contentScope: "bl", listId: "bl_dailyRevenue_all" },
+];
 
 type SiteSegmentKey = Pick<FetchTarget, "platform" | "audience" | "category">;
 
@@ -47,6 +63,21 @@ type RankingCandidate = {
   revenue: number;
   rankingValue: number;
   priceCurrent: number;
+};
+
+type ProductRankingPatch = Record<
+  string,
+  CurrentDailyRevenueRanking | FieldValue
+>;
+
+type CurrentDailyRevenueRankingSyncPlan = {
+  nextStates: Partial<
+    Record<RankingIndexContentScope, CurrentDailyRevenueRankingState>
+  >;
+  patchesByProductId: Map<string, ProductRankingPatch>;
+  readyScopeCount: number;
+  updatedRankingCount: number;
+  deletedRankingCount: number;
 };
 
 export type RebuildRankingIndexResult = {
@@ -97,6 +128,124 @@ function buildSiteStatsId(segmentId: string, contentScope: RankingIndexContentSc
 function buildVersionId(date: Date): string {
   const timestamp = date.toISOString().replace(/[-:.TZ]/g, "");
   return `${timestamp}_${randomBytes(4).toString("hex")}`;
+}
+
+function isValidSourceDate(value: unknown): value is string {
+  return typeof value === "string" && /^\d{8}$/.test(value);
+}
+
+function normalizeRankingState(
+  value: CurrentDailyRevenueRankingState | undefined,
+): CurrentDailyRevenueRankingState | undefined {
+  if (!value || !isValidSourceDate(value.sourceDate) || !Array.isArray(value.productIds)) {
+    return undefined;
+  }
+
+  const productIds = [...new Set(
+    value.productIds
+      .filter((productId): productId is string => typeof productId === "string")
+      .map((productId) => productId.trim())
+      .filter(Boolean),
+  )].slice(0, RANKING_INDEX_LIMIT);
+
+  return {
+    sourceDate: value.sourceDate,
+    productIds,
+  };
+}
+
+function getOrCreateProductRankingPatch(
+  patchesByProductId: Map<string, ProductRankingPatch>,
+  productId: string,
+): ProductRankingPatch {
+  const existing = patchesByProductId.get(productId);
+  if (existing) return existing;
+
+  const created: ProductRankingPatch = {};
+  patchesByProductId.set(productId, created);
+  return created;
+}
+
+function buildCurrentDailyRevenueRankingSyncPlan(params: {
+  lists: RankingIndexListDocument[];
+  previousStates?: Partial<
+    Record<RankingIndexContentScope, CurrentDailyRevenueRankingState>
+  >;
+}): CurrentDailyRevenueRankingSyncPlan {
+  const nextStates: Partial<
+    Record<RankingIndexContentScope, CurrentDailyRevenueRankingState>
+  > = {};
+  const patchesByProductId = new Map<string, ProductRankingPatch>();
+  let readyScopeCount = 0;
+  let updatedRankingCount = 0;
+  let deletedRankingCount = 0;
+
+  for (const { contentScope, listId } of CURRENT_DAILY_REVENUE_RANKING_TARGETS) {
+    const previousState = normalizeRankingState(params.previousStates?.[contentScope]);
+    if (previousState) nextStates[contentScope] = previousState;
+
+    const currentList = params.lists.find((list) => list.listId === listId);
+    if (
+      !currentList ||
+      currentList.status !== "ready" ||
+      currentList.contentScope !== contentScope ||
+      currentList.rankingMode !== "dailyRevenue" ||
+      currentList.workType !== "all" ||
+      !isValidSourceDate(currentList.sourceDate) ||
+      currentList.itemCount !== currentList.entries.length
+    ) {
+      continue;
+    }
+
+    const currentEntries = new Map<string, CurrentDailyRevenueRanking>();
+    let entriesAreValid = true;
+    for (const entry of currentList.entries) {
+      const productId = entry.productId?.trim();
+      if (
+        !productId ||
+        !Number.isInteger(entry.rank) ||
+        entry.rank < 1 ||
+        entry.rank > RANKING_INDEX_LIMIT ||
+        currentEntries.has(productId)
+      ) {
+        entriesAreValid = false;
+        break;
+      }
+
+      currentEntries.set(productId, {
+        rank: entry.rank,
+        sourceDate: currentList.sourceDate,
+      });
+    }
+    if (!entriesAreValid) continue;
+
+    readyScopeCount += 1;
+    const fieldPath = `currentDailyRevenueRankings.${contentScope}`;
+    for (const [productId, ranking] of currentEntries) {
+      getOrCreateProductRankingPatch(patchesByProductId, productId)[fieldPath] = ranking;
+      updatedRankingCount += 1;
+    }
+
+    for (const productId of previousState?.productIds ?? []) {
+      if (currentEntries.has(productId)) continue;
+      getOrCreateProductRankingPatch(patchesByProductId, productId)[fieldPath] =
+        FieldValue.delete();
+      deletedRankingCount += 1;
+    }
+
+    nextStates[contentScope] = {
+      sourceDate: currentList.sourceDate,
+      productIds: [...currentEntries.keys()],
+    };
+  }
+
+  return {
+    nextStates,
+    patchesByProductId,
+    readyScopeCount,
+    updatedRankingCount,
+    deletedRankingCount,
+  };
 }
 
 export function buildRankingIndexListId(
@@ -289,6 +438,22 @@ async function commitSetOperations(
   }
 }
 
+async function commitProductRankingPatches(
+  patchesByProductId: Map<string, ProductRankingPatch>,
+): Promise<void> {
+  const operations = [...patchesByProductId.entries()];
+  for (let index = 0; index < operations.length; index += RANKING_INDEX_WRITE_BATCH_SIZE) {
+    const batch = db.batch();
+    for (const [productId, patch] of operations.slice(
+      index,
+      index + RANKING_INDEX_WRITE_BATCH_SIZE,
+    )) {
+      batch.update(db.collection(PRODUCTS_COLLECTION).doc(productId), patch);
+    }
+    await batch.commit();
+  }
+}
+
 async function deleteVersion(versionRef: DocumentReference): Promise<void> {
   const versionSnapshot = await versionRef.get();
   if (!versionSnapshot.exists) return;
@@ -361,10 +526,23 @@ export async function rebuildRankingIndex(
   const rootRef = db.collection(RANKING_INDEXES_COLLECTION).doc(segmentId);
   const versionsRef = rootRef.collection("versions");
   const versionRef = versionsRef.doc(versionId);
-  const previousRootSnapshot = await rootRef.get();
+  const currentDailyRevenueRankingStateRef = rootRef
+    .collection(RANKING_INDEX_SYNC_STATES_COLLECTION)
+    .doc(CURRENT_DAILY_REVENUE_RANKING_STATE_DOCUMENT);
+  const [previousRootSnapshot, currentDailyRevenueRankingStateSnapshot] =
+    await Promise.all([
+      rootRef.get(),
+      currentDailyRevenueRankingStateRef.get(),
+    ]);
   const previousRoot = previousRootSnapshot.exists
     ? previousRootSnapshot.data() as Partial<RankingIndexRootDocument>
     : undefined;
+  const previousCurrentDailyRevenueRankingState =
+    currentDailyRevenueRankingStateSnapshot.exists
+      ? currentDailyRevenueRankingStateSnapshot.data() as Partial<
+          CurrentDailyRevenueRankingStateDocument
+        >
+      : undefined;
   const previousActiveVersion = typeof previousRoot?.activeVersion === "string"
     ? previousRoot.activeVersion
     : undefined;
@@ -425,6 +603,11 @@ export async function rebuildRankingIndex(
   }
 
   const listIds = lists.map((list) => list.listId);
+  const currentDailyRevenueRankingSyncPlan =
+    buildCurrentDailyRevenueRankingSyncPlan({
+      lists,
+      previousStates: previousCurrentDailyRevenueRankingState?.states,
+    });
   const buildingVersion: RankingIndexVersionDocument = {
     versionId,
     segmentId,
@@ -458,6 +641,22 @@ export async function rebuildRankingIndex(
     };
     await versionRef.set(removeUndefinedDeep(readyVersion), { merge: false });
 
+    await commitProductRankingPatches(
+      currentDailyRevenueRankingSyncPlan.patchesByProductId,
+    );
+
+    if (currentDailyRevenueRankingSyncPlan.readyScopeCount > 0) {
+      const stateDocument: CurrentDailyRevenueRankingStateDocument = {
+        segmentId,
+        states: currentDailyRevenueRankingSyncPlan.nextStates,
+        updatedAt: generatedAt,
+      };
+      await currentDailyRevenueRankingStateRef.set(
+        removeUndefinedDeep(stateDocument),
+        { merge: false },
+      );
+    }
+
     const rootDocument: RankingIndexRootDocument = {
       segmentId,
       schemaVersion: RANKING_INDEX_SCHEMA_VERSION,
@@ -475,6 +674,17 @@ export async function rebuildRankingIndex(
     };
     await rootRef.set(removeUndefinedDeep(rootDocument), { merge: false });
     activated = true;
+
+    console.log("Current daily revenue rankings synchronized to products", {
+      segmentId,
+      readyScopeCount: currentDailyRevenueRankingSyncPlan.readyScopeCount,
+      productWriteCount:
+        currentDailyRevenueRankingSyncPlan.patchesByProductId.size,
+      updatedRankingCount:
+        currentDailyRevenueRankingSyncPlan.updatedRankingCount,
+      deletedRankingCount:
+        currentDailyRevenueRankingSyncPlan.deletedRankingCount,
+    });
 
     await saveHomeRankingCaches({ segmentId, lists, generatedAt });
 

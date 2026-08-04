@@ -1640,7 +1640,7 @@ img {
 
 .detailRankBadge {
   display: grid;
-  min-width: 92px;
+  min-width: 158px;
   padding: 11px 13px 10px;
   place-items: center;
   border-radius: 5px;
@@ -1659,6 +1659,7 @@ img {
   margin-top: 2px;
   font-size: 13px;
   font-weight: 900;
+  white-space: nowrap;
 }
 
 .detailRankBadge small {
@@ -2165,10 +2166,30 @@ img {
   .detailRankBadge {
     grid-column: 1 / -1;
     justify-self: start;
-    min-width: 104px;
-    grid-auto-flow: column;
-    column-gap: 5px;
+    min-width: 0;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "icon title"
+      "meta meta";
+    column-gap: 6px;
+    row-gap: 3px;
     padding: 8px 10px;
+    place-items: start;
+    align-items: center;
+  }
+
+  .detailRankBadge span {
+    grid-area: icon;
+  }
+
+  .detailRankBadge strong {
+    grid-area: title;
+    margin-top: 0;
+  }
+
+  .detailRankBadge small {
+    grid-area: meta;
+    margin-top: 0;
   }
 
   .detailMain {

@@ -14,14 +14,27 @@ import {
   hasRecentProductTrendData,
 } from "@/lib/firebase/products";
 import { getProductOutboundUrl } from "@/lib/affiliate";
+import {
+  contentTypeParamForScope,
+  getContentScopeLabel,
+  parseContentScope,
+  type ProductContentScope,
+} from "@/lib/contentCategories";
 import { formatDate, formatNumber, formatRating } from "@/lib/format";
 import { getSegmentPath } from "@/lib/siteSegments";
-import type { Product, ProductRatingBreakdown, ProductSalesEdition, SourceRankingEntry } from "@/lib/types";
+import type {
+  CurrentDailyRevenueRanking,
+  Product,
+  ProductRatingBreakdown,
+  ProductSalesEdition,
+  SourceRankingEntry,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 type PageProps = {
   params: Promise<{ productId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -76,8 +89,79 @@ function getPrimaryGenreLabel(genres: string[], category: string): string {
   return "同人";
 }
 
-function getDailyRank(product: Awaited<ReturnType<typeof getProductById>>): number | undefined {
-  return product?.latestRankings?.find((ranking) => ranking.type === "daily")?.rank;
+function getSingleQueryValue(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw?.trim() || undefined;
+}
+
+function normalizeStoredContentType(value: string | undefined): "tl" | "bl" | undefined {
+  const raw = value?.toString().replace(/^dlsite:/, "").trim().toLowerCase();
+  if (!raw) return undefined;
+  if (["tl", "otm", "乙女向け", "ティーンズラブ"].includes(raw)) return "tl";
+  if (["bl", "bl1", "ボーイズラブ"].includes(raw)) return "bl";
+  return undefined;
+}
+
+function productHasContentType(product: Product, contentType: "tl" | "bl"): boolean {
+  const ids = (product.contentTypeIds ?? []).map((id) => normalizeStoredContentType(id));
+  if (ids.includes(contentType)) return true;
+  const labels = (product.contentTypes ?? []).map((label) => normalizeStoredContentType(label));
+  return labels.includes(contentType);
+}
+
+function resolveDetailContentScope(
+  value: string | string[] | undefined,
+  product: Product,
+): ProductContentScope {
+  const raw = getSingleQueryValue(value)?.toLowerCase();
+  if (raw === "all" || raw === "tl" || raw === "bl") {
+    return parseContentScope(raw);
+  }
+
+  const isTl = productHasContentType(product, "tl");
+  const isBl = productHasContentType(product, "bl");
+  return isBl && !isTl ? "bl" : "tl";
+}
+
+function formatCurrentRankingSourceDate(value: string): string | undefined {
+  const match = value.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (!match) return undefined;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return undefined;
+  }
+
+  return `${month}/${day}`;
+}
+
+type DisplayCurrentDailyRevenueRanking = CurrentDailyRevenueRanking & {
+  sourceDateLabel: string;
+};
+
+function getDisplayCurrentDailyRevenueRanking(
+  product: Product,
+  contentScope: ProductContentScope,
+): DisplayCurrentDailyRevenueRanking | undefined {
+  const ranking = product.currentDailyRevenueRankings?.[contentScope];
+  if (
+    !ranking ||
+    !Number.isInteger(ranking.rank) ||
+    ranking.rank < 1 ||
+    ranking.rank > 300
+  ) {
+    return undefined;
+  }
+
+  const sourceDateLabel = formatCurrentRankingSourceDate(ranking.sourceDate);
+  return sourceDateLabel ? { ...ranking, sourceDateLabel } : undefined;
 }
 
 function buildGenreHref(segmentPath: string, genre: string): string {
@@ -298,8 +382,9 @@ function getDisplaySalesEditions(product: Product): ProductSalesEdition[] {
 }
 
 
-export default async function WorkDetailPage({ params }: PageProps) {
+export default async function WorkDetailPage({ params, searchParams }: PageProps) {
   const { productId } = await params;
+  const query = searchParams ? await searchParams : {};
   const product = await getProductById(productId);
   if (!product) notFound();
 
@@ -309,7 +394,13 @@ export default async function WorkDetailPage({ params }: PageProps) {
   const primaryGenreLabel = product.workTypeLabel || getPrimaryGenreLabel(product.genres ?? [], product.category);
   const workTypeHref = buildWorkTypeHref(segmentPath, product.workType);
   const sellerHref = buildSellerHref(segmentPath, product.seller?.sellerId, product.seller?.sellerName);
-  const dailyRank = getDailyRank(product);
+  const contentScope = resolveDetailContentScope(query.contentType, product);
+  const contentTypeParam = contentTypeParamForScope(contentScope);
+  const contentScopeLabel = getContentScopeLabel(contentScope);
+  const currentDailyRevenueRanking = getDisplayCurrentDailyRevenueRanking(
+    product,
+    contentScope,
+  );
   const snapshotTrendPoints = getProductTrendPointsFromSnapshots(product, 35);
   const useSnapshotTrend = hasRecentProductTrendData(snapshotTrendPoints);
   const [sameSellerProducts, trendPoints] = await Promise.all([
@@ -355,11 +446,16 @@ export default async function WorkDetailPage({ params }: PageProps) {
             </p>
           ) : null}
         </div>
-        {dailyRank ? (
-          <div className="detailRankBadge" aria-label={`日間ランキング${dailyRank}位`}>
+        {currentDailyRevenueRanking ? (
+          <div
+            className="detailRankBadge"
+            aria-label={`${contentScopeLabel}全作品の推定日間売上ランキング${currentDailyRevenueRanking.rank}位、${currentDailyRevenueRanking.sourceDateLabel}集計`}
+          >
             <span>♛</span>
-            <strong>日間{dailyRank}位</strong>
-            <small>ランキング中</small>
+            <strong>推定日間売上 {formatNumber(currentDailyRevenueRanking.rank)}位</strong>
+            <small>
+              {contentScopeLabel}・全作品・{currentDailyRevenueRanking.sourceDateLabel}集計
+            </small>
           </div>
         ) : null}
       </header>
@@ -496,7 +592,11 @@ export default async function WorkDetailPage({ params }: PageProps) {
         {sameSellerProducts.length > 0 ? (
           <section className="detailSection sameSellerSection">
             <h2>同じサークルの作品</h2>
-            <ProductGrid products={sameSellerProducts} variant="list" />
+            <ProductGrid
+              products={sameSellerProducts}
+              variant="list"
+              contentTypeParam={contentTypeParam}
+            />
           </section>
         ) : null}
 

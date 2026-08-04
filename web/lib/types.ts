@@ -130,6 +130,11 @@ export type ProductRankingMetrics = {
   calculatedAt?: FirestoreTimestampLike | string;
 };
 
+export type CurrentDailyRevenueRanking = {
+  rank: number;
+  sourceDate: string;
+};
+
 export type ProductRankingDisplayMetric = {
   mode: ProductRankingMode;
   sourceDate?: string;
@@ -472,6 +477,9 @@ export type Product = {
   wishlistCount?: number;
   recentSalesSnapshots?: ProductSalesSnapshot[];
   rankingMetrics?: ProductRankingMetrics;
+  currentDailyRevenueRankings?: Partial<
+    Record<RankingIndexContentScope, CurrentDailyRevenueRanking>
+  >;
   rankingMetric?: ProductRankingDisplayMetric;
   rating?: number;
   ratingAverage?: number;

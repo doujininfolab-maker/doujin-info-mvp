@@ -586,6 +586,7 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
             trendPoints={trendPoints}
             trendDataUrl={`/api/trends/product/${encodeURIComponent(product.productId)}`}
             initialTrendDays={initialTrendDays}
+            compactPrimaryHeader
           />
         ) : null}
 

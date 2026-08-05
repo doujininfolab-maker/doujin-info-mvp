@@ -36,11 +36,15 @@ type WorkTrendChartsProps = {
   trendPoints?: ProductTrendPoint[];
   trendDataUrl?: string;
   initialTrendDays?: number;
+  compactPrimaryHeader?: boolean;
 };
 
 const SALES_REVENUE_WIDTH = 900;
 const PRICE_WIDTH = 900;
-const CHART_HEIGHT = 260;
+const DEFAULT_CHART_HEIGHT = 260;
+const SHARED_CHART_HEIGHT = Math.round(DEFAULT_CHART_HEIGHT * 0.8);
+const INLINE_LEGEND_BOTTOM_PADDING = 70;
+const INLINE_LEGEND_Y_OFFSET = 24;
 const PAD = {
   top: 34,
   right: 72,
@@ -116,30 +120,45 @@ function roundUpNice(value: number): number {
   return rounded * base;
 }
 
-function getInnerSize(width: number) {
+function getInnerSize(
+  width: number,
+  chartHeight = DEFAULT_CHART_HEIGHT,
+  bottomPadding = PAD.bottom,
+) {
   return {
     left: PAD.left,
     right: width - PAD.right,
     top: PAD.top,
-    bottom: CHART_HEIGHT - PAD.bottom,
+    bottom: chartHeight - bottomPadding,
     width: width - PAD.left - PAD.right,
-    height: CHART_HEIGHT - PAD.top - PAD.bottom,
+    height: chartHeight - PAD.top - bottomPadding,
   };
 }
 
-function yScale(value: number, max: number): number {
-  const inner = getInnerSize(SALES_REVENUE_WIDTH);
+function yScale(
+  value: number,
+  max: number,
+  chartHeight: number,
+  bottomPadding = PAD.bottom,
+): number {
+  const inner = getInnerSize(SALES_REVENUE_WIDTH, chartHeight, bottomPadding);
   return inner.bottom - (value / Math.max(max, 1)) * inner.height;
 }
 
-function priceYScale(value: number, min: number, max: number): number {
-  const inner = getInnerSize(PRICE_WIDTH);
+function priceYScale(
+  value: number,
+  min: number,
+  max: number,
+  chartHeight: number,
+  bottomPadding = PAD.bottom,
+): number {
+  const inner = getInnerSize(PRICE_WIDTH, chartHeight, bottomPadding);
   const range = Math.max(max - min, 1);
   return inner.bottom - ((value - min) / range) * inner.height;
 }
 
-function getX(index: number, count: number, width: number): number {
-  const inner = getInnerSize(width);
+function getX(index: number, count: number, width: number, chartHeight: number): number {
+  const inner = getInnerSize(width, chartHeight);
   return inner.left + (inner.width * index) / Math.max(count - 1, 1);
 }
 
@@ -149,9 +168,14 @@ function createLinePath(points: Array<{ x: number; y: number }>): string {
     .join(" ");
 }
 
-function createAreaPath(points: Array<{ x: number; y: number }>, width: number): string {
+function createAreaPath(
+  points: Array<{ x: number; y: number }>,
+  width: number,
+  chartHeight: number,
+  bottomPadding = PAD.bottom,
+): string {
   if (points.length === 0) return "";
-  const inner = getInnerSize(width);
+  const inner = getInnerSize(width, chartHeight, bottomPadding);
   const line = createLinePath(points);
   return `${line} L${points[points.length - 1].x.toFixed(1)},${inner.bottom} L${points[0].x.toFixed(1)},${inner.bottom} Z`;
 }
@@ -309,8 +333,20 @@ function createActualTrendData(points: ProductTrendPoint[], range: RangeValue): 
   return isMonthlyRange(range) ? aggregateMonthlyTrendData(dailyData) : dailyData;
 }
 
-function AxisGrid({ width, leftTicks, rightTicks }: { width: number; leftTicks: number[]; rightTicks?: number[] }) {
-  const inner = getInnerSize(width);
+function AxisGrid({
+  width,
+  height,
+  leftTicks,
+  rightTicks,
+  bottomPadding = PAD.bottom,
+}: {
+  width: number;
+  height: number;
+  leftTicks: number[];
+  rightTicks?: number[];
+  bottomPadding?: number;
+}) {
+  const inner = getInnerSize(width, height, bottomPadding);
 
   return (
     <g className="workChart__axis">
@@ -334,14 +370,24 @@ function AxisGrid({ width, leftTicks, rightTicks }: { width: number; leftTicks: 
   );
 }
 
-function XAxis({ data, width }: { data: TrendPoint[]; width: number }) {
-  const inner = getInnerSize(width);
+function XAxis({
+  data,
+  width,
+  height,
+  bottomPadding = PAD.bottom,
+}: {
+  data: TrendPoint[];
+  width: number;
+  height: number;
+  bottomPadding?: number;
+}) {
+  const inner = getInnerSize(width, height, bottomPadding);
   const ticks = getXAxisTicks(data);
 
   return (
     <g className="workChart__xAxis">
       {ticks.map((tick) => {
-        const x = getX(tick.index, data.length, width);
+        const x = getX(tick.index, data.length, width, height);
         return (
           <g key={`${tick.index}_${tick.label}`}>
             <line className="workChart__xTick" x1={x} x2={x} y1={inner.top} y2={inner.bottom} />
@@ -353,29 +399,38 @@ function XAxis({ data, width }: { data: TrendPoint[]; width: number }) {
   );
 }
 
-function SalesRevenueChart({ data }: { data: TrendPoint[] }) {
+function SalesRevenueChart({
+  data,
+  height,
+  inlineLegend = false,
+}: {
+  data: TrendPoint[];
+  height: number;
+  inlineLegend?: boolean;
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const width = SALES_REVENUE_WIDTH;
+  const bottomPadding = inlineLegend ? INLINE_LEGEND_BOTTOM_PADDING : PAD.bottom;
   const maxSales = roundUpNice(Math.max(...data.map((point) => point.sales), 1));
   const maxRevenue = roundUpNice(Math.max(...data.map((point) => point.revenue), 1));
   const salesTicks = Array.from({ length: 5 }, (_, index) => Math.round((maxSales * index) / 4));
   const revenueTicks = Array.from({ length: 5 }, (_, index) => Math.round((maxRevenue * index) / 4));
   const points: ChartPoint[] = data.map((point, index) => ({
     ...point,
-    x: getX(index, data.length, width),
-    salesY: yScale(point.sales, maxSales),
-    revenueY: yScale(point.revenue, maxRevenue),
+    x: getX(index, data.length, width, height),
+    salesY: yScale(point.sales, maxSales, height, bottomPadding),
+    revenueY: yScale(point.revenue, maxRevenue, height, bottomPadding),
   }));
   const salesLinePoints = points.map((point) => ({ x: point.x, y: point.salesY ?? 0 }));
   const revenueLinePoints = points.map((point) => ({ x: point.x, y: point.revenueY ?? 0 }));
   const salesPath = createLinePath(salesLinePoints);
-  const salesArea = createAreaPath(salesLinePoints, width);
+  const salesArea = createAreaPath(salesLinePoints, width, height, bottomPadding);
   const revenuePath = createLinePath(revenueLinePoints);
   const dotIndexes = getDotIndexes(data);
   const hoveredPoint = hoveredIndex == null ? null : points[hoveredIndex] ?? null;
   const tooltipWidth = 178;
   const tooltipHeight = 70;
-  const inner = getInnerSize(width);
+  const inner = getInnerSize(width, height, bottomPadding);
   const tooltipX = hoveredPoint
     ? Math.min(Math.max(hoveredPoint.x - tooltipWidth / 2, inner.left + 4), inner.right - tooltipWidth - 4)
     : 0;
@@ -385,11 +440,17 @@ function SalesRevenueChart({ data }: { data: TrendPoint[] }) {
   const tooltipPointerX = hoveredPoint ? Math.min(Math.max(hoveredPoint.x, tooltipX + 14), tooltipX + tooltipWidth - 14) : 0;
 
   return (
-    <svg className="workChart" viewBox={`0 0 ${width} ${CHART_HEIGHT}`} role="img" aria-label="販売数と推定売上額の推移">
+    <svg className="workChart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="販売数と推定売上額の推移">
       <text className="workChart__unit workChart__unit--left" x={PAD.left} y="18">販売数（本）</text>
       <text className="workChart__unit workChart__unit--right" x={width - PAD.right} y="18">推定売上額（円）</text>
-      <AxisGrid width={width} leftTicks={salesTicks} rightTicks={revenueTicks} />
-      <XAxis data={data} width={width} />
+      <AxisGrid
+        width={width}
+        height={height}
+        leftTicks={salesTicks}
+        rightTicks={revenueTicks}
+        bottomPadding={bottomPadding}
+      />
+      <XAxis data={data} width={width} height={height} bottomPadding={bottomPadding} />
       <path className="workChart__area workChart__area--sales" d={salesArea} />
       <path className="workChart__line workChart__line--sales" d={salesPath} />
       <path className="workChart__line workChart__line--revenue" d={revenuePath} />
@@ -413,6 +474,18 @@ function SalesRevenueChart({ data }: { data: TrendPoint[] }) {
           </g>
         );
       })}
+      {inlineLegend ? (
+        <g className="workChart__inlineLegend" aria-hidden="true" transform={`translate(${width / 2}, ${height - INLINE_LEGEND_Y_OFFSET})`}>
+          <g transform="translate(-103, 0)">
+            <rect className="workChart__inlineLegendSwatch workChart__inlineLegendSwatch--sales" x="0" y="-11" width="31" height="11" />
+            <text x="40" y="0">販売数</text>
+          </g>
+          <g transform="translate(28, 0)">
+            <rect className="workChart__inlineLegendSwatch workChart__inlineLegendSwatch--revenue" x="0" y="-11" width="31" height="11" />
+            <text x="40" y="0">推定売上額</text>
+          </g>
+        </g>
+      ) : null}
       {hoveredPoint ? (
         <g className="workChartTooltip" pointerEvents="none">
           <rect x={tooltipX} y={tooltipY} width={tooltipWidth} height={tooltipHeight} rx="6" />
@@ -428,9 +501,18 @@ function SalesRevenueChart({ data }: { data: TrendPoint[] }) {
   );
 }
 
-function PriceChart({ data }: { data: TrendPoint[] }) {
+function PriceChart({
+  data,
+  height,
+  inlineLegend = false,
+}: {
+  data: TrendPoint[];
+  height: number;
+  inlineLegend?: boolean;
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const width = PRICE_WIDTH;
+  const bottomPadding = inlineLegend ? INLINE_LEGEND_BOTTOM_PADDING : PAD.bottom;
   const rawMin = Math.min(...data.map((point) => point.price), 0);
   const rawMax = Math.max(...data.map((point) => point.price), 1);
   const minPrice = Math.max(0, Math.floor(rawMin * 0.85 / 100) * 100);
@@ -438,15 +520,15 @@ function PriceChart({ data }: { data: TrendPoint[] }) {
   const priceTicks = Array.from({ length: 5 }, (_, index) => Math.round((minPrice + ((maxPrice - minPrice) * index) / 4) / 10) * 10);
   const points: ChartPoint[] = data.map((point, index) => ({
     ...point,
-    x: getX(index, data.length, width),
-    priceY: priceYScale(point.price, minPrice, maxPrice),
+    x: getX(index, data.length, width, height),
+    priceY: priceYScale(point.price, minPrice, maxPrice, height, bottomPadding),
   }));
   const pricePath = createLinePath(points.map((point) => ({ x: point.x, y: point.priceY ?? 0 })));
   const dotIndexes = getDotIndexes(data);
   const hoveredPoint = hoveredIndex == null ? null : points[hoveredIndex] ?? null;
   const tooltipWidth = 154;
   const tooltipHeight = 50;
-  const inner = getInnerSize(width);
+  const inner = getInnerSize(width, height, bottomPadding);
   const tooltipX = hoveredPoint
     ? Math.min(Math.max(hoveredPoint.x - tooltipWidth / 2, inner.left + 4), inner.right - tooltipWidth - 4)
     : 0;
@@ -456,10 +538,10 @@ function PriceChart({ data }: { data: TrendPoint[] }) {
   const tooltipPointerX = hoveredPoint ? Math.min(Math.max(hoveredPoint.x, tooltipX + 14), tooltipX + tooltipWidth - 14) : 0;
 
   return (
-    <svg className="workChart" viewBox={`0 0 ${width} ${CHART_HEIGHT}`} role="img" aria-label="販売価格推移">
+    <svg className="workChart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="販売価格推移">
       <text className="workChart__unit workChart__unit--left" x={PAD.left} y="18">販売価格（円）</text>
-      <AxisGrid width={width} leftTicks={priceTicks} />
-      <XAxis data={data} width={width} />
+      <AxisGrid width={width} height={height} leftTicks={priceTicks} bottomPadding={bottomPadding} />
+      <XAxis data={data} width={width} height={height} bottomPadding={bottomPadding} />
       <path className="workChart__line workChart__line--price" d={pricePath} />
       {dotIndexes.map((index) => {
         const point = points[index];
@@ -480,6 +562,14 @@ function PriceChart({ data }: { data: TrendPoint[] }) {
           </g>
         );
       })}
+      {inlineLegend ? (
+        <g className="workChart__inlineLegend" aria-hidden="true" transform={`translate(${width / 2}, ${height - INLINE_LEGEND_Y_OFFSET})`}>
+          <g transform="translate(-57, 0)">
+            <rect className="workChart__inlineLegendSwatch workChart__inlineLegendSwatch--price" x="0" y="-11" width="31" height="11" />
+            <text x="40" y="0">販売価格</text>
+          </g>
+        </g>
+      ) : null}
       {hoveredPoint ? (
         <g className="workChartTooltip" pointerEvents="none">
           <rect x={tooltipX} y={tooltipY} width={tooltipWidth} height={tooltipHeight} rx="6" />
@@ -500,6 +590,7 @@ export function WorkTrendCharts({
   trendPoints,
   trendDataUrl,
   initialTrendDays = 30,
+  compactPrimaryHeader = false,
 }: WorkTrendChartsProps) {
   const [range, setRange] = useState<RangeValue>("30d");
   const [loadedTrendPoints, setLoadedTrendPoints] = useState<ProductTrendPoint[] | undefined>(trendPoints);
@@ -564,14 +655,29 @@ export function WorkTrendCharts({
   const totalSales = data.reduce((sum, point) => sum + point.sales, 0);
   const totalRevenue = data.reduce((sum, point) => sum + point.revenue, 0);
   const latestPrice = data[data.length - 1]?.price ?? priceCurrent ?? 0;
+  const chartHeight = SHARED_CHART_HEIGHT;
 
   return (
-    <section className="workTrendSection" aria-label="販売データグラフ">
+    <section
+      className={`workTrendSection${compactPrimaryHeader ? " workTrendSection--compactPrimaryHeader" : ""}`}
+      aria-label="販売データグラフ"
+    >
       <div className="workTrendHeader">
-        <div>
+        <div className="workTrendHeader__title">
           <h2>販売数・推定売上額</h2>
-          <p>{hasActualTrendPoints ? "DLsite取得データを基に表示しています。半年・1年は月ごとの累計です。" : "過去30日〜先々月は日次、半年・1年は月ごとの累計で表示しています。現在はダミーデータです。"}</p>
+          {!compactPrimaryHeader ? (
+            <p>{hasActualTrendPoints ? "DLsite取得データを基に表示しています。半年・1年は月ごとの累計です。" : "過去30日〜先々月は日次、半年・1年は月ごとの累計で表示しています。現在はダミーデータです。"}</p>
+          ) : null}
         </div>
+
+        {compactPrimaryHeader ? (
+          <div className="workTrendSummary">
+            <span className="workTrendSummary__range">{RANGE_OPTIONS.find((option) => option.value === range)?.label ?? "過去30日"}</span>
+            <span><b>販売数</b> <strong>{formatNumber(totalSales)}本</strong></span>
+            <span><b>推定売上額</b> <strong>{formatCurrency(totalRevenue)}</strong></span>
+          </div>
+        ) : null}
+
         <label className="workTrendRange">
           <span>表示範囲</span>
           <select value={range} onChange={(event) => setRange(event.target.value as RangeValue)} aria-busy={isTrendLoading}>
@@ -582,17 +688,15 @@ export function WorkTrendCharts({
         </label>
       </div>
 
-      <div className="workTrendSummary">
-        <span className="workTrendSummary__range">{RANGE_OPTIONS.find((option) => option.value === range)?.label ?? "過去30日"}</span>
-        <span><b>販売数</b> <strong>{formatNumber(totalSales)}本</strong></span>
-        <span><b>推定売上額</b> <strong>{formatCurrency(totalRevenue)}</strong></span>
-      </div>
+      {!compactPrimaryHeader ? (
+        <div className="workTrendSummary">
+          <span className="workTrendSummary__range">{RANGE_OPTIONS.find((option) => option.value === range)?.label ?? "過去30日"}</span>
+          <span><b>販売数</b> <strong>{formatNumber(totalSales)}本</strong></span>
+          <span><b>推定売上額</b> <strong>{formatCurrency(totalRevenue)}</strong></span>
+        </div>
+      ) : null}
 
-      <SalesRevenueChart data={data} />
-      <div className="workChartLegend">
-        <span><i className="legendSales" />販売数</span>
-        <span><i className="legendRevenue" />推定売上額</span>
-      </div>
+      <SalesRevenueChart data={data} height={chartHeight} inlineLegend />
       <p className="workChartNote">
         {isTrendLoading
           ? "※選択期間のデータを読み込んでいます。"
@@ -610,10 +714,7 @@ export function WorkTrendCharts({
         </div>
         <div className="workTrendCurrentPrice">現在価格 <strong>{formatCurrency(latestPrice)}</strong></div>
       </div>
-      <PriceChart data={data} />
-      <div className="workChartLegend">
-        <span><i className="legendPrice" />販売価格</span>
-      </div>
+      <PriceChart data={data} height={chartHeight} inlineLegend />
     </section>
   );
 }

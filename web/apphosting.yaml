@@ -39,7 +39,7 @@ env:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_SITE_URL
-    value: "REPLACE_WITH_PUBLIC_SITE_ORIGIN"
+    value: "https://doujin-info.jp"
     availability:
       - BUILD
       - RUNTIME

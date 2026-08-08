@@ -149,11 +149,11 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
   return (
     <div className="circleDetailPage">
       <nav className="circleBreadcrumb" aria-label="パンくず">
-        <Link href="/">ホーム</Link>
+        <Link href="/" prefetch={false}>ホーム</Link>
         <span>›</span>
-        <Link href={buildFilterHref(segmentPath, {}, { contentType: contentTypeParam })}>DLsite女性向け同人</Link>
+        <Link href={buildFilterHref(segmentPath, {}, { contentType: contentTypeParam })} prefetch={false}>DLsite女性向け同人</Link>
         <span>›</span>
-        <Link href={buildFilterHref(`${segmentPath}/circle`, {}, { contentType: contentTypeParam })}>サークル一覧</Link>
+        <Link href={buildFilterHref(`${segmentPath}/circle`, {}, { contentType: contentTypeParam })} prefetch={false}>サークル一覧</Link>
         <span>›</span>
         <span>{summary.sellerName}</span>
       </nav>
@@ -192,7 +192,7 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
               <dt>ジャンル</dt>
               <dd>
                 {summary.tags.slice(0, 18).map((tag) => (
-                  <Link href={buildFilterHref(buildGenreHref(segmentPath, tag.name), {}, { contentType: contentTypeParam })} key={tag.name}>
+                  <Link href={buildFilterHref(buildGenreHref(segmentPath, tag.name), {}, { contentType: contentTypeParam })} key={tag.name} prefetch={false}>
                     {tag.name}<small>{tag.count}</small>
                   </Link>
                 ))}

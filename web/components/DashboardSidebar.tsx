@@ -46,7 +46,7 @@ export function DashboardSidebar({
         {genreItems.length ? (
           <div className="trendTagGrid">
             {genreItems.map((genre, index) => (
-              <Link className="trendTag" href={buildFilterHref(genreHref(segment, genre), {}, { contentType: contentTypeParam })} key={genre.genreId} title={genre.name}>
+              <Link className="trendTag" href={buildFilterHref(genreHref(segment, genre), {}, { contentType: contentTypeParam })} key={genre.genreId} prefetch={false} title={genre.name}>
                 <span className="trendTag__number">{index + 1}</span>
                 <span className="trendTag__label">{genre.name}</span>
               </Link>
@@ -55,7 +55,7 @@ export function DashboardSidebar({
         ) : (
           <p className="sidebarEmptyText">ジャンルデータ取得後に表示されます。</p>
         )}
-        <Link className="sidebarMore" href={buildFilterHref(`${segment.path}/genre`, {}, { contentType: contentTypeParam })}>ジャンル一覧へ 〉</Link>
+        <Link className="sidebarMore" href={buildFilterHref(`${segment.path}/genre`, {}, { contentType: contentTypeParam })} prefetch={false}>ジャンル一覧へ 〉</Link>
       </section>
 
       <section className="sidebarCard">
@@ -63,7 +63,7 @@ export function DashboardSidebar({
         {recentItems.length ? (
           <div className="recentList">
             {recentItems.map((item) => (
-              <Link className="recentItem" href={productHref(item, contentTypeParam)} key={item.productId}>
+              <Link className="recentItem" href={productHref(item, contentTypeParam)} key={item.productId} prefetch={false}>
                 <img src={getProductImage(item)} alt="" loading="lazy" />
                 <span>
                   <strong>{item.title}</strong>
@@ -76,7 +76,7 @@ export function DashboardSidebar({
         ) : (
           <p className="sidebarEmptyText">作品データ取得後に表示されます。</p>
         )}
-        <Link className="sidebarMore" href={buildFilterHref(`${segment.path}/new`, {}, { contentType: contentTypeParam })}>もっと見る 〉</Link>
+        <Link className="sidebarMore" href={buildFilterHref(`${segment.path}/new`, {}, { contentType: contentTypeParam })} prefetch={false}>もっと見る 〉</Link>
       </section>
     </aside>
   );

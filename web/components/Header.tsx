@@ -39,6 +39,7 @@ function ContentScopeSwitch({ currentScope }: { currentScope: ProductContentScop
           className={option.value === currentScope ? "isActive" : undefined}
           href={buildCurrentPathWithContentScope(pathname, searchParams, option.value)}
           key={option.value}
+          prefetch={false}
           scroll={false}
         >
           {option.label}
@@ -58,7 +59,7 @@ export function Header() {
     <header className="siteHeader">
       <div className="siteHeader__inner">
         <div className="siteHeader__top">
-          <Link className="brand" href={scopedHref("/")} aria-label="Doujin Info サイトトップ">
+          <Link className="brand" href={scopedHref("/")} aria-label="Doujin Info サイトトップ" prefetch={false}>
             <LogoIcon />
           </Link>
 
@@ -73,11 +74,11 @@ export function Header() {
 
         <div className="siteHeader__bottom">
           <nav className="primaryNav" aria-label="主要メニュー">
-            <Link href={scopedHref("/dlsite/female/doujin/ranking")}><RankingNavIcon />ランキング</Link>
-            <Link href={scopedHref("/dlsite/female/doujin/new")}><NewNavIcon />新着</Link>
-            <Link href={scopedHref("/dlsite/female/doujin/sale")}><SaleNavIcon />セール</Link>
-            <Link href={scopedHref("/dlsite/female/doujin/circle")}><CircleNavIcon />サークル</Link>
-            <Link href={scopedHref("/dlsite/female/doujin/genre")}><GenreNavIcon />ジャンル</Link>
+            <Link href={scopedHref("/dlsite/female/doujin/ranking")} prefetch={false}><RankingNavIcon />ランキング</Link>
+            <Link href={scopedHref("/dlsite/female/doujin/new")} prefetch={false}><NewNavIcon />新着</Link>
+            <Link href={scopedHref("/dlsite/female/doujin/sale")} prefetch={false}><SaleNavIcon />セール</Link>
+            <Link href={scopedHref("/dlsite/female/doujin/circle")} prefetch={false}><CircleNavIcon />サークル</Link>
+            <Link href={scopedHref("/dlsite/female/doujin/genre")} prefetch={false}><GenreNavIcon />ジャンル</Link>
           </nav>
 
           <div className="headerSwitches" aria-label="現在の対象">

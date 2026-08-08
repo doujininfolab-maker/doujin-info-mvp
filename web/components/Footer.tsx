@@ -37,7 +37,7 @@ export function Footer() {
     <footer className="siteFooter">
       <div className="siteFooter__inner">
         <div className="footerBrand">
-          <Link className="brand" href="/" aria-label="Doujin Info サイトトップ">
+          <Link className="brand" href="/" aria-label="Doujin Info サイトトップ" prefetch={false}>
             <LogoIcon />
           </Link>
           <p><span>女性向け同人作品の情報を、データで分かりやすく。</span><span>あなたの“好き”をもっと見つけやすく。</span></p>

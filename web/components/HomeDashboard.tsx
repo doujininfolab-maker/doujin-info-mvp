@@ -139,7 +139,7 @@ function HomeStatsPanel({ stats, segment, contentTypeParam }: { stats: HomeDashb
           );
 
           return stat.href ? (
-            <Link className="statCard statCard--side statCard--genre" href={stat.href} key={stat.label}>
+            <Link className="statCard statCard--side statCard--genre" href={stat.href} key={stat.label} prefetch={false}>
               {content}
             </Link>
           ) : (
@@ -253,7 +253,7 @@ export function HomeDashboard({
           <SectionHeader title="カテゴリから探す" href={buildFilterHref(`${segment.path}/ranking`, {}, { contentType: contentTypeParam })} icon="▤" />
           <ScrollRail ariaLabel="カテゴリ一覧">
             {popularCategories.length ? popularCategories.map((category, index) => (
-              <Link className="genreCard" href={categoryHref(segment, category, contentTypeParam)} key={category.categoryId}>
+              <Link className="genreCard" href={categoryHref(segment, category, contentTypeParam)} key={category.categoryId} prefetch={false}>
                 <GenreIcon tone={getGenreTone(index)}>{getCategoryIcon(category)}</GenreIcon>
                 <span><strong>{category.name}</strong><small>{formatNumber(category.productCount)}作品</small></span>
               </Link>
@@ -270,7 +270,7 @@ export function HomeDashboard({
           <SectionHeader title="注目サークル" href={buildFilterHref(`${segment.path}/circle`, {}, { contentType: contentTypeParam })} icon={<CircleHighlightSectionIcon />} />
           <ScrollRail ariaLabel="注目サークル一覧">
             {circleHighlights.length ? circleHighlights.slice(0, 10).map((circle) => (
-              <Link className="circleCard" href={buildFilterHref(`${segment.path}/circle/${encodeURIComponent(circle.sellerKey)}`, {}, { contentType: contentTypeParam })} key={circle.sellerKey}>
+              <Link className="circleCard" href={buildFilterHref(`${segment.path}/circle/${encodeURIComponent(circle.sellerKey)}`, {}, { contentType: contentTypeParam })} key={circle.sellerKey} prefetch={false}>
                 <img src={getProductImage(circle.topProduct ?? circle.latestProduct)} alt="" loading="lazy" />
                 <span><strong>{circle.sellerName}</strong><small>作品 {formatNumber(circle.productCount)} / 販売 {formatNumber(circle.totalSalesCount)}</small></span>
                 <em>詳細</em>

@@ -97,26 +97,26 @@ export function ProductCard({
 
   return (
     <article className={`productCard productCard--${variant}`}>
-      <Link className="productCard__imageLink" href={productHref}>
+      <Link className="productCard__imageLink" href={productHref} prefetch={false}>
         <img className="productCard__image" src={imageUrl} alt={product.title} loading="lazy" />
         {rank && !isList ? <span className="rankBadge">{rank <= 3 ? <CrownIcon rank={rank} /> : rank}</span> : null}
         {isNew ? <span className="cornerBadge cornerBadge--new">NEW</span> : null}
         {isSale && product.discountRate ? <span className="cornerBadge cornerBadge--sale">{product.discountRate}%<br />OFF</span> : null}
       </Link>
       {isList ? (
-        <Link className="productCard__type productCard__type--media" href={getWorkTypeHref(product, contentTypeParam)}>
+        <Link className="productCard__type productCard__type--media" href={getWorkTypeHref(product, contentTypeParam)} prefetch={false}>
           {getWorkTypeLabel(product)}
         </Link>
       ) : null}
       <div className="productCard__body">
         {isList ? (
-          <Link className="productCard__type productCard__type--body" href={getWorkTypeHref(product, contentTypeParam)}>
+          <Link className="productCard__type productCard__type--body" href={getWorkTypeHref(product, contentTypeParam)} prefetch={false}>
             {getWorkTypeLabel(product)}
           </Link>
         ) : null}
-        <Link className="productCard__title" href={productHref}>{product.title}</Link>
+        <Link className="productCard__title" href={productHref} prefetch={false}>{product.title}</Link>
         <p className="productCard__seller">
-          サークル：{sellerHref ? <Link href={sellerHref}>{sellerName}</Link> : sellerName}
+          サークル：{sellerHref ? <Link href={sellerHref} prefetch={false}>{sellerName}</Link> : sellerName}
         </p>
         <PriceLabel
           priceCurrent={product.priceCurrent}
@@ -132,7 +132,7 @@ export function ProductCard({
         </div>
         {tags.length ? (
           <div className="tagRow">
-            {tags.map((tag) => <Link href={tag.href} key={`${tag.label}_${tag.href}`}>{tag.label}</Link>)}
+            {tags.map((tag) => <Link href={tag.href} key={`${tag.label}_${tag.href}`} prefetch={false}>{tag.label}</Link>)}
           </div>
         ) : null}
       </div>

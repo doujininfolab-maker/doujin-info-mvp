@@ -25,7 +25,7 @@ export function WorkTypeTabs({
         const href = buildWorkTypeHref(basePath, currentParams, option.value, paramName);
 
         return (
-          <Link className={isActive ? "isActive" : undefined} href={href} key={option.value} scroll={false}>
+          <Link className={isActive ? "isActive" : undefined} href={href} key={option.value} prefetch={false} scroll={false}>
             {option.label}
           </Link>
         );
@@ -57,7 +57,7 @@ export function RankingModeTabs({
         });
 
         return (
-          <Link className={currentRankingMode === option.value ? "isActive" : undefined} href={href} key={option.value} scroll={false}>
+          <Link className={currentRankingMode === option.value ? "isActive" : undefined} href={href} key={option.value} prefetch={false} scroll={false}>
             {option.label}
           </Link>
         );
@@ -88,7 +88,7 @@ export function DiscountTabs({ basePath, currentDiscountRateMin, currentParams =
         const href = buildFilterHref(basePath, currentParams, { discount: option.value });
 
         return (
-          <Link className={isActive ? "isActive" : undefined} href={href} key={option.label} scroll={false}>
+          <Link className={isActive ? "isActive" : undefined} href={href} key={option.label} prefetch={false} scroll={false}>
             {option.label}
           </Link>
         );

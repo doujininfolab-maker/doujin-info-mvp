@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
@@ -32,6 +33,8 @@ import type {
 
 export const dynamic = "force-dynamic";
 
+const getCachedProductById = cache(async (productId: string) => getProductById(productId));
+
 type PageProps = {
   params: Promise<{ productId: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -39,7 +42,7 @@ type PageProps = {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { productId } = await params;
-  const product = await getProductById(productId);
+  const product = await getCachedProductById(productId);
 
   if (!product) {
     return { title: "商品が見つかりません" };
@@ -385,7 +388,7 @@ function getDisplaySalesEditions(product: Product): ProductSalesEdition[] {
 export default async function WorkDetailPage({ params, searchParams }: PageProps) {
   const { productId } = await params;
   const query = searchParams ? await searchParams : {};
-  const product = await getProductById(productId);
+  const product = await getCachedProductById(productId);
   if (!product) notFound();
 
   const officialUrl = getProductOutboundUrl(product);
@@ -434,7 +437,7 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
         </div>
         <div className="detailHeader__body">
           <div className="detailHeader__metaLine">
-            <Link className="detailHeader__genrePill" href={workTypeHref}>{primaryGenreLabel}</Link>
+            <Link className="detailHeader__genrePill" href={workTypeHref} prefetch={false}>{primaryGenreLabel}</Link>
             <div className="badgeRow detailHeader__badges">
               <PlatformBadge platform={product.platform} audience={product.audience} category={product.category} />
             </div>
@@ -442,7 +445,7 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
           <h1 className="detailTitle detailTitle--compact">{product.title}</h1>
           {product.seller?.sellerName ? (
             <p className="detailHeader__seller">
-              {sellerHref ? <Link href={sellerHref}>{product.seller.sellerName}</Link> : product.seller.sellerName}
+              {sellerHref ? <Link href={sellerHref} prefetch={false}>{product.seller.sellerName}</Link> : product.seller.sellerName}
             </p>
           ) : null}
         </div>
@@ -474,7 +477,7 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
           <dl className="detailMetaTable">
             <div>
               <dt>サークル</dt>
-              <dd>{product.seller?.sellerName ? (sellerHref ? <Link href={sellerHref}>{product.seller.sellerName}</Link> : product.seller.sellerName) : "-"}</dd>
+              <dd>{product.seller?.sellerName ? (sellerHref ? <Link href={sellerHref} prefetch={false}>{product.seller.sellerName}</Link> : product.seller.sellerName) : "-"}</dd>
             </div>
             <div>
               <dt>総DL数</dt>
@@ -489,7 +492,7 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
             <a className="button button--official" href={officialUrl} target="_blank" rel="sponsored noreferrer">
               DLsiteで詳細を見る
             </a>
-            <Link className="button button--ghost" href={segmentPath}>
+            <Link className="button button--ghost" href={segmentPath} prefetch={false}>
               一覧へ戻る
             </Link>
           </div>
@@ -499,7 +502,7 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
               <h2>ジャンル</h2>
               <div className="tagList">
                 {product.genres.slice(0, 12).map((genre, index) => (
-                  <Link className="tagList__item" href={buildGenreHref(segmentPath, genre)} key={`${genre}_${index}`}>
+                  <Link className="tagList__item" href={buildGenreHref(segmentPath, genre)} key={`${genre}_${index}`} prefetch={false}>
                     {genre}
                   </Link>
                 ))}

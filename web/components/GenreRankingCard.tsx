@@ -49,7 +49,7 @@ export function GenreRankingCard({
         <strong>{item.rank}</strong>
       </div>
       <div className="genreRankingCard__body">
-        <Link className="genreRankingCard__title" href={href}>{item.name}</Link>
+        <Link className="genreRankingCard__title" href={href} prefetch={false}>{item.name}</Link>
         <div className="genreRankingCard__meta">
           <span>{label}販売作品数：{formatNumber(item.productCount)}</span>
           <span>{label}販売数：{formatNumber(item.totalSalesCount)}本</span>
@@ -58,7 +58,7 @@ export function GenreRankingCard({
         {item.topProducts.length ? (
           <div className="genreRankingCard__products" aria-label="代表作品">
             {item.topProducts.map((product) => (
-              <Link href={buildFilterHref(`/work/${product.productId}`, {}, { contentType: contentTypeParam })} key={product.productId} title={product.title}>
+              <Link href={buildFilterHref(`/work/${product.productId}`, {}, { contentType: contentTypeParam })} key={product.productId} prefetch={false} title={product.title}>
                 <img src={productImage(product)} alt="" loading="lazy" />
                 <span>{product.title}</span>
               </Link>
@@ -66,7 +66,7 @@ export function GenreRankingCard({
           </div>
         ) : null}
       </div>
-      <Link className="genreRankingCard__action" href={href}>作品を見る</Link>
+      <Link className="genreRankingCard__action" href={href} prefetch={false}>作品を見る</Link>
     </article>
   );
 }

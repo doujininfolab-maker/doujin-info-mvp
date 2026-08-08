@@ -65,7 +65,7 @@ function GenreRankingModeTabs({
         });
 
         return (
-          <Link className={currentRankingMode === option.value ? "isActive" : undefined} href={href} key={option.value} scroll={false}>
+          <Link className={currentRankingMode === option.value ? "isActive" : undefined} href={href} key={option.value} prefetch={false} scroll={false}>
             {option.label}
           </Link>
         );

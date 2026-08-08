@@ -32,13 +32,13 @@ export function SellerCard({ seller, contentTypeParam }: { seller: SellerCardDis
 
   return (
     <article className="sellerCard">
-      <Link className="sellerCard__imageLink" href={href}>
+      <Link className="sellerCard__imageLink" href={href} prefetch={false}>
         <img src={getSellerImage(seller)} alt="" loading="lazy" />
       </Link>
 
       <div className="sellerCard__body">
         <span className="sellerCard__type">サークル</span>
-        <Link className="sellerCard__title" href={href}>{seller.sellerName}</Link>
+        <Link className="sellerCard__title" href={href} prefetch={false}>{seller.sellerName}</Link>
         {seller.newestProductTitle ? <p className="sellerCard__latest">最新作：{seller.newestProductTitle}</p> : null}
         <div className="sellerCard__meta">
           <span>作品数 {formatNumber(seller.productCount)}</span>
@@ -49,7 +49,7 @@ export function SellerCard({ seller, contentTypeParam }: { seller: SellerCardDis
         {tags.length ? (
           <div className="sellerCard__tags">
             {tags.map((tag) => (
-              <Link className="sellerCard__tagLink" href={buildGenreHref(seller, tag.name, contentTypeParam)} key={tag.name}>
+              <Link className="sellerCard__tagLink" href={buildGenreHref(seller, tag.name, contentTypeParam)} key={tag.name} prefetch={false}>
                 {tag.name}<small>{tag.count}</small>
               </Link>
             ))}

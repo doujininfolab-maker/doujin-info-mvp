@@ -28,7 +28,7 @@ export function ListPagination({
   return (
     <nav className="listPagination" aria-label="ページ移動">
       {page > 1 ? (
-        <Link className="listPagination__button" href={mergeHref(pathname, searchParams, prevPage, limit)}>
+        <Link className="listPagination__button" href={mergeHref(pathname, searchParams, prevPage, limit)} prefetch={false}>
           « 前へ
         </Link>
       ) : (
@@ -36,7 +36,7 @@ export function ListPagination({
       )}
       <span className="listPagination__current">{page}</span>
       {hasNext ? (
-        <Link className="listPagination__button" href={mergeHref(pathname, searchParams, nextPage, limit)}>
+        <Link className="listPagination__button" href={mergeHref(pathname, searchParams, nextPage, limit)} prefetch={false}>
           次へ »
         </Link>
       ) : (

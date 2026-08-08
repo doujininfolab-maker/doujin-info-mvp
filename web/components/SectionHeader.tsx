@@ -23,13 +23,13 @@ export function SectionHeader({
     <div className="sectionHeader">
       <div>
         <h2>
-          {href ? <Link className="sectionHeader__titleLink" href={href}>{titleContent}</Link> : titleContent}
+          {href ? <Link className="sectionHeader__titleLink" href={href} prefetch={false}>{titleContent}</Link> : titleContent}
         </h2>
         {description ? <p>{description}</p> : null}
       </div>
       <div className="sectionHeader__aside">
         {children}
-        {href ? <Link href={href}>もっと見る 〉</Link> : null}
+        {href ? <Link href={href} prefetch={false}>もっと見る 〉</Link> : null}
       </div>
     </div>
   );

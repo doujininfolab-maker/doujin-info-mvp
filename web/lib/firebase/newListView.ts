@@ -14,6 +14,7 @@ import type {
   ProductListFilter,
 } from "../types";
 import { getAdminDb } from "./admin";
+import { filterPublicProducts } from "./contentVisibility";
 
 const NEW_LIST_VIEWS_COLLECTION = "newListViews";
 const LISTS_SUBCOLLECTION = "newListViewLists";
@@ -288,7 +289,7 @@ async function loadPageFromVersion(
   }
 
   return {
-    products,
+    products: await filterPublicProducts(products, { requireMaterializedActive: false }),
     totalCount: metadata.itemCount,
     listId,
     versionId,

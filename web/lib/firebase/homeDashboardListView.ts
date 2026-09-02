@@ -14,6 +14,7 @@ import type {
   ProductListFilter,
 } from "../types";
 import { getAdminDb } from "./admin";
+import { filterPublicProducts, filterPublicSellers } from "./contentVisibility";
 
 const HOME_DASHBOARD_LIST_VIEWS_COLLECTION = "homeDashboardListViews";
 const SCOPES_SUBCOLLECTION = "homeDashboardListViewScopes";
@@ -304,10 +305,25 @@ async function loadFromVersion(
     metadata.sections[newSectionId(newWorkType)],
     `${versionId}/${newSectionId(newWorkType)}`,
   );
+  const publicWeeklyProducts = await filterPublicProducts(
+    common.weeklyCircleCandidates.map((candidate) => candidate.product),
+    { requireMaterializedActive: false },
+  );
+  const publicWeeklyProductIds = new Set(
+    publicWeeklyProducts.map((product) => product.productId),
+  );
   return {
-    common,
-    rankingProducts: ranking.products,
-    newCandidateProducts: newest.products,
+    common: {
+      ...common,
+      recentCandidateProducts: await filterPublicProducts(common.recentCandidateProducts, { requireMaterializedActive: false }),
+      saleCandidateProducts: await filterPublicProducts(common.saleCandidateProducts, { requireMaterializedActive: false }),
+      weeklyCircleCandidates: common.weeklyCircleCandidates.filter((candidate) =>
+        publicWeeklyProductIds.has(candidate.product.productId),
+      ),
+      fallbackCircleHighlights: await filterPublicSellers(common.fallbackCircleHighlights),
+    },
+    rankingProducts: await filterPublicProducts(ranking.products, { requireMaterializedActive: false }),
+    newCandidateProducts: await filterPublicProducts(newest.products, { requireMaterializedActive: false }),
     versionId,
     sourceStatId: metadata.sourceStatId,
     sourceRankingVersionId: metadata.sourceRankingVersionId,

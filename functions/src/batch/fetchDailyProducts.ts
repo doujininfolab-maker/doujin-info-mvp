@@ -29,6 +29,7 @@ import {
   writesLegacyMetrics,
   writesMetricYears,
 } from "../firestore/productMetricHistory";
+import { applyContentVisibility } from "../visibility/contentVisibility";
 
 export type FetchDailyProductsOptions = {
   targets: FetchTarget[];
@@ -110,7 +111,8 @@ function buildMetric(product: Product, date: string): ProductDailyMetric {
 
 async function saveProductAndMetric(product: Product, date: string): Promise<void> {
   const productRef = db.collection("products").doc(product.productId);
-  await productRef.set(product, { merge: true });
+  const productToSave = await applyContentVisibility(product);
+  await productRef.set(productToSave, { merge: true });
   const metric = buildMetric(product, date);
   const historyMode = getMetricHistoryWriteMode();
   if (writesLegacyMetrics(historyMode)) {

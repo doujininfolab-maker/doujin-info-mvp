@@ -609,7 +609,16 @@ export type Product = {
   latestRankings?: RankingSummary[];
   sourceRankings?: SourceRankingEntry[];
 
+  /** 取得元が示す公開状態。未移行データはisActiveから補完する。 */
+  sourceIsActive?: boolean;
+  /** 取得元状態と運用上の非公開指示を重ねた実効公開状態。 */
   isActive: boolean;
+  visibility?: {
+    status: "visible" | "hidden";
+    blockers: Array<"product" | "seller" | "source">;
+    controlRevision: number;
+    evaluatedAt: Timestamp;
+  };
   fetchStatus: FetchStatus;
 
   lastFetchedAt?: Timestamp;

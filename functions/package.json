@@ -19,7 +19,11 @@
     "verify:search-index:emulator": "npm run build && node lib/tools/verifyCompactSearchIndexEmulator.js",
     "verify:site-stats:emulator": "npm run build && node lib/tools/verifySiteStatsRebuildEmulator.js",
     "verify:seller-index:emulator": "npm run build && node lib/tools/verifySellerIndexStreamingEmulator.js",
-    "test:fault-search-index:emulator": "npm run build && node lib/tools/toggleCompactSearchFaultEmulator.js"
+    "test:fault-search-index:emulator": "npm run build && node lib/tools/toggleCompactSearchFaultEmulator.js",
+    "visibility": "npm run build && node lib/tools/contentVisibilityCli.js",
+    "test:visibility": "npm run build && node lib/tools/testContentVisibility.js",
+    "test:visibility-rules:emulator": "npm run build && node lib/tools/testVisibilityRulesEmulator.js",
+    "verify:visibility:emulator": "npm run build && node lib/tools/verifyContentVisibilityEmulator.js"
   },
   "dependencies": {
     "@types/node": "^24.0.0",

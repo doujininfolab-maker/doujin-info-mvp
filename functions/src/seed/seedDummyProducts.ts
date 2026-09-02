@@ -11,6 +11,7 @@ import {
   writesLegacyMetrics,
   writesMetricYears,
 } from "../firestore/productMetricHistory";
+import { applyContentVisibility } from "../visibility/contentVisibility";
 
 function isEmulator(): boolean {
   return process.env.FUNCTIONS_EMULATOR === "true" || process.env.FIRESTORE_EMULATOR_HOST != null;
@@ -35,8 +36,9 @@ export const seedDummyProducts = onRequest(
     }
 
     const products = buildDummyProducts();
-    const taxonomies = buildDummyTaxonomies(products);
-    const sellers = buildDummySellers(products);
+    const visibleProducts = await Promise.all(products.map(applyContentVisibility));
+    const taxonomies = buildDummyTaxonomies(visibleProducts);
+    const sellers = buildDummySellers(visibleProducts.filter((product) => product.isActive));
     const date = toYyyyMMdd();
     const target = {
       platform: "dlsite" as const,
@@ -51,7 +53,7 @@ export const seedDummyProducts = onRequest(
     const batch = db.batch();
     const historyMode = getMetricHistoryWriteMode();
 
-    for (const product of products) {
+    for (const product of visibleProducts) {
       const productRef = db.collection("products").doc(product.productId);
       batch.set(productRef, product, { merge: true });
       const metric: ProductDailyMetric = {
@@ -99,14 +101,14 @@ export const seedDummyProducts = onRequest(
       sourceUrl: "https://www.dlsite.com/girls/ranking/day",
       capturedAt,
       fetchedAt: capturedAt,
-      itemCount: products.length,
+      itemCount: visibleProducts.filter((product) => product.isActive).length,
       status: "success",
     };
 
     const snapshotRef = db.collection("rankingSnapshots").doc(snapshotId);
     batch.set(snapshotRef, rankingSnapshot, { merge: true });
 
-    products.forEach((product, index) => {
+    visibleProducts.filter((product) => product.isActive).forEach((product, index) => {
       const rank = index + 1;
       const item: RankingSnapshotItem = {
         snapshotId,

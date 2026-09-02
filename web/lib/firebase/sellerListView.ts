@@ -13,6 +13,7 @@ import type {
   SellerSortMode,
 } from "../types";
 import { getAdminDb } from "./admin";
+import { filterPublicSellers } from "./contentVisibility";
 
 const SELLER_LIST_VIEWS_COLLECTION = "sellerListViews";
 const LISTS_SUBCOLLECTION = "sellerListViewLists";
@@ -337,7 +338,7 @@ async function loadPageFromVersion(
   }
 
   return {
-    sellers,
+    sellers: await filterPublicSellers(sellers),
     totalCount: metadata.itemCount,
     listId,
     versionId,

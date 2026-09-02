@@ -136,6 +136,7 @@ export function normalizeProduct(raw: RawProductDetail, target: FetchTarget): Pr
     genreIds,
     tagIds,
     searchTokens: buildSearchTokens([title, value.sellerName ?? "", value.workTypeLabel ?? "", ...contentTypes, ...genres, ...tags]),
+    sourceIsActive: true,
     isActive: true,
     fetchStatus: "success",
     lastFetchedAt: timestamp,

@@ -17,6 +17,7 @@ import type {
   SaleSortMode,
 } from "../types";
 import { getAdminDb } from "./admin";
+import { filterPublicProducts } from "./contentVisibility";
 
 const SALE_LIST_VIEWS_COLLECTION = "saleListViews";
 const LISTS_SUBCOLLECTION = "saleListViewLists";
@@ -364,7 +365,7 @@ async function loadPageFromVersion(
   }
 
   return {
-    products,
+    products: await filterPublicProducts(products, { requireMaterializedActive: false }),
     totalCount,
     listId,
     versionId,

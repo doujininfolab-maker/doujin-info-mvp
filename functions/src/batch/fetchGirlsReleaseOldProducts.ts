@@ -27,6 +27,7 @@ import {
   writesLegacyMetrics,
   writesMetricYears,
 } from "../firestore/productMetricHistory";
+import { applyContentVisibility } from "../visibility/contentVisibility";
 
 const DISCOVERY_COLLECTION = "productDiscoveries";
 const FIRESTORE_BATCH_LIMIT = 400;
@@ -775,8 +776,9 @@ async function enqueueProductAndMetricWrites(
   };
 
   if (!options.saveDailyMetrics) {
+    const productToSave = await applyContentVisibility(buildProductForSave(product));
     addAutoFlushResult(
-      await writeBuffer.set(productRef, buildProductForSave(product), {
+      await writeBuffer.set(productRef, productToSave, {
         merge: true,
       }),
     );
@@ -805,9 +807,9 @@ async function enqueueProductAndMetricWrites(
         })
       : undefined;
   const dailySalesDeltaCalcElapsedMs = Date.now() - deltaCalcStartedAt;
-  const productToSave = buildProductForSave(
+  const productToSave = await applyContentVisibility(buildProductForSave(
     dailySalesDelta ? { ...product, ...dailySalesDelta.productPatch } : product,
-  );
+  ));
 
   addAutoFlushResult(
     await writeBuffer.set(productRef, productToSave, {

@@ -28,6 +28,7 @@ import {
 import { addDaysToDateKey } from "./batch/rankingMetrics";
 import { nowTimestamp, toYyyyMMdd } from "./util";
 import type { FetchTarget, ProductContentType } from "./types";
+import { applyContentVisibility } from "./visibility/contentVisibility";
 
 function firstQueryValue(value: unknown): string | undefined {
   if (typeof value === "string") return value;
@@ -487,10 +488,11 @@ export const fetchDlsiteProductDebug = onRequest(
       }
 
       if (saveProduct) {
+        const productToSave = await applyContentVisibility(product);
         await db
           .collection("products")
           .doc(product.productId)
-          .set(product, { merge: true });
+          .set(productToSave, { merge: true });
       }
 
       logger.info("fetchDlsiteProductDebug finished", {

@@ -434,6 +434,26 @@
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "contentVisibilityRuntime",
+      "fieldPath": "hiddenProductIds",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "contentVisibilityRuntime",
+      "fieldPath": "hiddenSellerProductIds",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "contentVisibilityRuntime",
+      "fieldPath": "hiddenSellerKeys",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "products",
+      "fieldPath": "visibility",
+      "indexes": []
+    },
+    {
       "collectionGroup": "products",
       "fieldPath": "recentSalesSnapshots",
       "indexes": []

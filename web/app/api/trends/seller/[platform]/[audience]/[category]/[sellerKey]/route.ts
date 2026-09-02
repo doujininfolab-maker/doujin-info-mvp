@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSellerTrendPoints } from "@/lib/firebase/products";
+import { getSellerSummaryByKey, getSellerTrendPoints } from "@/lib/firebase/products";
 import { getSegment } from "@/lib/siteSegments";
 
 export const dynamic = "force-dynamic";
@@ -34,23 +34,32 @@ export async function GET(request: Request, { params }: RouteContext) {
   }
 
   const contentTypeParam = new URL(request.url).searchParams.get("contentType");
-  const contentType = contentTypeParam === "tl" || contentTypeParam === "bl"
+  const contentType: "tl" | "bl" | undefined = contentTypeParam === "tl" || contentTypeParam === "bl"
     ? contentTypeParam
     : undefined;
 
-  const points = await getSellerTrendPoints({
+  const sellerFilter = {
     platform: segment.platform,
     audience: segment.audience,
     category: segment.category,
     sellerKey: normalizedSellerKey,
     contentType,
-  }, parseDays(request));
+  };
+  const summary = await getSellerSummaryByKey(sellerFilter);
+  if (!summary) {
+    return NextResponse.json(
+      { message: "seller not found" },
+      { status: 404, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
+  const points = await getSellerTrendPoints(sellerFilter, parseDays(request));
 
   return NextResponse.json(
     { points },
     {
       headers: {
-        "Cache-Control": "public, max-age=60, s-maxage=300, stale-while-revalidate=3600",
+        "Cache-Control": "public, max-age=60, s-maxage=300, must-revalidate",
       },
     },
   );

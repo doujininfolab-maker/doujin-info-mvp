@@ -14,6 +14,7 @@ import type {
   RankingListViewVersionDocument,
 } from "../types";
 import { getAdminDb } from "./admin";
+import { filterPublicProducts } from "./contentVisibility";
 
 const RANKING_LIST_VIEWS_COLLECTION = "rankingListViews";
 const LISTS_SUBCOLLECTION = "rankingListViewLists";
@@ -311,7 +312,7 @@ async function loadPageFromVersion(
   }
 
   return {
-    products,
+    products: await filterPublicProducts(products, { requireMaterializedActive: false }),
     totalCount: metadata.itemCount,
     listId,
     versionId,

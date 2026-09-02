@@ -595,7 +595,14 @@ export type Product = {
   latestRankings?: RankingSummary[];
   sourceRankings?: SourceRankingEntry[];
 
+  sourceIsActive?: boolean;
   isActive: boolean;
+  visibility?: {
+    status: "visible" | "hidden";
+    blockers: Array<"product" | "seller" | "source">;
+    controlRevision: number;
+    evaluatedAt: FirestoreTimestampLike | string;
+  };
   fetchStatus: FetchStatus;
 
   lastFetchedAt?: FirestoreTimestampLike | string;

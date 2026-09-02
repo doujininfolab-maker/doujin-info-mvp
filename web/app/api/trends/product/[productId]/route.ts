@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProductTrendPoints } from "@/lib/firebase/products";
+import { getProductById, getProductTrendPoints } from "@/lib/firebase/products";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +22,20 @@ export async function GET(request: Request, { params }: RouteContext) {
     return NextResponse.json({ message: "productId is required" }, { status: 400 });
   }
 
+  const product = await getProductById(normalizedProductId);
+  if (!product) {
+    return NextResponse.json(
+      { message: "product not found" },
+      { status: 404, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   const points = await getProductTrendPoints(normalizedProductId, parseDays(request));
   return NextResponse.json(
     { points },
     {
       headers: {
-        "Cache-Control": "public, max-age=60, s-maxage=300, stale-while-revalidate=3600",
+        "Cache-Control": "public, max-age=60, s-maxage=300, must-revalidate",
       },
     },
   );

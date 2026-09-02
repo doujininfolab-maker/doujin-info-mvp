@@ -36,6 +36,7 @@ import {
   writesLegacyMetrics,
   writesMetricYears,
 } from "../firestore/productMetricHistory";
+import { applyContentVisibility } from "../visibility/contentVisibility";
 
 const FIRESTORE_BATCH_WRITE_LIMIT = 400;
 const DEFAULT_ORDER_LIMIT = 5000;
@@ -690,11 +691,11 @@ async function saveProductAndMetric(params: {
             : undefined,
         calculatedAt,
       });
-  const productToSave = buildProductForSave({
+  const productToSave = await applyContentVisibility(buildProductForSave({
     ...params.product,
     ...delta.productPatch,
     ...(rankingState ?? {}),
-  });
+  }));
 
   await params.writeBuffer.set(productRef, productToSave, { merge: true });
   const metric = buildMetric(params.product, params.metricDate, delta.metricPatch);

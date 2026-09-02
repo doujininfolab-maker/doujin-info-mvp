@@ -14,6 +14,13 @@ import { getSaleListViewPage } from "./saleListView";
 import { getHomeDashboardListView } from "./homeDashboardListView";
 import { getCompactSearchIndexRows } from "./compactSearchIndex";
 import { getSearchIndexReadMode } from "./searchIndexReadMode";
+import {
+  filterPublicProducts,
+  filterPublicProductReferences,
+  filterPublicSellers,
+  isProductPublic,
+  isSellerPublic,
+} from "./contentVisibility";
 import { BoundedTtlCache } from "../cache/boundedTtlCache";
 import {
   loadProductMetricRange,
@@ -171,14 +178,18 @@ async function getConfiguredSearchIndexCandidates(
 ): Promise<SearchProductCandidate[] | undefined> {
   if (getSearchIndexReadMode() === "compact") {
     const compact = await getCompactSearchIndexRows(filter);
-    if (compact) return compact;
+    if (compact) return filterPublicProductReferences(compact.map((row) => ({
+      row,
+      productId: candidateProductId(row),
+    }))).then((items) => items.map((item) => item.row));
     console.error("Compact search index unavailable; using legacy search index", {
       platform: filter.platform,
       audience: filter.audience,
       category: filter.category,
     });
   }
-  return getSearchIndexCandidates(filter);
+  const legacy = await getSearchIndexCandidates(filter);
+  return legacy ? filterPublicProductReferences(legacy) : undefined;
 }
 
 const JST_TIME_ZONE = "Asia/Tokyo";
@@ -406,8 +417,8 @@ async function getEstimatedRevenueProducts(filter: ProductListFilter): Promise<P
 
   const snapshot = await query.limit(queryLimitForFilter(filter, Math.max((filter.limitCount ?? 24) * 8, 300))).get();
   const products = snapshot.docs.map((doc) => toProduct(doc.id, doc.data()));
-
-  return postFilterProducts(sortProductsByEstimatedRevenue(products), filter);
+  const publicProducts = await filterPublicProducts(products);
+  return postFilterProducts(sortProductsByEstimatedRevenue(publicProducts), filter);
 }
 
 function queryLimitForFilter(filter: ProductListFilter, fallback: number): number {
@@ -438,8 +449,8 @@ export async function getPopularProducts(
 
   const snapshot = await query.limit(queryLimitForFilter(filter, filter.limitCount ?? 24)).get();
   const products = snapshot.docs.map((doc) => toProduct(doc.id, doc.data()));
-
-  return needsPostFilter ? postFilterProducts(products, filter) : products;
+  const publicProducts = await filterPublicProducts(products);
+  return needsPostFilter ? postFilterProducts(publicProducts, filter) : publicProducts;
 }
 
 
@@ -533,7 +544,8 @@ async function getNewProductsLegacy(
   if (!needsPostFilter) query = query.offset(filter.offsetCount ?? 0);
   const snapshot = await query.limit(queryLimitForFilter(filter, filter.limitCount ?? 24)).get();
   const products = snapshot.docs.map((doc) => toProduct(doc.id, doc.data()));
-  return needsPostFilter ? postFilterProducts(products, filter) : products;
+  const publicProducts = await filterPublicProducts(products);
+  return needsPostFilter ? postFilterProducts(publicProducts, filter) : publicProducts;
 }
 
 function getCardImageForComparison(product: ProductCardItem): string {
@@ -758,6 +770,7 @@ async function getSaleProductsLegacy(
     )
     .get();
   let products = snapshot.docs.map((doc) => toProduct(doc.id, doc.data()));
+  products = await filterPublicProducts(products);
   if (needsPostFilter) {
     products = products.filter((product) =>
       matchesProductListFilter(product, filter),
@@ -983,8 +996,8 @@ export async function getHomeRandomNewProducts(
   const products = snapshot.docs
     .map((doc) => toProduct(doc.id, doc.data()))
     .filter((product) => matchesProductListFilter(product, filter));
-
-  return pickRandomTopSalesProducts(products, filter, filter.topSalesLimit ?? 30);
+  const publicProducts = await filterPublicProducts(products);
+  return pickRandomTopSalesProducts(publicProducts, filter, filter.topSalesLimit ?? 30);
 }
 
 
@@ -1010,8 +1023,8 @@ export async function getHomeRandomRecentAddedProducts(
   const products = snapshot.docs
     .map((doc) => toProduct(doc.id, doc.data()))
     .filter((product) => matchesProductListFilter(product, filter));
-
-  return pickRandomTopSalesProducts(products, filter, filter.topSalesLimit ?? 30).slice(0, filter.limitCount ?? 5);
+  const publicProducts = await filterPublicProducts(products);
+  return pickRandomTopSalesProducts(publicProducts, filter, filter.topSalesLimit ?? 30).slice(0, filter.limitCount ?? 5);
 }
 
 export async function getHomeRandomSaleProducts(
@@ -1034,8 +1047,8 @@ export async function getHomeRandomSaleProducts(
   const products = snapshot.docs
     .map((doc) => toProduct(doc.id, doc.data()))
     .filter((product) => matchesProductListFilter(product, filter));
-
-  return pickRandomTopSalesProducts(products, filter, filter.topSalesLimit ?? 30);
+  const publicProducts = await filterPublicProducts(products);
+  return pickRandomTopSalesProducts(publicProducts, filter, filter.topSalesLimit ?? 30);
 }
 
 export async function getProductsByGenre(
@@ -1059,8 +1072,8 @@ export async function getProductsByGenre(
 
   const snapshot = await query.limit(queryLimitForFilter(filter, filter.limitCount ?? 24)).get();
   const products = snapshot.docs.map((doc) => toProduct(doc.id, doc.data()));
-
-  return needsPostFilter ? postFilterProducts(products, filter) : products;
+  const publicProducts = await filterPublicProducts(products);
+  return needsPostFilter ? postFilterProducts(publicProducts, filter) : publicProducts;
 }
 
 type SellerProductFilter = ProductListFilter & { maxProducts?: number };
@@ -1087,7 +1100,8 @@ async function getProductsBySellerField(
 
   const snapshot = await query.get();
   const products = snapshot.docs.map((doc) => toProduct(doc.id, doc.data()));
-  return shouldPostFilter(filter) ? products.filter((product) => matchesProductListFilter(product, filter)) : products;
+  const publicProducts = await filterPublicProducts(products);
+  return shouldPostFilter(filter) ? publicProducts.filter((product) => matchesProductListFilter(product, filter)) : publicProducts;
 }
 
 async function getProductsBySellerKey(filter: SellerProductFilter & { sellerKey: string }): Promise<Product[]> {
@@ -1148,7 +1162,8 @@ export async function getProductById(
     return null;
   }
 
-  return toProduct(snapshot.id, snapshot.data() ?? {});
+  const product = toProduct(snapshot.id, snapshot.data() ?? {});
+  return await isProductPublic(product) ? product : null;
 }
 
 
@@ -1432,7 +1447,8 @@ async function getProductsByIds(productIds: string[]): Promise<Product[]> {
 
   const order = new Map(productIds.map((id, index) => [id, index]));
 
-  return products.sort(
+  const publicProducts = await filterPublicProducts(products);
+  return publicProducts.sort(
     (a, b) =>
       (order.get(a.productId) ?? 9999) -
       (order.get(b.productId) ?? 9999),
@@ -1991,7 +2007,7 @@ export async function getGenreRankingItems(
         : rankingMode === "cumulative"
           ? "cumulative"
           : "daily";
-    const items = indexed.entries.map((entry) => {
+    const items = await Promise.all(indexed.entries.map(async (entry) => {
       const metrics = entry[period];
       return {
         rank: 0,
@@ -2000,9 +2016,9 @@ export async function getGenreRankingItems(
         productCount: metrics.productCount,
         totalSalesCount: metrics.salesCount,
         estimatedRevenue: metrics.revenue,
-        topProducts: entry.topProducts[period],
+        topProducts: await filterPublicProductReferences(entry.topProducts[period]),
       } satisfies GenreRankingItem;
-    });
+    }));
     const sorted = sortGenreRankingItems(items, rankingMode, sortMode);
     const offset = filter.offsetCount ?? 0;
     return sorted.slice(offset, offset + (filter.limitCount ?? 30));
@@ -2073,7 +2089,8 @@ async function getProductsForSellerAggregation(
     .get();
 
   const products = snapshot.docs.map((doc) => toProduct(doc.id, doc.data()));
-  return shouldPostFilter(filter) ? products.filter((product) => matchesProductListFilter(product, filter)) : products;
+  const publicProducts = await filterPublicProducts(products);
+  return shouldPostFilter(filter) ? publicProducts.filter((product) => matchesProductListFilter(product, filter)) : publicProducts;
 }
 
 function buildSellerSummaries(products: Product[]): SellerSummary[] {
@@ -2308,12 +2325,14 @@ export async function getSellerSummaries(
       .filter((summary) => matchesSellerSummaryQuery(summary, normalizedSellerQuery))
       .sort(compareSellerSummaries(sortMode));
     const offset = filter.offsetCount ?? 0;
-    return summaries.slice(offset, offset + (filter.limitCount ?? 30));
+    return filterPublicSellers(
+      summaries.slice(offset, offset + (filter.limitCount ?? 30)),
+    );
   }
 
   const aggregatedSummaries = await getSellerSummariesFromStats(filter);
   if (aggregatedSummaries !== undefined) {
-    return aggregatedSummaries;
+    return filterPublicSellers(aggregatedSummaries);
   }
 
   const products = await getProductsForSellerAggregation(filter);
@@ -2322,10 +2341,10 @@ export async function getSellerSummaries(
     .filter((summary) => matchesSellerSummaryQuery(summary, normalizedSellerQuery))
     .sort(compareSellerSummaries(sortMode));
 
-  return summaries.slice(
+  return filterPublicSellers(summaries.slice(
     filter.offsetCount ?? 0,
     (filter.offsetCount ?? 0) + (filter.limitCount ?? 30),
-  );
+  ));
 }
 
 function getSellerCardImageForComparison(
@@ -2525,6 +2544,9 @@ export async function getSellerSummaryByKey(
 ): Promise<SellerSummary | null> {
   const decodedKey = decodeURIComponent(filter.sellerKey).trim();
   if (!decodedKey) return null;
+  if (!(await isSellerPublic({ platform: filter.platform, sellerId: decodedKey }))) {
+    return null;
+  }
 
   if (getSellerDetailReadMode() === "stats") {
     const statId = buildSellerStatsScopeId(filter);
@@ -2540,18 +2562,19 @@ export async function getSellerSummaryByKey(
       const products = summary.sellerId
         ? await getProductsBySellerField("seller.sellerId", summary.sellerId, filter)
         : await getProductsBySellerField("seller.sellerName", summary.sellerName, filter);
-      return { ...summary, products };
+      return await isSellerPublic(summary) ? { ...summary, products } : null;
     }
 
     // Old name-based URLs or a missing/stale aggregate remain functional without
     // loading the whole seller index into the App Hosting process.
     const products = await getProductsBySellerKey(filter);
     const summaries = buildSellerSummaries(products);
-    return summaries.find((summary) =>
+    const summary = summaries.find((summary) =>
       summary.sellerKey === decodedKey ||
       summary.sellerName === decodedKey ||
       summary.sellerId === decodedKey,
     ) ?? summaries[0] ?? null;
+    return summary && await isSellerPublic(summary) ? summary : null;
   }
 
   const indexedItems = await getSellerIndexItems(filter);
@@ -2562,13 +2585,17 @@ export async function getSellerSummaryByKey(
     );
     if (item) {
       const products = await getProductsByIds(item.productIdsByReleaseDate);
-      return { ...toSellerSummaryFromIndex(item), products };
+      const summary = toSellerSummaryFromIndex(item);
+      return await isSellerPublic(summary) ? { ...summary, products } : null;
     }
   }
 
   const products = await getProductsBySellerKey(filter);
   const summaries = buildSellerSummaries(products);
-  return summaries.find((summary) => summary.sellerKey === decodedKey || summary.sellerName === decodedKey) ?? summaries[0] ?? null;
+  const summary = summaries.find((candidate) =>
+    candidate.sellerKey === decodedKey || candidate.sellerName === decodedKey
+  ) ?? summaries[0] ?? null;
+  return summary && await isSellerPublic(summary) ? summary : null;
 }
 
 
@@ -2703,6 +2730,7 @@ export async function getHomeDashboardData(
     statId: snapshot.id,
   };
   const normalized = normalizeSiteStats(siteStats);
+  normalized.circleHighlights = await filterPublicSellers(normalized.circleHighlights);
   const rankingWorkType = filter.workType ?? "all";
   const cachedProductIds = getHomeDailyRankingProductIds(
     siteStats,
@@ -2831,6 +2859,7 @@ async function getLegacyHomeDashboardPageData(
     statId: statsSnapshot.id,
   };
   const normalized = normalizeSiteStats(siteStats);
+  normalized.circleHighlights = await filterPublicSellers(normalized.circleHighlights);
   const homeView = homeViewSnapshot.data() as HomeDashboardViewDocument;
   const rankingWorkType = filter.rankingWorkType ?? "all";
   const newWorkType = filter.newWorkType ?? "all";

@@ -9,6 +9,7 @@ import type {
 
 const RANKING_INDEXES_COLLECTION = "rankingIndexes";
 const RANKING_INDEX_CACHE_TTL_MS = 60_000;
+const RANKING_INDEX_CACHE_MAX_ENTRIES = 32;
 
 type RankingIndexResult = {
   sourceDate?: string;
@@ -105,6 +106,8 @@ export async function getRankingIndexEntries(
   const cacheKey = `${buildSegmentId(filter)}:${buildListId(filter, rankingMode)}`;
   const cached = rankingIndexCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
+    rankingIndexCache.delete(cacheKey);
+    rankingIndexCache.set(cacheKey, cached);
     return cached.value ?? undefined;
   }
 
@@ -117,6 +120,11 @@ export async function getRankingIndexEntries(
         value: value ?? null,
         expiresAt: Date.now() + RANKING_INDEX_CACHE_TTL_MS,
       });
+      while (rankingIndexCache.size > RANKING_INDEX_CACHE_MAX_ENTRIES) {
+        const oldest = rankingIndexCache.keys().next().value as string | undefined;
+        if (!oldest) break;
+        rankingIndexCache.delete(oldest);
+      }
       return value;
     })
     .finally(() => {

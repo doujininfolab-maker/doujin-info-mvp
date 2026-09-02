@@ -21,6 +21,8 @@ const BLOCKS_SUBCOLLECTION = "sellerListViewBlocks";
 const SCHEMA_VERSION = 1;
 const MAX_COMPRESSED_BYTES = 700 * 1024;
 const MAX_UNCOMPRESSED_BYTES = 16 * 1024 * 1024;
+const SEARCH_CACHE_TTL_MS = 60_000;
+const SEARCH_CACHE_MAX_ENTRIES = 4;
 
 export type SellerListViewPageResult = {
   sellers: SellerCardItem[];
@@ -41,6 +43,44 @@ type VersionMetadata = {
   blocks: SellerListViewBlockDescriptor[];
   sourceSellerVersionId: string;
 };
+
+type SearchCacheEntry = {
+  versionId: string;
+  sourceSellerVersionId: string;
+  usedPreviousVersion: boolean;
+  sellers: SellerCardItem[];
+  expiresAt: number;
+};
+
+const searchCache = new Map<string, SearchCacheEntry>();
+const searchLoading = new Map<string, Promise<SellerListViewPageResult | undefined>>();
+
+function setSearchCache(key: string, entry: SearchCacheEntry): void {
+  searchCache.delete(key);
+  searchCache.set(key, entry);
+  while (searchCache.size > SEARCH_CACHE_MAX_ENTRIES) {
+    const oldest = searchCache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    searchCache.delete(oldest);
+  }
+}
+
+function normalizeSellerSearchText(value?: string): string {
+  return (value ?? "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+function sellerMatchesQuery(
+  seller: SellerCardItem,
+  normalizedQuery: string,
+): boolean {
+  return [seller.sellerName, seller.sellerKey, seller.sellerId].some((value) =>
+    normalizeSellerSearchText(value).includes(normalizedQuery),
+  );
+}
 
 function buildSegmentId(
   filter: Pick<ProductListFilter, "platform" | "audience" | "category">,
@@ -426,4 +466,74 @@ export async function getSellerListViewPage(
     });
     return undefined;
   }
+}
+
+/**
+ * Name search reuses the already generated, sorted seller list instead of
+ * loading the much larger seller index (including product ID arrays). The
+ * bounded cache prevents query variants from retaining duplicate datasets.
+ */
+export async function getSellerListViewSearchPage(
+  filter: ProductListFilter,
+  sortMode: SellerSortMode,
+): Promise<SellerListViewPageResult | undefined> {
+  const normalizedQuery = normalizeSellerSearchText(filter.sellerQuery);
+  if (!normalizedQuery) return getSellerListViewPage(filter, sortMode);
+
+  const segment = buildSegmentId(filter);
+  const list = buildListId(contentScopeForFilter(filter), sortMode);
+  const cacheKey = `${segment}:${list}`;
+  const now = Date.now();
+  let fullPage: SellerListViewPageResult | undefined;
+  const cached = searchCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > now) {
+    searchCache.delete(cacheKey);
+    searchCache.set(cacheKey, cached);
+    fullPage = {
+      sellers: cached.sellers,
+      totalCount: cached.sellers.length,
+      segmentId: segment,
+      listId: list,
+      versionId: cached.versionId,
+      sourceSellerVersionId: cached.sourceSellerVersionId,
+      usedPreviousVersion: cached.usedPreviousVersion,
+      blockIds: [],
+      firestoreReadEstimate: 0,
+    };
+  } else {
+    if (cached) searchCache.delete(cacheKey);
+    const inFlight = searchLoading.get(cacheKey);
+    if (inFlight) {
+      fullPage = await inFlight;
+    } else {
+      const loadPromise = getSellerListViewPage(
+        { ...filter, offsetCount: 0, limitCount: Number.MAX_SAFE_INTEGER },
+        sortMode,
+      ).finally(() => searchLoading.delete(cacheKey));
+      searchLoading.set(cacheKey, loadPromise);
+      fullPage = await loadPromise;
+      if (fullPage) {
+        setSearchCache(cacheKey, {
+          versionId: fullPage.versionId,
+          sourceSellerVersionId: fullPage.sourceSellerVersionId,
+          usedPreviousVersion: fullPage.usedPreviousVersion,
+          sellers: fullPage.sellers,
+          expiresAt: Date.now() + SEARCH_CACHE_TTL_MS,
+        });
+      }
+    }
+  }
+
+  if (!fullPage) return undefined;
+  const matching = fullPage.sellers.filter((seller) =>
+    sellerMatchesQuery(seller, normalizedQuery),
+  );
+  const offset = Math.max(0, filter.offsetCount ?? 0);
+  const limit = Math.max(0, filter.limitCount ?? 30);
+  return {
+    ...fullPage,
+    sellers: matching.slice(offset, offset + limit),
+    totalCount: matching.length,
+  };
 }

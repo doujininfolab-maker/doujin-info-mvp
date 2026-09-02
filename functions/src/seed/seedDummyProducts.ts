@@ -3,7 +3,14 @@ import { logger } from "firebase-functions";
 import { db } from "../firebaseAdmin";
 import { buildRankItemId, buildRankingKey, buildSnapshotId, nowTimestamp, toYyyyMMdd } from "../util";
 import { buildDummyProducts, buildDummySellers, buildDummyTaxonomies } from "./dummyProducts";
-import type { RankingSnapshot, RankingSnapshotItem } from "../types";
+import type { ProductDailyMetric, RankingSnapshot, RankingSnapshotItem } from "../types";
+import {
+  buildMetricYearMutations,
+  getMetricHistoryWriteMode,
+  metricYearRef,
+  writesLegacyMetrics,
+  writesMetricYears,
+} from "../firestore/productMetricHistory";
 
 function isEmulator(): boolean {
   return process.env.FUNCTIONS_EMULATOR === "true" || process.env.FIRESTORE_EMULATOR_HOST != null;
@@ -42,30 +49,35 @@ export const seedDummyProducts = onRequest(
     const capturedAt = nowTimestamp();
 
     const batch = db.batch();
+    const historyMode = getMetricHistoryWriteMode();
 
     for (const product of products) {
       const productRef = db.collection("products").doc(product.productId);
       batch.set(productRef, product, { merge: true });
-      batch.set(
-        productRef.collection("dailyMetrics").doc(date),
-        {
-          date,
-          platform: product.platform,
-          audience: product.audience,
-          category: product.category,
-          priceCurrent: product.priceCurrent,
-          priceOriginal: product.priceOriginal,
-          discountRate: product.discountRate,
-          isDiscounted: product.isDiscounted,
-          salesCount: product.salesCount,
-          wishlistCount: product.wishlistCount,
-          rating: product.rating,
-          ratingAverage: product.ratingAverage,
-          reviewCount: product.reviewCount,
-          fetchedAt: capturedAt,
-        },
-        { merge: true },
-      );
+      const metric: ProductDailyMetric = {
+        date,
+        platform: product.platform,
+        audience: product.audience,
+        category: product.category,
+        priceCurrent: product.priceCurrent,
+        priceOriginal: product.priceOriginal,
+        discountRate: product.discountRate,
+        isDiscounted: product.isDiscounted,
+        salesCount: product.salesCount,
+        wishlistCount: product.wishlistCount,
+        rating: product.rating,
+        ratingAverage: product.ratingAverage,
+        reviewCount: product.reviewCount,
+        fetchedAt: capturedAt,
+      };
+      if (writesLegacyMetrics(historyMode)) {
+        batch.set(productRef.collection("dailyMetrics").doc(date), metric, { merge: true });
+      }
+      if (writesMetricYears(historyMode)) {
+        for (const mutation of buildMetricYearMutations(product, [{ date, metric }])) {
+          batch.set(metricYearRef(productRef, mutation.year), mutation.data, { merge: true });
+        }
+      }
     }
 
     for (const taxonomy of taxonomies) {

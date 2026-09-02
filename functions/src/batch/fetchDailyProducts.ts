@@ -22,6 +22,13 @@ import {
   sleep,
   toYyyyMMdd,
 } from "../util";
+import {
+  buildMetricYearMutations,
+  getMetricHistoryWriteMode,
+  metricYearRef,
+  writesLegacyMetrics,
+  writesMetricYears,
+} from "../firestore/productMetricHistory";
 
 export type FetchDailyProductsOptions = {
   targets: FetchTarget[];
@@ -104,7 +111,16 @@ function buildMetric(product: Product, date: string): ProductDailyMetric {
 async function saveProductAndMetric(product: Product, date: string): Promise<void> {
   const productRef = db.collection("products").doc(product.productId);
   await productRef.set(product, { merge: true });
-  await productRef.collection("dailyMetrics").doc(date).set(buildMetric(product, date), { merge: true });
+  const metric = buildMetric(product, date);
+  const historyMode = getMetricHistoryWriteMode();
+  if (writesLegacyMetrics(historyMode)) {
+    await productRef.collection("dailyMetrics").doc(date).set(metric, { merge: true });
+  }
+  if (writesMetricYears(historyMode)) {
+    for (const mutation of buildMetricYearMutations(product, [{ date, metric }])) {
+      await metricYearRef(productRef, mutation.year).set(mutation.data, { merge: true });
+    }
+  }
 }
 
 async function saveRankingSnapshot(params: {

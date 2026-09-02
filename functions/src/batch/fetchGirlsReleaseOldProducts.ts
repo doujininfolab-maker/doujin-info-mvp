@@ -20,6 +20,13 @@ import type {
   ProductParseMode,
 } from "../adapters/types";
 import { createRunId, nowTimestamp, sleep, toYyyyMMdd } from "../util";
+import {
+  buildMetricYearMutations,
+  getMetricHistoryWriteMode,
+  metricYearRef,
+  writesLegacyMetrics,
+  writesMetricYears,
+} from "../firestore/productMetricHistory";
 
 const DISCOVERY_COLLECTION = "productDiscoveries";
 const FIRESTORE_BATCH_LIMIT = 400;
@@ -807,34 +814,49 @@ async function enqueueProductAndMetricWrites(
       merge: true,
     }),
   );
-  addAutoFlushResult(
-    await writeBuffer.set(
-      productRef.collection("dailyMetrics").doc(date),
-      buildMetric(product, date, dailySalesDelta?.currentMetricPatch),
-      { merge: true },
-    ),
-  );
-
-  let previousMetricWriteCount = 0;
-  if (
-    dailySalesDelta?.previousMetricDate &&
-    dailySalesDelta.previousMetricPatch
-  ) {
-    addAutoFlushResult(
-      await writeBuffer.set(
-        productRef
-          .collection("dailyMetrics")
-          .doc(dailySalesDelta.previousMetricDate),
-        dailySalesDelta.previousMetricPatch,
-        { merge: true },
-      ),
-    );
-    previousMetricWriteCount = 1;
+  const currentMetric = buildMetric(product, date, dailySalesDelta?.currentMetricPatch);
+  const historyEntries = [
+    { date, metric: currentMetric },
+    ...(dailySalesDelta?.previousMetricDate && dailySalesDelta.previousMetricPatch
+      ? [{
+          date: dailySalesDelta.previousMetricDate,
+          metric: dailySalesDelta.previousMetricPatch,
+        }]
+      : []),
+  ];
+  const historyMode = getMetricHistoryWriteMode();
+  let historyWriteCount = 0;
+  if (writesLegacyMetrics(historyMode)) {
+    for (const entry of historyEntries) {
+      addAutoFlushResult(
+        await writeBuffer.set(
+          productRef.collection("dailyMetrics").doc(entry.date),
+          entry.metric,
+          { merge: true },
+        ),
+      );
+      historyWriteCount += 1;
+    }
   }
+  if (writesMetricYears(historyMode)) {
+    // 当日と前日が同一年なら、同一ドキュメントへの更新を1 Writeへ統合する。
+    for (const mutation of buildMetricYearMutations(product, historyEntries)) {
+      addAutoFlushResult(
+        await writeBuffer.set(
+          metricYearRef(productRef, mutation.year),
+          mutation.data,
+          { merge: true },
+        ),
+      );
+      historyWriteCount += 1;
+    }
+  }
+
+  const previousMetricWriteCount = historyEntries.length > 1 ? 1 : 0;
 
   return {
     writeCount: 1,
-    dailyMetricWriteCount: 1 + previousMetricWriteCount,
+    dailyMetricWriteCount: historyWriteCount,
     dailySalesPreviousMetricWriteCount: previousMetricWriteCount,
     dailySalesDeltaStats: dailySalesDelta?.stats ?? emptyStats,
     dailySalesDeltaCalcElapsedMs,

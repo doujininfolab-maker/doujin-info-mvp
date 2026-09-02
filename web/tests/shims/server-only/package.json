@@ -1,0 +1,6 @@
+{
+  "name": "server-only",
+  "version": "0.0.0-local-test",
+  "main": "index.js",
+  "private": true
+}

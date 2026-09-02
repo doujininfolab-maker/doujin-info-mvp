@@ -10,6 +10,7 @@ import { getAdminDb } from "./admin";
 const SEARCH_INDEXES_COLLECTION = "searchIndexes";
 const SEARCH_INDEX_SCHEMA_VERSION = 2;
 const SEARCH_INDEX_CACHE_TTL_MS = 60_000;
+const SEARCH_INDEX_CACHE_MAX_ENTRIES = 2;
 
 type SearchIndexCacheEntry = {
   activeVersion: string;
@@ -52,11 +53,15 @@ async function loadSearchIndex(
     return undefined;
   }
 
-  const cached = searchIndexCache.get(segmentId);
-  if (cached?.activeVersion === root.activeVersion) {
-    cached.expiresAt = Date.now() + SEARCH_INDEX_CACHE_TTL_MS;
-    return cached.candidates;
+  if (searchIndexCache.get(segmentId)?.activeVersion === root.activeVersion) {
+    const current = searchIndexCache.get(segmentId)!;
+    current.expiresAt = Date.now() + SEARCH_INDEX_CACHE_TTL_MS;
+    searchIndexCache.delete(segmentId);
+    searchIndexCache.set(segmentId, current);
+    return current.candidates;
   }
+  // Release the stale version before fetching and decoding its replacement.
+  searchIndexCache.delete(segmentId);
 
   const versionRef = rootRef.collection("versions").doc(root.activeVersion);
   const versionSnapshot = await versionRef.get();
@@ -138,6 +143,11 @@ async function loadSearchIndex(
     candidates,
     expiresAt: Date.now() + SEARCH_INDEX_CACHE_TTL_MS,
   });
+  while (searchIndexCache.size > SEARCH_INDEX_CACHE_MAX_ENTRIES) {
+    const oldest = searchIndexCache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    searchIndexCache.delete(oldest);
+  }
   return candidates;
 }
 

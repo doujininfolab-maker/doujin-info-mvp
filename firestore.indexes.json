@@ -597,6 +597,26 @@
       "collectionGroup": "dailyMetrics",
       "fieldPath": "ratingBreakdown",
       "indexes": []
+    },
+    {
+      "collectionGroup": "metricYears",
+      "fieldPath": "*",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "compactSearchIndexBlocks",
+      "fieldPath": "*",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "compactSearchIndexVersions",
+      "fieldPath": "blocks",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "compactSearchIndexes",
+      "fieldPath": "blocks",
+      "indexes": []
     }
   ]
 }

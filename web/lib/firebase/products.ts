@@ -6,9 +6,25 @@ import { getSellerIndexItems } from "./sellerIndex";
 import { getRankingIndexEntries } from "./rankingIndex";
 import { getListViewMode, getNewListViewPage } from "./newListView";
 import { getRankingListViewPage } from "./rankingListView";
-import { getSellerListViewPage } from "./sellerListView";
+import {
+  getSellerListViewPage,
+  getSellerListViewSearchPage,
+} from "./sellerListView";
 import { getSaleListViewPage } from "./saleListView";
 import { getHomeDashboardListView } from "./homeDashboardListView";
+import { getCompactSearchIndexRows } from "./compactSearchIndex";
+import { getSearchIndexReadMode } from "./searchIndexReadMode";
+import { BoundedTtlCache } from "../cache/boundedTtlCache";
+import {
+  loadProductMetricRange,
+  loadProductMetricRanges,
+} from "./productMetricHistory";
+import {
+  buildSellerStatsDocumentId,
+  buildSellerStatsScopeId,
+  getSellerDetailReadMode,
+  matchesSellerStatsDocument,
+} from "./sellerDetailRead";
 import type {
   HomeDailyRankingProductIds,
   HomeDashboardViewDocument,
@@ -30,6 +46,7 @@ import type {
   RankingSnapshot,
   RankingSnapshotItem,
   RankingType,
+  CompactSearchIndexRow,
   SearchIndexItem,
   SellerStatsDocument,
   SellerCardItem,
@@ -42,6 +59,127 @@ const PRODUCTS_COLLECTION = "products";
 const RANKING_SNAPSHOTS_COLLECTION = "rankingSnapshots";
 const SITE_STATS_COLLECTION = "siteStats";
 const SELLERS_COLLECTION = "sellers";
+
+type SearchProductCandidate = SearchIndexItem | CompactSearchIndexRow;
+
+function isCompactSearchCandidate(
+  candidate: SearchProductCandidate,
+): candidate is CompactSearchIndexRow {
+  return Array.isArray(candidate);
+}
+
+function candidateProductId(candidate: SearchProductCandidate): string {
+  return isCompactSearchCandidate(candidate) ? candidate[0] : candidate.productId;
+}
+
+function candidateSourceProductId(candidate: SearchProductCandidate): string | undefined {
+  return isCompactSearchCandidate(candidate)
+    ? candidate[1] ?? undefined
+    : candidate.sourceProductId;
+}
+
+function candidateTitle(candidate: SearchProductCandidate): string | undefined {
+  return isCompactSearchCandidate(candidate) ? candidate[2] ?? undefined : candidate.title;
+}
+
+function candidateSellerName(candidate: SearchProductCandidate): string | undefined {
+  return isCompactSearchCandidate(candidate)
+    ? candidate[3] ?? undefined
+    : candidate.seller?.sellerName;
+}
+
+function candidateWorkType(candidate: SearchProductCandidate): string | undefined {
+  return isCompactSearchCandidate(candidate) ? candidate[4] ?? undefined : candidate.workType;
+}
+
+function candidateWorkTypeLabel(candidate: SearchProductCandidate): string | undefined {
+  return isCompactSearchCandidate(candidate)
+    ? candidate[5] ?? undefined
+    : candidate.workTypeLabel;
+}
+
+function candidateContentType(candidate: SearchProductCandidate): string | undefined {
+  return isCompactSearchCandidate(candidate)
+    ? candidate[6] ?? undefined
+    : candidate.contentType;
+}
+
+function candidateContentTypes(candidate: SearchProductCandidate): string[] {
+  return isCompactSearchCandidate(candidate) ? candidate[7] : candidate.contentTypes ?? [];
+}
+
+function candidateContentTypeIds(candidate: SearchProductCandidate): string[] {
+  return isCompactSearchCandidate(candidate) ? candidate[8] : candidate.contentTypeIds ?? [];
+}
+
+function candidateGenres(candidate: SearchProductCandidate): string[] {
+  return isCompactSearchCandidate(candidate) ? candidate[9] : candidate.genres ?? [];
+}
+
+function candidateTags(candidate: SearchProductCandidate): string[] {
+  return isCompactSearchCandidate(candidate) ? candidate[10] : candidate.tags ?? [];
+}
+
+function candidateGenreIds(candidate: SearchProductCandidate): string[] {
+  return isCompactSearchCandidate(candidate) ? candidate[11] : candidate.genreIds ?? [];
+}
+
+function candidateTagIds(candidate: SearchProductCandidate): string[] {
+  return isCompactSearchCandidate(candidate) ? candidate[12] : candidate.tagIds ?? [];
+}
+
+function candidateSalesCount(candidate: SearchProductCandidate): number | undefined {
+  return isCompactSearchCandidate(candidate) ? candidate[13] ?? undefined : candidate.salesCount;
+}
+
+function candidateRating(candidate: SearchProductCandidate): number | undefined {
+  return isCompactSearchCandidate(candidate) ? candidate[14] ?? undefined : candidate.rating;
+}
+
+function candidateRatingAverage(candidate: SearchProductCandidate): number | undefined {
+  return isCompactSearchCandidate(candidate)
+    ? candidate[15] ?? undefined
+    : candidate.ratingAverage;
+}
+
+function candidateReleaseDate(candidate: SearchProductCandidate): string | undefined {
+  return isCompactSearchCandidate(candidate)
+    ? candidate[16] ?? undefined
+    : candidate.releaseDate;
+}
+
+function candidateDiscountRate(candidate: SearchProductCandidate): number | undefined {
+  return isCompactSearchCandidate(candidate)
+    ? candidate[19] ?? undefined
+    : candidate.discountRate;
+}
+
+function candidateDiscountAmount(candidate: SearchProductCandidate): number | undefined {
+  return isCompactSearchCandidate(candidate)
+    ? candidate[20] ?? undefined
+    : candidate.discountAmount;
+}
+
+function candidateIsDiscounted(candidate: SearchProductCandidate): boolean {
+  return isCompactSearchCandidate(candidate)
+    ? candidate[21] === 1
+    : Boolean(candidate.isDiscounted);
+}
+
+async function getConfiguredSearchIndexCandidates(
+  filter: Pick<ProductListFilter, "platform" | "audience" | "category">,
+): Promise<SearchProductCandidate[] | undefined> {
+  if (getSearchIndexReadMode() === "compact") {
+    const compact = await getCompactSearchIndexRows(filter);
+    if (compact) return compact;
+    console.error("Compact search index unavailable; using legacy search index", {
+      platform: filter.platform,
+      audience: filter.audience,
+      category: filter.category,
+    });
+  }
+  return getSearchIndexCandidates(filter);
+}
 
 const JST_TIME_ZONE = "Asia/Tokyo";
 
@@ -305,21 +443,30 @@ export async function getPopularProducts(
 }
 
 
-function catalogCandidateMatchesFilter(candidate: SearchIndexItem, filter: ProductListFilter): boolean {
-  if (filter.workType && normalizeStoredWorkType(candidate as Product) !== filter.workType) return false;
+function catalogCandidateMatchesFilter(candidate: SearchProductCandidate, filter: ProductListFilter): boolean {
+  if (
+    filter.workType &&
+    normalizeStoredWorkType({
+      workType: candidateWorkType(candidate),
+      workTypeLabel: candidateWorkTypeLabel(candidate),
+    } as Product) !== filter.workType
+  ) return false;
   if (filter.contentType && !candidateHasContentType(candidate, filter.contentType)) return false;
-  if (filter.discountRateMin !== undefined && (candidate.discountRate ?? 0) < filter.discountRateMin) return false;
+  if (
+    filter.discountRateMin !== undefined &&
+    (candidateDiscountRate(candidate) ?? 0) < filter.discountRateMin
+  ) return false;
   return true;
 }
 
 async function getCatalogProductsPage(
   filter: ProductListFilter,
   options: {
-    predicate?: (candidate: SearchIndexItem) => boolean;
-    compare: (left: SearchIndexItem, right: SearchIndexItem) => number;
+    predicate?: (candidate: SearchProductCandidate) => boolean;
+    compare: (left: SearchProductCandidate, right: SearchProductCandidate) => number;
   },
 ): Promise<Product[] | undefined> {
-  const candidates = await getSearchIndexCandidates(filter);
+  const candidates = await getConfiguredSearchIndexCandidates(filter);
   if (!candidates) {
     console.warn("Product catalog index unavailable; using Firestore fallback", {
       platform: filter.platform,
@@ -337,34 +484,34 @@ async function getCatalogProductsPage(
     .filter((candidate) => options.predicate?.(candidate) ?? true)
     .sort(options.compare)
     .slice(offset, offset + limit)
-    .map((candidate) => candidate.productId);
+    .map(candidateProductId);
   return getProductsByIds(selectedIds);
 }
 
-function compareReleaseDateOnlyDesc(left: SearchIndexItem, right: SearchIndexItem): number {
-  return (right.releaseDate ?? "").localeCompare(left.releaseDate ?? "");
+function compareReleaseDateOnlyDesc(left: SearchProductCandidate, right: SearchProductCandidate): number {
+  return (candidateReleaseDate(right) ?? "").localeCompare(candidateReleaseDate(left) ?? "");
 }
 
-function compareReleaseDateDesc(left: SearchIndexItem, right: SearchIndexItem): number {
-  return compareReleaseDateOnlyDesc(left, right) || left.productId.localeCompare(right.productId);
+function compareReleaseDateDesc(left: SearchProductCandidate, right: SearchProductCandidate): number {
+  return compareReleaseDateOnlyDesc(left, right) || candidateProductId(left).localeCompare(candidateProductId(right));
 }
 
-function compareSaleCandidates(sortMode: SaleSortMode): (left: SearchIndexItem, right: SearchIndexItem) => number {
+function compareSaleCandidates(sortMode: SaleSortMode): (left: SearchProductCandidate, right: SearchProductCandidate) => number {
   if (sortMode === "discountAmount") {
     return (left, right) =>
-      (right.discountAmount ?? 0) - (left.discountAmount ?? 0) ||
-      (right.discountRate ?? 0) - (left.discountRate ?? 0) ||
+      (candidateDiscountAmount(right) ?? 0) - (candidateDiscountAmount(left) ?? 0) ||
+      (candidateDiscountRate(right) ?? 0) - (candidateDiscountRate(left) ?? 0) ||
       compareReleaseDateDesc(left, right);
   }
   if (sortMode === "newest") {
     return (left, right) =>
       compareReleaseDateOnlyDesc(left, right) ||
-      (right.discountRate ?? 0) - (left.discountRate ?? 0) ||
-      left.productId.localeCompare(right.productId);
+      (candidateDiscountRate(right) ?? 0) - (candidateDiscountRate(left) ?? 0) ||
+      candidateProductId(left).localeCompare(candidateProductId(right));
   }
   return (left, right) =>
-    (right.discountRate ?? 0) - (left.discountRate ?? 0) ||
-    (right.discountAmount ?? 0) - (left.discountAmount ?? 0) ||
+    (candidateDiscountRate(right) ?? 0) - (candidateDiscountRate(left) ?? 0) ||
+    (candidateDiscountAmount(right) ?? 0) - (candidateDiscountAmount(left) ?? 0) ||
     compareReleaseDateDesc(left, right);
 }
 
@@ -431,7 +578,7 @@ function toNewListComparable(product: ProductCardItem): Record<string, unknown> 
 async function getLegacyNewProductTotalCount(
   filter: ProductListFilter,
 ): Promise<number | undefined> {
-  const candidates = await getSearchIndexCandidates(filter);
+  const candidates = await getConfiguredSearchIndexCandidates(filter);
   if (!candidates) return undefined;
   return candidates.filter((candidate) =>
     catalogCandidateMatchesFilter(candidate, filter),
@@ -574,7 +721,7 @@ async function getSaleProductsLegacy(
   const sortMode = filter.sortMode ?? "discountRate";
   const indexed = await getCatalogProductsPage(filter, {
     predicate: (candidate) =>
-      Boolean(candidate.isDiscounted || (candidate.discountRate ?? 0) > 0),
+      Boolean(candidateIsDiscounted(candidate) || (candidateDiscountRate(candidate) ?? 0) > 0),
     compare: compareSaleCandidates(sortMode),
   });
   if (indexed) return indexed;
@@ -649,12 +796,12 @@ async function getSaleProductsLegacy(
 async function getLegacySaleProductTotalCount(
   filter: ProductListFilter,
 ): Promise<number | undefined> {
-  const candidates = await getSearchIndexCandidates(filter);
+  const candidates = await getConfiguredSearchIndexCandidates(filter);
   if (!candidates) return undefined;
   return candidates
     .filter((candidate) => catalogCandidateMatchesFilter(candidate, filter))
     .filter((candidate) =>
-      Boolean(candidate.isDiscounted || (candidate.discountRate ?? 0) > 0),
+      Boolean(candidateIsDiscounted(candidate) || (candidateDiscountRate(candidate) ?? 0) > 0),
     ).length;
 }
 
@@ -1012,35 +1159,30 @@ function isoDateToKey(value: string): string | undefined {
 
 
 const TREND_QUERY_CACHE_TTL_MS = 5 * 60 * 1000;
+const TREND_QUERY_CACHE_MAX_ENTRIES = 256;
 
-type TrendQueryCacheEntry = {
-  expiresAt: number;
-  points: ProductTrendPoint[];
-};
+const productTrendQueryCache = new BoundedTtlCache<ProductTrendPoint[]>({
+  maxEntries: TREND_QUERY_CACHE_MAX_ENTRIES,
+  ttlMs: TREND_QUERY_CACHE_TTL_MS,
+});
+const sellerTrendQueryCache = new BoundedTtlCache<ProductTrendPoint[]>({
+  maxEntries: TREND_QUERY_CACHE_MAX_ENTRIES,
+  ttlMs: TREND_QUERY_CACHE_TTL_MS,
+});
 
-const productTrendQueryCache = new Map<string, TrendQueryCacheEntry>();
-const sellerTrendQueryCache = new Map<string, TrendQueryCacheEntry>();
-
-function getCachedTrendPoints(cache: Map<string, TrendQueryCacheEntry>, key: string): ProductTrendPoint[] | undefined {
-  const cached = cache.get(key);
-  if (!cached) return undefined;
-  if (cached.expiresAt <= Date.now()) {
-    cache.delete(key);
-    return undefined;
-  }
-  return cached.points;
+function getCachedTrendPoints(
+  cache: BoundedTtlCache<ProductTrendPoint[]>,
+  key: string,
+): ProductTrendPoint[] | undefined {
+  return cache.get(key);
 }
 
 function setCachedTrendPoints(
-  cache: Map<string, TrendQueryCacheEntry>,
+  cache: BoundedTtlCache<ProductTrendPoint[]>,
   key: string,
   points: ProductTrendPoint[],
 ): ProductTrendPoint[] {
-  cache.set(key, {
-    expiresAt: Date.now() + TREND_QUERY_CACHE_TTL_MS,
-    points,
-  });
-  return points;
+  return cache.set(key, points);
 }
 
 function isoDateToUtcMs(value: string): number | undefined {
@@ -1164,31 +1306,28 @@ export async function getProductTrendPoints(productId: string, days = 365): Prom
   if (cached) return cached;
 
   const startDateKey = toJstDateKey(addDays(new Date(), -(normalizedDays - 1)));
-  const snapshot = await getAdminDb()
-    .collection(PRODUCTS_COLLECTION)
-    .doc(productId)
-    .collection("dailyMetrics")
-    .where("date", ">=", startDateKey)
-    .orderBy("date", "asc")
-    .get();
+  const endDateKey = toJstDateKey();
+  const loaded = await loadProductMetricRange(productId, startDateKey, endDateKey);
+  const metrics = loaded.metricsByProductId.get(productId) ?? new Map();
 
-  const points = snapshot.docs.flatMap((doc) => {
-    const metric = doc.data() as ProductDailyMetric;
-    const date = normalizeMetricDate(metric.date || doc.id);
-    const sales = getMetricSalesCount(metric);
-    const price = metric.priceCurrent ?? metric.priceOriginal ?? 0;
+  const points = [...metrics.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .flatMap(([metricDate, metric]) => {
+      const date = normalizeMetricDate(metric.date || metricDate);
+      const sales = getMetricSalesCount(metric);
+      const price = metric.priceCurrent ?? metric.priceOriginal ?? 0;
 
-    if (!date || sales === undefined || !isFiniteNumber(price)) {
-      return [];
-    }
+      if (!date || sales === undefined || !isFiniteNumber(price)) {
+        return [];
+      }
 
-    return [{
-      date,
-      sales,
-      revenue: sales * price,
-      price,
-    } satisfies ProductTrendPoint];
-  });
+      return [{
+        date,
+        sales,
+        revenue: sales * price,
+        price,
+      } satisfies ProductTrendPoint];
+    });
   return setCachedTrendPoints(productTrendQueryCache, cacheKey, points);
 }
 
@@ -1196,38 +1335,34 @@ export async function getAggregateTrendPointsForProducts(products: Product[], da
   if (products.length === 0) return [];
 
   const startDateKey = toJstDateKey(addDays(new Date(), -(Math.max(days, 1) - 1)));
+  const endDateKey = toJstDateKey();
   const trendByDate = new Map<string, { sales: number; revenue: number; priceSum: number; priceCount: number }>();
 
   for (let index = 0; index < products.length; index += 20) {
     const chunk = products.slice(index, index + 20);
 
-    await Promise.all(
-      chunk.map(async (product) => {
-        const snapshot = await getAdminDb()
-          .collection(PRODUCTS_COLLECTION)
-          .doc(product.productId)
-          .collection("dailyMetrics")
-          .where("date", ">=", startDateKey)
-          .orderBy("date", "asc")
-          .get();
-
-        for (const doc of snapshot.docs) {
-          const metric = doc.data() as ProductDailyMetric;
-          const date = normalizeMetricDate(metric.date || doc.id);
-          const sales = getMetricSalesCount(metric);
-          const price = metric.priceCurrent ?? metric.priceOriginal ?? product.priceCurrent ?? product.priceOriginal ?? 0;
-
-          if (!date || sales === undefined || !isFiniteNumber(price)) continue;
-
-          const current = trendByDate.get(date) ?? { sales: 0, revenue: 0, priceSum: 0, priceCount: 0 };
-          current.sales += sales;
-          current.revenue += sales * price;
-          current.priceSum += price;
-          current.priceCount += 1;
-          trendByDate.set(date, current);
-        }
-      }),
+    const loaded = await loadProductMetricRanges(
+      chunk.map((product) => product.productId),
+      startDateKey,
+      endDateKey,
     );
+    for (const product of chunk) {
+      const metrics = loaded.metricsByProductId.get(product.productId) ?? new Map();
+      for (const [metricDate, metric] of metrics) {
+        const date = normalizeMetricDate(metric.date || metricDate);
+        const sales = getMetricSalesCount(metric);
+        const price = metric.priceCurrent ?? metric.priceOriginal ?? product.priceCurrent ?? product.priceOriginal ?? 0;
+
+        if (!date || sales === undefined || !isFiniteNumber(price)) continue;
+
+        const current = trendByDate.get(date) ?? { sales: 0, revenue: 0, priceSum: 0, priceCount: 0 };
+        current.sales += sales;
+        current.revenue += sales * price;
+        current.priceSum += price;
+        current.priceCount += 1;
+        trendByDate.set(date, current);
+      }
+    }
   }
 
   return Array.from(trendByDate.entries())
@@ -1648,15 +1783,10 @@ function getMetricSalesCount(metric: ProductDailyMetric): number | undefined {
 }
 
 async function getRecentSalesCount(productId: string, startDateKey: string): Promise<number> {
-  const snapshot = await getAdminDb()
-    .collection(PRODUCTS_COLLECTION)
-    .doc(productId)
-    .collection("dailyMetrics")
-    .where("date", ">=", startDateKey)
-    .get();
-
-  return snapshot.docs.reduce((sum, doc) => {
-    const sales = getMetricSalesCount(doc.data() as ProductDailyMetric);
+  const loaded = await loadProductMetricRange(productId, startDateKey, toJstDateKey());
+  const metrics = loaded.metricsByProductId.get(productId) ?? new Map();
+  return [...metrics.values()].reduce((sum, metric) => {
+    const sales = getMetricSalesCount(metric);
     return sum + (sales ?? 0);
   }, 0);
 }
@@ -1917,6 +2047,17 @@ function compareDateDesc(a?: string, b?: string): number {
   return (b ?? "").localeCompare(a ?? "");
 }
 
+function compareSellerProductSalesDesc(a: Product, b: Product): number {
+  return (b.salesCount ?? 0) - (a.salesCount ?? 0)
+    || a.productId.localeCompare(b.productId);
+}
+
+function compareSellerProductReleaseDesc(a: Product, b: Product): number {
+  return compareDateDesc(a.releaseDate, b.releaseDate)
+    || (a.title ?? "").localeCompare(b.title ?? "", "ja")
+    || a.productId.localeCompare(b.productId);
+}
+
 async function getProductsForSellerAggregation(
   filter: ProductListFilter & { maxProducts?: number },
 ): Promise<Product[]> {
@@ -1947,8 +2088,8 @@ function buildSellerSummaries(products: Product[]): SellerSummary[] {
   }
 
   return Array.from(groups.entries()).map(([sellerKey, sellerProducts]) => {
-    const sortedBySales = [...sellerProducts].sort((a, b) => (b.salesCount ?? 0) - (a.salesCount ?? 0));
-    const sortedByRelease = [...sellerProducts].sort((a, b) => compareDateDesc(a.releaseDate, b.releaseDate));
+    const sortedBySales = [...sellerProducts].sort(compareSellerProductSalesDesc);
+    const sortedByRelease = [...sellerProducts].sort(compareSellerProductReleaseDesc);
     const topProduct = sortedBySales[0];
     const latestProduct = sortedByRelease[0] ?? topProduct;
     const totalSalesCount = sellerProducts.reduce((sum, product) => sum + (product.salesCount ?? 0), 0);
@@ -1992,11 +2133,6 @@ function buildSellerSummaries(products: Product[]): SellerSummary[] {
       tags,
     } satisfies SellerSummary;
   });
-}
-
-function buildSellerStatsScopeId(filter: ProductListFilter): string {
-  const baseId = `${filter.platform}_${filter.audience}_${filter.category}`;
-  return filter.contentType ? `${baseId}_${filter.contentType}` : baseId;
 }
 
 function toSellerSummaryFromStats(data: SellerStatsDocument): SellerSummary {
@@ -2096,6 +2232,57 @@ function compareSellerSummaries(sortMode: SellerSortMode): (left: SellerSummary,
 function toSellerSummaryFromIndex(item: SellerIndexItem): SellerSummary {
   const { contentScope: _contentScope, normalizedSellerName: _normalizedSellerName, productIdsByReleaseDate: _productIds, ...summary } = item;
   return summary;
+}
+
+function toSellerIndexCompatibleProduct(product: Product | undefined): Product | undefined {
+  if (!product) return undefined;
+  return {
+    productId: product.productId,
+    sourceProductId: product.sourceProductId,
+    platform: product.platform,
+    audience: product.audience,
+    category: product.category,
+    affiliateProvider: product.affiliateProvider,
+    title: product.title,
+    seller: product.seller,
+    priceCurrent: product.priceCurrent,
+    priceOriginal: product.priceOriginal,
+    discountRate: product.discountRate,
+    isDiscounted: product.isDiscounted,
+    isOnSale: product.isOnSale,
+    currency: product.currency,
+    salesCount: product.salesCount,
+    rating: product.rating,
+    ratingAverage: product.ratingAverage,
+    reviewCount: product.reviewCount,
+    releaseDate: product.releaseDate,
+    ageRating: product.ageRating,
+    isAdult: product.isAdult,
+    workType: product.workType,
+    workTypeLabel: product.workTypeLabel,
+    contentTypes: product.contentTypes,
+    contentTypeIds: product.contentTypeIds,
+    thumbnailUrl: product.thumbnailUrl,
+    mainImageUrl: product.mainImageUrl,
+    images: product.images?.slice(0, 1) ?? [],
+    sourceUrl: product.sourceUrl,
+    affiliateUrl: product.affiliateUrl,
+    genres: product.genres ?? [],
+    tags: [],
+    genreIds: product.genreIds ?? [],
+    tagIds: [],
+    isActive: product.isActive,
+    fetchStatus: product.fetchStatus,
+  };
+}
+
+function toSellerDetailSummaryFromStats(data: SellerStatsDocument): SellerSummary {
+  const summary = toSellerSummaryFromStats(data);
+  return {
+    ...summary,
+    topProduct: toSellerIndexCompatibleProduct(summary.topProduct),
+    latestProduct: toSellerIndexCompatibleProduct(summary.latestProduct),
+  };
 }
 
 export async function getSellerSummaries(
@@ -2265,17 +2452,17 @@ function logSellerListComparison(
 export async function getSellerPageSummaries(
   filter: ProductListFilter & { maxProducts?: number; sortMode?: SellerSortMode },
 ): Promise<Array<SellerSummary | SellerCardItem>> {
-  // Arbitrary name search is intentionally kept on the existing seller index in Phase 3.
-  if (filter.sellerQuery?.trim()) return getSellerSummaries(filter);
-
   const mode = getListViewMode();
   const sortMode = filter.sortMode ?? "totalSales";
   if (mode === "off") return getSellerSummaries(filter);
+  const loadNext = () => filter.sellerQuery?.trim()
+    ? getSellerListViewSearchPage(filter, sortMode)
+    : getSellerListViewPage(filter, sortMode);
 
   if (mode === "compare") {
     const [legacySellers, next] = await Promise.all([
       getSellerSummaries(filter),
-      getSellerListViewPage(filter, sortMode).catch((error) => {
+      loadNext().catch((error) => {
         console.error("Failed to read seller-list view in compare mode", {
           error: error instanceof Error ? error.message : String(error),
         });
@@ -2287,7 +2474,7 @@ export async function getSellerPageSummaries(
     return legacySellers;
   }
 
-  const next = await getSellerListViewPage(filter, sortMode).catch((error) => {
+  const next = await loadNext().catch((error) => {
     console.error("Failed to read seller-list view", {
       mode,
       error: error instanceof Error ? error.message : String(error),
@@ -2337,6 +2524,36 @@ export async function getSellerSummaryByKey(
   filter: ProductListFilter & { sellerKey: string; maxProducts?: number },
 ): Promise<SellerSummary | null> {
   const decodedKey = decodeURIComponent(filter.sellerKey).trim();
+  if (!decodedKey) return null;
+
+  if (getSellerDetailReadMode() === "stats") {
+    const statId = buildSellerStatsScopeId(filter);
+    const documentId = buildSellerStatsDocumentId(statId, decodedKey);
+    const snapshot = await getAdminDb()
+      .collection(SELLERS_COLLECTION)
+      .doc(documentId)
+      .get();
+    const data = snapshot.data() as Partial<SellerStatsDocument> | undefined;
+
+    if (snapshot.exists && data && matchesSellerStatsDocument(data, filter, decodedKey)) {
+      const summary = toSellerDetailSummaryFromStats(data);
+      const products = summary.sellerId
+        ? await getProductsBySellerField("seller.sellerId", summary.sellerId, filter)
+        : await getProductsBySellerField("seller.sellerName", summary.sellerName, filter);
+      return { ...summary, products };
+    }
+
+    // Old name-based URLs or a missing/stale aggregate remain functional without
+    // loading the whole seller index into the App Hosting process.
+    const products = await getProductsBySellerKey(filter);
+    const summaries = buildSellerSummaries(products);
+    return summaries.find((summary) =>
+      summary.sellerKey === decodedKey ||
+      summary.sellerName === decodedKey ||
+      summary.sellerId === decodedKey,
+    ) ?? summaries[0] ?? null;
+  }
+
   const indexedItems = await getSellerIndexItems(filter);
   if (indexedItems) {
     const item = indexedItems.find((candidate) =>
@@ -2967,7 +3184,6 @@ export type SearchProductsResult = {
   totalCount: number;
 };
 
-type SearchProductCandidate = SearchIndexItem;
 const DIRECT_SEARCH_SEPARATOR_PATTERN = /[\s　/_\-‐‑‒–—―・,，.．。:：;；!！?？()[\]（）【】「」『』〈〉《》<>+＋=＝~〜～|｜]+/g;
 
 function normalizeDirectSearchText(value: string | undefined): string {
@@ -2992,38 +3208,38 @@ function splitDirectSearchTerms(value: string): string[] {
 
 function getCandidateTextValues(candidate: SearchProductCandidate, searchTarget: SearchTarget = "all"): string[] {
   if (searchTarget === "title") {
-    return [candidate.title].filter((value): value is string => Boolean(value));
+    return [candidateTitle(candidate)].filter((value): value is string => Boolean(value));
   }
 
   if (searchTarget === "seller") {
-    return [candidate.seller?.sellerName].filter((value): value is string => Boolean(value));
+    return [candidateSellerName(candidate)].filter((value): value is string => Boolean(value));
   }
 
   if (searchTarget === "genre") {
     return [
-      candidate.workType,
-      candidate.workTypeLabel,
-      candidate.contentType,
-      ...(candidate.contentTypes ?? []),
-      ...(candidate.contentTypeIds ?? []),
-      ...(candidate.genres ?? []),
-      ...(candidate.tags ?? []),
-      ...(candidate.genreIds ?? []),
-      ...(candidate.tagIds ?? []),
+      candidateWorkType(candidate),
+      candidateWorkTypeLabel(candidate),
+      candidateContentType(candidate),
+      ...candidateContentTypes(candidate),
+      ...candidateContentTypeIds(candidate),
+      ...candidateGenres(candidate),
+      ...candidateTags(candidate),
+      ...candidateGenreIds(candidate),
+      ...candidateTagIds(candidate),
     ].filter((value): value is string => Boolean(value));
   }
 
   return [
-    candidate.sourceProductId,
-    candidate.productId,
-    candidate.title,
-    candidate.seller?.sellerName,
-    candidate.workType,
-    candidate.workTypeLabel,
-    ...(candidate.genres ?? []),
-    ...(candidate.tags ?? []),
-    ...(candidate.genreIds ?? []),
-    ...(candidate.tagIds ?? []),
+    candidateSourceProductId(candidate),
+    candidateProductId(candidate),
+    candidateTitle(candidate),
+    candidateSellerName(candidate),
+    candidateWorkType(candidate),
+    candidateWorkTypeLabel(candidate),
+    ...candidateGenres(candidate),
+    ...candidateTags(candidate),
+    ...candidateGenreIds(candidate),
+    ...candidateTagIds(candidate),
   ].filter((value): value is string => Boolean(value));
 }
 
@@ -3048,18 +3264,24 @@ function candidateHasContentType(candidate: SearchProductCandidate, contentType:
   const normalized = normalizeStoredContentType(contentType);
   if (!normalized) return false;
 
-  const scalar = normalizeStoredContentType(candidate.contentType);
+  const scalar = normalizeStoredContentType(candidateContentType(candidate));
   if (scalar === normalized) return true;
 
-  const ids = (candidate.contentTypeIds ?? []).map((id) => normalizeStoredContentType(id));
+  const ids = candidateContentTypeIds(candidate).map((id) => normalizeStoredContentType(id));
   if (ids.includes(normalized)) return true;
 
-  const labels = (candidate.contentTypes ?? []).map((label) => normalizeStoredContentType(label));
+  const labels = candidateContentTypes(candidate).map((label) => normalizeStoredContentType(label));
   return labels.includes(normalized);
 }
 
 function candidateMatchesSearchFilter(candidate: SearchProductCandidate, filter: SearchProductsFilter): boolean {
-  if (filter.workType && normalizeStoredWorkType(candidate as Product) !== filter.workType) return false;
+  if (
+    filter.workType &&
+    normalizeStoredWorkType({
+      workType: candidateWorkType(candidate),
+      workTypeLabel: candidateWorkTypeLabel(candidate),
+    } as Product) !== filter.workType
+  ) return false;
   if (filter.contentType && !candidateHasContentType(candidate, filter.contentType)) return false;
   return candidateMatchesKeyword(candidate, filter.keyword, filter.searchTarget);
 }
@@ -3067,15 +3289,17 @@ function candidateMatchesSearchFilter(candidate: SearchProductCandidate, filter:
 function getSearchCandidateScore(candidate: SearchProductCandidate, keyword: string, searchTarget: SearchTarget = "all"): number {
   const normalizedKeyword = normalizeDirectSearchText(keyword);
   const compactedKeyword = compactDirectSearchText(keyword);
-  const title = normalizeDirectSearchText(candidate.title);
-  const titleCompact = compactDirectSearchText(candidate.title);
-  const sellerName = normalizeDirectSearchText(candidate.seller?.sellerName);
-  const sellerCompact = compactDirectSearchText(candidate.seller?.sellerName);
-  const genres = (candidate.genres ?? []).map((genre) => normalizeDirectSearchText(genre));
-  const genreCompacts = (candidate.genres ?? []).map((genre) => compactDirectSearchText(genre));
-  const tags = (candidate.tags ?? []).map((tag) => normalizeDirectSearchText(tag));
-  const tagCompacts = (candidate.tags ?? []).map((tag) => compactDirectSearchText(tag));
-  const sourceProductId = normalizeDirectSearchText(candidate.sourceProductId);
+  const title = normalizeDirectSearchText(candidateTitle(candidate));
+  const titleCompact = compactDirectSearchText(candidateTitle(candidate));
+  const sellerName = normalizeDirectSearchText(candidateSellerName(candidate));
+  const sellerCompact = compactDirectSearchText(candidateSellerName(candidate));
+  const candidateGenreValues = candidateGenres(candidate);
+  const candidateTagValues = candidateTags(candidate);
+  const genres = candidateGenreValues.map((genre) => normalizeDirectSearchText(genre));
+  const genreCompacts = candidateGenreValues.map((genre) => compactDirectSearchText(genre));
+  const tags = candidateTagValues.map((tag) => normalizeDirectSearchText(tag));
+  const tagCompacts = candidateTagValues.map((tag) => compactDirectSearchText(tag));
+  const sourceProductId = normalizeDirectSearchText(candidateSourceProductId(candidate));
 
   let score = 0;
   const useAll = searchTarget === "all";
@@ -3098,8 +3322,8 @@ function getSearchCandidateScore(candidate: SearchProductCandidate, keyword: str
     if (tags.some((tag) => tag.includes(normalizedKeyword)) || tagCompacts.some((tag) => tag.includes(compactedKeyword))) score += 1500;
   }
 
-  score += Math.min(candidate.salesCount ?? 0, 100000) / 100;
-  score += (candidate.ratingAverage ?? candidate.rating ?? 0) * 10;
+  score += Math.min(candidateSalesCount(candidate) ?? 0, 100000) / 100;
+  score += (candidateRatingAverage(candidate) ?? candidateRating(candidate) ?? 0) * 10;
 
   return score;
 }
@@ -3109,18 +3333,18 @@ function sortSearchCandidates(candidates: SearchProductCandidate[], keyword: str
     const scoreDiff = getSearchCandidateScore(b, keyword, searchTarget) - getSearchCandidateScore(a, keyword, searchTarget);
     if (scoreDiff !== 0) return scoreDiff;
 
-    const salesDiff = (b.salesCount ?? 0) - (a.salesCount ?? 0);
+    const salesDiff = (candidateSalesCount(b) ?? 0) - (candidateSalesCount(a) ?? 0);
     if (salesDiff !== 0) return salesDiff;
 
-    const releaseDiff = (b.releaseDate ?? "").localeCompare(a.releaseDate ?? "");
+    const releaseDiff = (candidateReleaseDate(b) ?? "").localeCompare(candidateReleaseDate(a) ?? "");
     if (releaseDiff !== 0) return releaseDiff;
 
-    return (a.title ?? "").localeCompare(b.title ?? "", "ja");
+    return (candidateTitle(a) ?? "").localeCompare(candidateTitle(b) ?? "", "ja");
   });
 }
 
 async function getSearchProductCandidates(filter: SearchProductsFilter): Promise<SearchProductCandidate[]> {
-  const indexedCandidates = await getSearchIndexCandidates(filter);
+  const indexedCandidates = await getConfiguredSearchIndexCandidates(filter);
   if (indexedCandidates) return indexedCandidates;
 
   console.warn("Search index unavailable; using products full-scan fallback", {
@@ -3157,7 +3381,7 @@ async function getSearchProductCandidates(filter: SearchProductsFilter): Promise
     .get();
 
   return snapshot.docs.map((doc) => {
-    const data = doc.data() as SearchProductCandidate;
+    const data = doc.data() as SearchIndexItem;
     return {
       ...data,
       productId: data.productId ?? doc.id,
@@ -3175,7 +3399,7 @@ export async function searchProductsWithTotal(filter: SearchProductsFilter): Pro
 
   const offset = filter.offsetCount ?? 0;
   const limit = filter.limitCount ?? 30;
-  const pageProductIds = matchedCandidates.slice(offset, offset + limit).map((candidate) => candidate.productId);
+  const pageProductIds = matchedCandidates.slice(offset, offset + limit).map(candidateProductId);
   const products = await getProductsByIds(pageProductIds);
 
   return {

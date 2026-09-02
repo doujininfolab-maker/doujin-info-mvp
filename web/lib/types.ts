@@ -229,6 +229,84 @@ export type SearchIndexItem = {
   sellerKey?: string;
 };
 
+export type CompactSearchIndexRow = [
+  productId: string,
+  sourceProductId: string | null,
+  title: string | null,
+  sellerName: string | null,
+  workType: string | null,
+  workTypeLabel: string | null,
+  contentType: string | null,
+  contentTypes: string[],
+  contentTypeIds: string[],
+  genres: string[],
+  tags: string[],
+  genreIds: string[],
+  tagIds: string[],
+  salesCount: number | null,
+  rating: number | null,
+  ratingAverage: number | null,
+  releaseDate: string | null,
+  priceCurrent: number | null,
+  priceOriginal: number | null,
+  discountRate: number | null,
+  discountAmount: number | null,
+  isDiscounted: 0 | 1,
+  sellerKey: string | null,
+];
+
+export type CompactSearchIndexBlockDescriptor = {
+  blockId: string;
+  blockIndex: number;
+  startOffset: number;
+  itemCount: number;
+  compressedBytes: number;
+  uncompressedBytes: number;
+  checksum: string;
+};
+
+export type CompactSearchIndexRootDocument = {
+  schemaVersion: 1;
+  segmentId: string;
+  activeVersion: string;
+  previousVersion?: string;
+  productCount: number;
+  blockCount: number;
+  blocks: CompactSearchIndexBlockDescriptor[];
+  indexChecksum: string;
+  generatedAt?: FirestoreTimestampLike | string;
+  updatedAt?: FirestoreTimestampLike | string;
+};
+
+export type CompactSearchIndexVersionDocument = {
+  schemaVersion: 1;
+  segmentId: string;
+  versionId: string;
+  status: "building" | "ready" | "failed";
+  productCount: number;
+  blockCount: number;
+  blocks: CompactSearchIndexBlockDescriptor[];
+  indexChecksum: string;
+  generatedAt?: FirestoreTimestampLike | string;
+  updatedAt?: FirestoreTimestampLike | string;
+};
+
+export type CompactSearchIndexBlockDocument = {
+  schemaVersion: 1;
+  encoding: "gzip-json-v1";
+  segmentId: string;
+  versionId: string;
+  blockId: string;
+  blockIndex: number;
+  startOffset: number;
+  itemCount: number;
+  compressedBytes: number;
+  uncompressedBytes: number;
+  checksum: string;
+  payload: unknown;
+  generatedAt?: FirestoreTimestampLike | string;
+};
+
 
 export type SaleSortMode = "discountRate" | "discountAmount" | "newest";
 export type GenreSortMode = "productCount" | "revenue" | "sales";
@@ -668,6 +746,35 @@ export type ProductDailyMetric = {
   contentTypeIds?: string[];
 
   fetchedAt: FirestoreTimestampLike | string;
+};
+
+export type ProductMetricYearPoint = {
+  priceCurrent?: number;
+  priceOriginal?: number;
+  salesCount?: number;
+
+  dailySalesCount?: number | null;
+  dailySalesStatus?: ProductDailyMetric["dailySalesStatus"];
+  dailySalesBaseDate?: string;
+  dailySalesNextDate?: string;
+  dailySalesBaseCount?: number;
+  dailySalesNextCount?: number;
+  dailySalesRawDelta?: number;
+  dailySalesPeriodDays?: number;
+  periodSalesCount?: number;
+  dailySalesCalculatedAt?: FirestoreTimestampLike | string;
+
+  fetchedAt?: FirestoreTimestampLike | string;
+};
+
+export type ProductMetricYearDocument = {
+  schemaVersion: 1;
+  year: string;
+  platform: Platform;
+  audience: Audience;
+  category: Category;
+  points: Record<string, ProductMetricYearPoint>;
+  updatedAt?: FirestoreTimestampLike | string;
 };
 
 export type ProductTrendPoint = {

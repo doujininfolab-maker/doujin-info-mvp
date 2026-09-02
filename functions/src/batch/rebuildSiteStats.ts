@@ -11,7 +11,7 @@ import type {
   SiteStatsDocument,
 } from "../types";
 import { nowTimestamp } from "../util";
-import { rebuildSearchIndex } from "./rebuildSearchIndex";
+import { rebuildSearchIndexes } from "./rebuildSearchIndexes";
 import { rebuildRankingIndex } from "./rebuildRankingIndex";
 import { rebuildGenreIndex } from "./rebuildGenreIndex";
 import { rebuildSellerIndex } from "./rebuildSellerIndex";
@@ -32,6 +32,58 @@ const MAX_POPULAR_GENRES = 30;
 const MAX_POPULAR_CATEGORIES = 12;
 const MAX_CIRCLE_HIGHLIGHTS = 12;
 const MAX_CIRCLE_GENRES = 18;
+
+/**
+ * Exact union of product fields consumed by site stats and every downstream
+ * index rebuild. Large detail-only fields (description, samples, historical
+ * arrays, searchTokens, etc.) must not be retained for all products.
+ */
+export const SITE_STATS_PRODUCT_FIELDS = [
+  "productId",
+  "sourceProductId",
+  "platform",
+  "audience",
+  "category",
+  "categories",
+  "affiliateProvider",
+  "title",
+  "seller",
+  "priceCurrent",
+  "priceOriginal",
+  "discountRate",
+  "isDiscounted",
+  "isOnSale",
+  "currency",
+  "salesCount",
+  "wishlistCount",
+  "rating",
+  "ratingAverage",
+  "reviewCount",
+  "releaseDate",
+  "ageRating",
+  "isAdult",
+  "workType",
+  "workTypeLabel",
+  "contentType",
+  "contentTypes",
+  "contentTypeIds",
+  "thumbnailUrl",
+  "mainImageUrl",
+  "images",
+  "sourceUrl",
+  "affiliateUrl",
+  "genres",
+  "tags",
+  "genreIds",
+  "tagIds",
+  "latestRankings",
+  "rankingMetrics",
+  "isActive",
+  "fetchStatus",
+  "lastFetchedAt",
+  "createdAt",
+  "updatedAt",
+] as const;
 
 type SiteSegmentKey = Pick<FetchTarget, "platform" | "audience" | "category">;
 type ContentStatsScope = "all" | "tl" | "bl";
@@ -371,6 +423,17 @@ function compareDateDesc(a?: string, b?: string): number {
   return (b ?? "").localeCompare(a ?? "");
 }
 
+function compareProductSalesDesc(a: StoredProduct, b: StoredProduct): number {
+  return (b.salesCount ?? 0) - (a.salesCount ?? 0)
+    || a.productId.localeCompare(b.productId);
+}
+
+function compareProductReleaseDesc(a: StoredProduct, b: StoredProduct): number {
+  return compareDateDesc(a.releaseDate, b.releaseDate)
+    || (a.title ?? "").localeCompare(b.title ?? "", "ja")
+    || a.productId.localeCompare(b.productId);
+}
+
 function compactProduct(product?: StoredProduct): CompactProduct | undefined {
   if (!product) return undefined;
 
@@ -433,8 +496,8 @@ function buildSellerSummaries(products: StoredProduct[]): CircleHighlight[] {
 
   return Array.from(groups.entries())
     .map(([sellerKey, sellerProducts]) => {
-      const sortedBySales = [...sellerProducts].sort((a, b) => (b.salesCount ?? 0) - (a.salesCount ?? 0));
-      const sortedByRelease = [...sellerProducts].sort((a, b) => compareDateDesc(a.releaseDate, b.releaseDate));
+      const sortedBySales = [...sellerProducts].sort(compareProductSalesDesc);
+      const sortedByRelease = [...sellerProducts].sort(compareProductReleaseDesc);
       const topProduct = sortedBySales[0];
       const latestProduct = sortedByRelease[0] ?? topProduct;
       const totalSalesCount = sellerProducts.reduce((sum, product) => sum + (product.salesCount ?? 0), 0);
@@ -609,7 +672,7 @@ async function getProductsForListViewDryRun(segment: SiteSegmentKey): Promise<St
   return products;
 }
 
-async function getProductsForSiteStats(segment: SiteSegmentKey): Promise<StoredProduct[]> {
+export async function getProductsForSiteStats(segment: SiteSegmentKey): Promise<StoredProduct[]> {
   const products: StoredProduct[] = [];
   let lastDoc: QueryDocumentSnapshot | undefined;
 
@@ -620,6 +683,7 @@ async function getProductsForSiteStats(segment: SiteSegmentKey): Promise<StoredP
       .where("audience", "==", segment.audience)
       .where("category", "==", segment.category)
       .where("isActive", "==", true)
+      .select(...SITE_STATS_PRODUCT_FIELDS)
       .orderBy(FieldPath.documentId())
       .limit(SITE_STATS_PRODUCT_PAGE_SIZE);
 
@@ -699,7 +763,7 @@ export async function rebuildSiteStats(segment: SiteSegmentKey, contentScope: Co
   }
 
   try {
-    await rebuildSearchIndex(segment, allProducts, generatedAt);
+    await rebuildSearchIndexes(segment, allProducts, generatedAt);
   } catch (error) {
     console.error("Failed to rebuild search index; keeping the previous active version", {
       segment,
@@ -848,7 +912,7 @@ export async function rebuildSiteStatsForTargetsDetailed(
         "search index",
         segment,
         allProducts.length,
-        () => rebuildSearchIndex(segment, allProducts, generatedAt),
+        () => rebuildSearchIndexes(segment, allProducts, generatedAt),
       ),
       rankingIndex: await runRebuildComponent(
         "ranking index",

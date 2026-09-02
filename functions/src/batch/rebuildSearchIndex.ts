@@ -59,7 +59,7 @@ function buildVersionId(date: Date): string {
   return `${timestamp}_${randomBytes(4).toString("hex")}`;
 }
 
-function toSearchIndexItem(product: SearchIndexSourceProduct): SearchIndexItem | undefined {
+export function toSearchIndexItem(product: SearchIndexSourceProduct): SearchIndexItem | undefined {
   const productId = product.productId?.trim();
   if (!productId) return undefined;
 
@@ -95,7 +95,7 @@ function toSearchIndexItem(product: SearchIndexSourceProduct): SearchIndexItem |
   });
 }
 
-function buildSearchIndexItems(products: Product[]): SearchIndexItem[] {
+export function buildSearchIndexItems(products: Product[]): SearchIndexItem[] {
   return products
     .map((product) => toSearchIndexItem(product as SearchIndexSourceProduct))
     .filter((item): item is SearchIndexItem => Boolean(item))

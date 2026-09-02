@@ -12,11 +12,10 @@ import {
   buildRankingState,
   resolveDailySalesCountFromMetric,
 } from "./rankingMetrics";
+import { loadProductMetricsForDateKeys } from "../firestore/productMetricHistory";
 
 const PRODUCTS_COLLECTION = "products";
 const PRODUCT_PAGE_SIZE = 250;
-const METRIC_GET_ALL_CHUNK_SIZE = 500;
-const METRIC_GET_ALL_CONCURRENCY = 4;
 const WRITE_BATCH_SIZE = 400;
 
 type SiteSegmentKey = Pick<FetchTarget, "platform" | "audience" | "category">;
@@ -53,14 +52,6 @@ function buildDateKeys(sourceDate: string): string[] {
   );
 }
 
-function chunkArray<T>(values: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < values.length; index += size) {
-    chunks.push(values.slice(index, index + size));
-  }
-  return chunks;
-}
-
 async function loadMetricsForProducts(
   products: Array<{ documentId: string; product: Product }>,
   dateKeys: string[],
@@ -69,39 +60,10 @@ async function loadMetricsForProducts(
   requestedReadCount: number;
   existingMetricCount: number;
 }> {
-  const refs = products.flatMap(({ documentId }) =>
-    dateKeys.map((date) =>
-      db.collection(PRODUCTS_COLLECTION).doc(documentId).collection("dailyMetrics").doc(date),
-    ),
+  return loadProductMetricsForDateKeys(
+    products.map(({ documentId }) => documentId),
+    dateKeys,
   );
-  const chunks = chunkArray(refs, METRIC_GET_ALL_CHUNK_SIZE);
-  const metricsByProductId = new Map<string, Map<string, ProductDailyMetric>>();
-  let existingMetricCount = 0;
-
-  for (let index = 0; index < chunks.length; index += METRIC_GET_ALL_CONCURRENCY) {
-    const snapshotsByChunk = await Promise.all(
-      chunks
-        .slice(index, index + METRIC_GET_ALL_CONCURRENCY)
-        .map((chunk) => db.getAll(...chunk)),
-    );
-    for (const snapshot of snapshotsByChunk.flat()) {
-      if (!snapshot.exists) continue;
-      const productId = snapshot.ref.parent.parent?.id;
-      if (!productId) continue;
-      const metric = snapshot.data() as ProductDailyMetric;
-      const date = snapshot.id;
-      const productMetrics = metricsByProductId.get(productId) ?? new Map<string, ProductDailyMetric>();
-      productMetrics.set(date, metric);
-      metricsByProductId.set(productId, productMetrics);
-      existingMetricCount += 1;
-    }
-  }
-
-  return {
-    metricsByProductId,
-    requestedReadCount: refs.length,
-    existingMetricCount,
-  };
 }
 
 function buildSnapshots(metrics: Map<string, ProductDailyMetric> | undefined): ProductSalesSnapshot[] {

@@ -29,6 +29,13 @@ import {
   rebuildSiteStatsForTargetsDetailed,
 } from "./rebuildSiteStats";
 import { buildRankingState } from "./rankingMetrics";
+import {
+  buildMetricYearMutations,
+  getMetricHistoryWriteMode,
+  metricYearRef,
+  writesLegacyMetrics,
+  writesMetricYears,
+} from "../firestore/productMetricHistory";
 
 const FIRESTORE_BATCH_WRITE_LIMIT = 400;
 const DEFAULT_ORDER_LIMIT = 5000;
@@ -329,7 +336,7 @@ function buildProductForSave(product: Product): Product {
   return productForSave;
 }
 
-function buildDailySalesPatch(params: {
+export function buildDailySalesPatch(params: {
   product: Product;
   metricDate: string;
   existingProduct?: Product;
@@ -375,16 +382,11 @@ function buildDailySalesPatch(params: {
 
   if (previousSnapshotDate === params.metricDate) {
     return {
-      metricPatch: {
-        dailySalesCount: null,
-        dailySalesStatus: "same_day_snapshot",
-        dailySalesBaseDate: previousSnapshotDate,
-        dailySalesNextDate: params.metricDate,
-        dailySalesBaseCount: previousSnapshotCount,
-        dailySalesNextCount: currentSalesCount,
-        dailySalesRawDelta: currentSalesCount - previousSnapshotCount,
-        dailySalesCalculatedAt: params.calculatedAt,
-      },
+      // A retry for an already-recorded date must not erase the first valid
+      // daily delta. Both dailyMetrics and metricYears use merge writes, so
+      // omitting delta fields preserves the value calculated on the first run
+      // while still refreshing cumulative sales and fetchedAt.
+      metricPatch: {},
       productPatch,
     };
   }
@@ -695,13 +697,32 @@ async function saveProductAndMetric(params: {
   });
 
   await params.writeBuffer.set(productRef, productToSave, { merge: true });
-  await params.writeBuffer.set(
-    productRef.collection("dailyMetrics").doc(params.metricDate),
-    buildMetric(params.product, params.metricDate, delta.metricPatch),
-    { merge: true },
-  );
+  const metric = buildMetric(params.product, params.metricDate, delta.metricPatch);
+  const historyMode = getMetricHistoryWriteMode();
+  let dailyMetricWriteCount = 0;
+  if (writesLegacyMetrics(historyMode)) {
+    await params.writeBuffer.set(
+      productRef.collection("dailyMetrics").doc(params.metricDate),
+      metric,
+      { merge: true },
+    );
+    dailyMetricWriteCount += 1;
+  }
+  if (writesMetricYears(historyMode)) {
+    for (const mutation of buildMetricYearMutations(params.product, [{
+      date: params.metricDate,
+      metric,
+    }])) {
+      await params.writeBuffer.set(
+        metricYearRef(productRef, mutation.year),
+        mutation.data,
+        { merge: true },
+      );
+      dailyMetricWriteCount += 1;
+    }
+  }
 
-  return { product: productToSave, writeCount: 1, dailyMetricWriteCount: 1 };
+  return { product: productToSave, writeCount: 1, dailyMetricWriteCount };
 }
 
 async function fetchAndSaveTarget(params: {

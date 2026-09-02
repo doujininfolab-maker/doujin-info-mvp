@@ -59,7 +59,7 @@ gcloud run jobs deploy doujin-info-collect-tl `
   --memory 1Gi `
   --task-timeout 3h `
   --max-retries 0 `
-  --set-env-vars JOB_MODE=collect-tl `
+  '--update-env-vars=JOB_MODE=collect-tl,METRIC_HISTORY_WRITE_MODE=legacy,METRIC_HISTORY_READ_MODE=legacy' `
   --project doujin-info-mvp
 ```
 
@@ -76,7 +76,7 @@ gcloud run jobs deploy doujin-info-collect-bl `
   --memory 1Gi `
   --task-timeout 3h `
   --max-retries 0 `
-  --set-env-vars JOB_MODE=collect-bl `
+  '--update-env-vars=JOB_MODE=collect-bl,METRIC_HISTORY_WRITE_MODE=legacy,METRIC_HISTORY_READ_MODE=legacy' `
   --project doujin-info-mvp
 ```
 
@@ -93,7 +93,7 @@ gcloud run jobs deploy doujin-info-rebuild-indexes `
   --memory 1Gi `
   --task-timeout 90m `
   --max-retries 0 `
-  --set-env-vars JOB_MODE=rebuild-indexes `
+  '--update-env-vars=JOB_MODE=rebuild-indexes' `
   --project doujin-info-mvp
 ```
 
@@ -110,7 +110,7 @@ gcloud run jobs deploy doujin-info-rebuild-list-views `
   --memory 1Gi `
   --task-timeout 90m `
   --max-retries 0 `
-  --set-env-vars JOB_MODE=rebuild-list-views `
+  '--update-env-vars=JOB_MODE=rebuild-list-views' `
   --project doujin-info-mvp
 ```
 

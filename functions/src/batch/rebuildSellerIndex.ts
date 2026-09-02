@@ -20,11 +20,6 @@ const CONTENT_SCOPES = ["all", "tl", "bl"] as const;
 type SiteSegmentKey = Pick<FetchTarget, "platform" | "audience" | "category">;
 type ContentScope = (typeof CONTENT_SCOPES)[number];
 
-type SellerItemRange = {
-  start: number;
-  end: number;
-};
-
 export type RebuildSellerIndexResult = {
   indexId: string;
   versionId: string;
@@ -240,49 +235,14 @@ function logScopeMemory(
   });
 }
 
-function buildItems(products: Product[]): SellerIndexItem[] {
-  const items: SellerIndexItem[] = [];
-  for (const contentScope of CONTENT_SCOPES) {
-    const scopeItems = buildItemsForScope(products, contentScope);
-    items.push(...scopeItems);
-    logScopeMemory(contentScope, scopeItems.length, items.length);
-  }
-  return items.sort(
-    (a, b) => a.contentScope.localeCompare(b.contentScope)
-      || a.sellerKey.localeCompare(b.sellerKey),
-  );
-}
-
 function itemBytes(item: SellerIndexItem): number {
   return Buffer.byteLength(JSON.stringify(item), "utf8") + 2;
 }
 
-function buildItemRanges(items: SellerIndexItem[]): SellerItemRange[] {
-  const ranges: SellerItemRange[] = [];
-  let start = 0;
-  let count = 0;
-  let bytes = 0;
-
-  for (let index = 0; index < items.length; index += 1) {
-    const nextBytes = itemBytes(items[index]);
-    if (
-      count > 0
-      && (bytes + nextBytes > TARGET_CHUNK_BYTES || count >= MAX_ITEMS_PER_CHUNK)
-    ) {
-      ranges.push({ start, end: index });
-      start = index;
-      count = 0;
-      bytes = 0;
-    }
-    count += 1;
-    bytes += nextBytes;
-  }
-
-  if (count > 0) ranges.push({ start, end: items.length });
-  return ranges;
-}
-
-async function deleteVersion(versionRef: DocumentReference): Promise<void> {
+async function deleteVersion(
+  versionRef: DocumentReference,
+  additionalChunkIds: string[] = [],
+): Promise<void> {
   const snapshot = await versionRef.get();
   if (!snapshot.exists) return;
   const version = snapshot.data() as Partial<SellerIndexVersionDocument>;
@@ -290,7 +250,7 @@ async function deleteVersion(versionRef: DocumentReference): Promise<void> {
     ? version.chunkIds.filter((value): value is string => typeof value === "string")
     : [];
 
-  for (const chunkId of chunkIds) {
+  for (const chunkId of new Set([...chunkIds, ...additionalChunkIds])) {
     await versionRef.collection("chunks").doc(chunkId).delete();
   }
   await versionRef.delete();
@@ -303,9 +263,7 @@ export async function rebuildSellerIndex(
 ): Promise<RebuildSellerIndexResult> {
   const indexId = buildIndexId(segment);
   const versionId = buildVersionId(generatedAt.toDate());
-  const items = buildItems(products);
-  const ranges = buildItemRanges(items);
-  const chunkIds = ranges.map((_, index) => index.toString().padStart(4, "0"));
+  const chunkIds: string[] = [];
   const rootRef = db.collection(SELLER_INDEXES_COLLECTION).doc(indexId);
   const versionsRef = rootRef.collection("versions");
   const versionRef = versionsRef.doc(versionId);
@@ -319,12 +277,8 @@ export async function rebuildSellerIndex(
   const versionToDelete = typeof previous?.previousVersion === "string"
     ? previous.previousVersion
     : undefined;
-  if (items.length === 0 && previousActiveVersion && (previous?.itemCount ?? 0) > 0) {
-    throw new Error(
-      `seller index rebuild produced no items for ${indexId}; keeping ${previousActiveVersion}`,
-    );
-  }
   let activated = false;
+  let itemCount = 0;
 
   try {
     const building: SellerIndexVersionDocument = {
@@ -332,34 +286,78 @@ export async function rebuildSellerIndex(
       versionId,
       schemaVersion: SELLER_INDEX_SCHEMA_VERSION,
       status: "building",
-      itemCount: items.length,
+      itemCount: 0,
       chunkIds,
       generatedAt,
       updatedAt: generatedAt,
     };
     await versionRef.set(removeUndefinedDeep(building), { merge: false });
 
-    for (let index = 0; index < ranges.length; index += 1) {
-      const range = ranges[index];
-      const chunkId = chunkIds[index];
-      const chunkItems = items.slice(range.start, range.end);
+    let pendingItems: SellerIndexItem[] = [];
+    let pendingBytes = 0;
+    const flushChunk = async (): Promise<void> => {
+      if (pendingItems.length === 0) return;
+      const index = chunkIds.length;
+      const chunkId = index.toString().padStart(4, "0");
       const chunkDocument: SellerIndexChunkDocument = {
         indexId,
         versionId,
         chunkId,
         index,
-        itemCount: chunkItems.length,
-        items: chunkItems,
+        itemCount: pendingItems.length,
+        items: pendingItems,
         generatedAt,
       };
-      await versionRef
-        .collection("chunks")
-        .doc(chunkId)
-        .set(removeUndefinedDeep(chunkDocument), { merge: false });
+      await versionRef.collection("chunks").doc(chunkId).set(
+        removeUndefinedDeep(chunkDocument),
+        { merge: false },
+      );
+      chunkIds.push(chunkId);
+      pendingItems = [];
+      pendingBytes = 0;
+    };
+
+    // Preserve the previous global ordering while retaining only one scope and
+    // one output chunk at a time.
+    const orderedScopes = [...CONTENT_SCOPES].sort((a, b) => a.localeCompare(b));
+    for (const contentScope of orderedScopes) {
+      const scopeItems = buildItemsForScope(products, contentScope).sort(
+        (a, b) => a.sellerKey.localeCompare(b.sellerKey),
+      );
+      for (const item of scopeItems) {
+        const bytes = itemBytes(item);
+        if (
+          pendingItems.length > 0 &&
+          (pendingBytes + bytes > TARGET_CHUNK_BYTES ||
+            pendingItems.length >= MAX_ITEMS_PER_CHUNK)
+        ) {
+          await flushChunk();
+        }
+        pendingItems.push(item);
+        pendingBytes += bytes;
+        itemCount += 1;
+      }
+      logScopeMemory(contentScope, scopeItems.length, itemCount);
+      scopeItems.length = 0;
+    }
+    await flushChunk();
+
+    if (itemCount === 0 && previousActiveVersion && (previous?.itemCount ?? 0) > 0) {
+      throw new Error(
+        `seller index rebuild produced no items for ${indexId}; keeping ${previousActiveVersion}`,
+      );
     }
 
+    const ready: SellerIndexVersionDocument = {
+      ...building,
+      status: "ready",
+      itemCount,
+      chunkIds,
+      updatedAt: generatedAt,
+    };
+
     await versionRef.set(
-      removeUndefinedDeep({ ...building, status: "ready", updatedAt: generatedAt }),
+      removeUndefinedDeep(ready),
       { merge: false },
     );
     const root: SellerIndexRootDocument = {
@@ -367,7 +365,7 @@ export async function rebuildSellerIndex(
       schemaVersion: SELLER_INDEX_SCHEMA_VERSION,
       activeVersion: versionId,
       previousVersion: previousActiveVersion,
-      itemCount: items.length,
+      itemCount,
       chunkIds,
       generatedAt,
       updatedAt: generatedAt,
@@ -390,13 +388,13 @@ export async function rebuildSellerIndex(
     return {
       indexId,
       versionId,
-      itemCount: items.length,
-      chunkCount: ranges.length,
+      itemCount,
+      chunkCount: chunkIds.length,
     };
   } catch (error) {
     if (!activated) {
       try {
-        await deleteVersion(versionRef);
+        await deleteVersion(versionRef, chunkIds);
       } catch (cleanupError) {
         console.warn("Failed to clean up incomplete seller index", {
           indexId,

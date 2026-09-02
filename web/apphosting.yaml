@@ -56,3 +56,19 @@ env:
     value: "false"
     availability:
       - RUNTIME
+  # Compact search stays opt-in. Change to compact only after its batch data is
+  # generated and parity-checked; legacy is the immediate read-side rollback.
+  - variable: SEARCH_INDEX_READ_MODE
+    value: "legacy"
+    availability:
+      - RUNTIME
+  # metricYears migration and point-by-point production verification completed.
+  # Set this back to legacy for an immediate read-side rollback.
+  - variable: METRIC_HISTORY_READ_MODE
+    value: "year"
+    availability:
+      - RUNTIME
+  - variable: METRIC_HISTORY_DEBUG
+    value: "false"
+    availability:
+      - RUNTIME

@@ -13,7 +13,13 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "inspect:dlsite-product-sources": "npm run build && node lib/tools/inspectDlsiteProductSources.js",
-    "test:dlsite-ajax-parser": "npm run build && node lib/tools/testDlsiteAjaxParser.js"
+    "test:dlsite-ajax-parser": "npm run build && node lib/tools/testDlsiteAjaxParser.js",
+    "test:metric-history": "npm run build && node lib/tools/testProductMetricHistory.js && node lib/tools/testDailyPrioritySalesPatch.js",
+    "test:search-index": "npm run build && node lib/tools/testCompactSearchIndex.js",
+    "verify:search-index:emulator": "npm run build && node lib/tools/verifyCompactSearchIndexEmulator.js",
+    "verify:site-stats:emulator": "npm run build && node lib/tools/verifySiteStatsRebuildEmulator.js",
+    "verify:seller-index:emulator": "npm run build && node lib/tools/verifySellerIndexStreamingEmulator.js",
+    "test:fault-search-index:emulator": "npm run build && node lib/tools/toggleCompactSearchFaultEmulator.js"
   },
   "dependencies": {
     "@types/node": "^24.0.0",

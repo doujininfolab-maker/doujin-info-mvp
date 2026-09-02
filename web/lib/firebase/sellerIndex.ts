@@ -10,6 +10,7 @@ import { getAdminDb } from "./admin";
 const COLLECTION = "sellerIndexes";
 const SCHEMA_VERSION = 1;
 const CACHE_TTL_MS = 60_000;
+const CACHE_MAX_ENTRIES = 2;
 
 type CacheEntry = { activeVersion: string; items: SellerIndexItem[]; expiresAt: number };
 const cache = new Map<string, CacheEntry>();
@@ -27,11 +28,19 @@ async function load(filter: Pick<ProductListFilter, "platform" | "audience" | "c
   const root = rootSnapshot.data() as Partial<SellerIndexRootDocument>;
   if (root.schemaVersion !== SCHEMA_VERSION || typeof root.activeVersion !== "string" || !Array.isArray(root.chunkIds)) return undefined;
 
-  const cached = cache.get(id);
-  if (cached?.activeVersion === root.activeVersion) {
-    cached.expiresAt = Date.now() + CACHE_TTL_MS;
-    return cached.items;
+  if (cache.get(id)?.activeVersion === root.activeVersion) {
+    const current = cache.get(id);
+    if (current) {
+      current.expiresAt = Date.now() + CACHE_TTL_MS;
+      cache.delete(id);
+      cache.set(id, current);
+      return current.items;
+    }
   }
+
+  // Release the previous version before awaiting and materializing all chunks.
+  // This avoids retaining two full seller indexes during a daily version swap.
+  cache.delete(id);
 
   const versionRef = rootRef.collection("versions").doc(root.activeVersion);
   const versionSnapshot = await versionRef.get();
@@ -50,6 +59,11 @@ async function load(filter: Pick<ProductListFilter, "platform" | "audience" | "c
   }
   if (typeof version.itemCount === "number" && items.length !== version.itemCount) throw new Error(`Seller index count mismatch: ${id}`);
   cache.set(id, { activeVersion: root.activeVersion, items, expiresAt: Date.now() + CACHE_TTL_MS });
+  while (cache.size > CACHE_MAX_ENTRIES) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    cache.delete(oldest);
+  }
   return items;
 }
 

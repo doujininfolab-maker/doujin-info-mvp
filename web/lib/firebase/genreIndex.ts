@@ -11,6 +11,7 @@ import { getAdminDb } from "./admin";
 const COLLECTION = "genreIndexes";
 const SCHEMA_VERSION = 1;
 const CACHE_TTL_MS = 60_000;
+const CACHE_MAX_ENTRIES = 8;
 
 type CacheEntry = {
   activeVersion: string;
@@ -41,11 +42,14 @@ async function load(filter: ProductListFilter): Promise<CacheEntry | undefined> 
   if (root.schemaVersion !== SCHEMA_VERSION || typeof root.activeVersion !== "string") return undefined;
 
   const cacheKey = `${id}:${requestedListId}`;
-  const cached = cache.get(cacheKey);
-  if (cached?.activeVersion === root.activeVersion) {
-    cached.expiresAt = Date.now() + CACHE_TTL_MS;
-    return cached;
+  if (cache.get(cacheKey)?.activeVersion === root.activeVersion) {
+    const current = cache.get(cacheKey)!;
+    current.expiresAt = Date.now() + CACHE_TTL_MS;
+    cache.delete(cacheKey);
+    cache.set(cacheKey, current);
+    return current;
   }
+  cache.delete(cacheKey);
 
   const versionRef = rootRef.collection("versions").doc(root.activeVersion);
   const listRef = versionRef.collection("lists").doc(requestedListId);
@@ -89,6 +93,11 @@ async function load(filter: ProductListFilter): Promise<CacheEntry | undefined> 
     expiresAt: Date.now() + CACHE_TTL_MS,
   };
   cache.set(cacheKey, entry);
+  while (cache.size > CACHE_MAX_ENTRIES) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    cache.delete(oldest);
+  }
   return entry;
 }
 

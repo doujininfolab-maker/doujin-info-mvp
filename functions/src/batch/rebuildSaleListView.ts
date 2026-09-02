@@ -9,10 +9,12 @@ import type {
   SaleListViewThresholdCounts,
   SaleListViewVersionDocument,
   SaleSortMode,
+  CompactSearchIndexRootDocument,
   SearchIndexRootDocument,
 } from "../types";
 import { nowTimestamp } from "../util";
 import { loadProjectedProductsForNewListView } from "./listViews/loadNewListViewProducts";
+import { getSearchIndexWriteMode } from "./rebuildSearchIndexes";
 import {
   SALE_LIST_VIEW_CONTENT_SCOPES,
   SALE_LIST_VIEW_SCHEMA_VERSION,
@@ -35,6 +37,7 @@ import {
 } from "./listViews/saleListViewShared";
 
 const SEARCH_INDEXES_COLLECTION = "searchIndexes";
+const COMPACT_SEARCH_INDEXES_COLLECTION = "compactSearchIndexes";
 const SEARCH_INDEX_SCHEMA_VERSION = 2;
 const SALE_LIST_VIEWS_COLLECTION = "saleListViews";
 const LISTS_SUBCOLLECTION = "saleListViewLists";
@@ -143,14 +146,21 @@ function isNewerRun(
 async function loadSourceSearchVersion(
   segmentId: string,
 ): Promise<{ rootRef: DocumentReference; activeVersion: string }> {
-  const rootRef = db.collection(SEARCH_INDEXES_COLLECTION).doc(segmentId);
+  const useCompact = getSearchIndexWriteMode() === "compact";
+  const collection = useCompact
+    ? COMPACT_SEARCH_INDEXES_COLLECTION
+    : SEARCH_INDEXES_COLLECTION;
+  const expectedSchemaVersion = useCompact ? 1 : SEARCH_INDEX_SCHEMA_VERSION;
+  const rootRef = db.collection(collection).doc(segmentId);
   const snapshot = await rootRef.get();
   if (!snapshot.exists) {
     throw new Error(`Search index root is missing: ${segmentId}`);
   }
-  const root = snapshot.data() as Partial<SearchIndexRootDocument>;
+  const root = snapshot.data() as Partial<
+    SearchIndexRootDocument | CompactSearchIndexRootDocument
+  >;
   if (
-    root.schemaVersion !== SEARCH_INDEX_SCHEMA_VERSION ||
+    root.schemaVersion !== expectedSchemaVersion ||
     typeof root.activeVersion !== "string" ||
     root.activeVersion.length === 0
   ) {
@@ -254,7 +264,9 @@ async function activatePreparedLists(
   return db.runTransaction(async (transaction) => {
     const sourceSnapshot = await transaction.get(searchRootRef);
     const sourceRoot = sourceSnapshot.exists
-      ? (sourceSnapshot.data() as Partial<SearchIndexRootDocument>)
+      ? (sourceSnapshot.data() as Partial<
+          SearchIndexRootDocument | CompactSearchIndexRootDocument
+        >)
       : undefined;
     if (sourceRoot?.activeVersion !== sourceSearchVersionId) {
       return { activated: false, reason: "source_search_version_changed" };

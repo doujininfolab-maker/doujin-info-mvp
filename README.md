@@ -64,7 +64,8 @@ latestRankings?: RankingSummary[];
 
 ```text
 products/{productId}
-products/{productId}/dailyMetrics/{yyyyMMdd}
+products/{productId}/metricYears/{yyyy}
+products/{productId}/dailyMetrics/{yyyyMMdd}  # 移行・切り戻し用の旧形式
 
 rankingSnapshots/{snapshotId}
 rankingSnapshots/{snapshotId}/items/{rankItemId}
@@ -212,7 +213,8 @@ curl "http://127.0.0.1:5001/YOUR_FIREBASE_PROJECT_ID/asia-northeast1/seedDummyPr
 投入されるデータ:
 
 - products: 15件
-- products/{productId}/dailyMetrics
+- products/{productId}/metricYears（`METRIC_HISTORY_WRITE_MODE=year` の場合）
+- products/{productId}/dailyMetrics（`METRIC_HISTORY_WRITE_MODE=legacy` の場合）
 - rankingSnapshots
 - rankingSnapshots/{snapshotId}/items
 - taxonomies

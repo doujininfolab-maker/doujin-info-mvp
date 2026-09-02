@@ -21,9 +21,13 @@ web/.env.local
 web/.env.*.local
 functions/.env
 functions/.env.*.local
+# Project-specific production flags are applied explicitly at deploy time.
+# Keeping this local file out of Git prevents stale flags from reverting jobs.
+functions/.env.doujin-info-prod
 
 # Firebase local files
 .firebase/
+.emulator-data/
 firebase-debug.log
 firebase-debug.*.log
 firestore-debug.log
@@ -46,6 +50,7 @@ Thumbs.db
 # temporary
 tmp/
 temp/
+artifacts/
 
 *.tsbuildinfo
 web/tsconfig.tsbuildinfo

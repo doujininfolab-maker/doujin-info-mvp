@@ -354,7 +354,7 @@ function AxisGrid({
         const ratio = index / Math.max(leftTicks.length - 1, 1);
         const y = inner.bottom - ratio * inner.height;
         return (
-          <g key={tick}>
+          <g key={`${index}_${tick}`}>
             <line className="workChart__gridLine" x1={inner.left} x2={inner.right} y1={y} y2={y} />
             <text className="workChart__yLabel workChart__yLabel--left" x={inner.left - 10} y={y + 4}>{formatNumber(tick)}</text>
             {rightTicks ? (

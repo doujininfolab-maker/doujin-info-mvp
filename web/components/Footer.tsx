@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LogoIcon } from "@/components/icons/SiteIcons";
+import { MobileBottomNav } from "@/components/MobileBottomNav";
 
 type FooterLink = { label: string; href: string; external?: boolean };
 
@@ -34,42 +35,45 @@ const footerGroups: FooterGroup[] = [
 
 export function Footer() {
   return (
-    <footer className="siteFooter">
-      <div className="siteFooter__inner">
-        <div className="footerBrand">
-          <Link className="brand" href="/" aria-label="Doujin Info サイトトップ" prefetch={false}>
-            <LogoIcon />
-          </Link>
-          <p><span>女性向け同人作品の情報を、データで分かりやすく。</span><span>あなたの“好き”をもっと見つけやすく。</span></p>
-        </div>
-        {footerGroups.map((group) => (
-          <div className="footerLinks" key={group.title}>
-            <h3>{group.title}</h3>
-            {group.links.map((link) => (
-              link.external ? (
-                <a key={link.label} href={link.href} target="_blank" rel="noreferrer">{link.label}</a>
-              ) : (
-                <Link key={link.label} href={link.href}>{link.label}</Link>
-              )
-            ))}
+    <>
+      <footer className="siteFooter">
+        <div className="siteFooter__inner">
+          <div className="footerBrand">
+            <Link className="brand" href="/" aria-label="Doujin Info サイトトップ" prefetch={false}>
+              <LogoIcon />
+            </Link>
+            <p><span>女性向け同人作品の情報を、データで分かりやすく。</span><span>あなたの“好き”をもっと見つけやすく。</span></p>
           </div>
-        ))}
-        <div className="footerSocial">
-          <h3>公式SNS</h3>
-          <div aria-label="公式SNS">
-            <a
-              href="https://x.com/doujin_info_jp"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Doujin Info 公式Xを開く"
-              title="Doujin Info 公式X"
-            >
-              𝕏
-            </a>
+          {footerGroups.map((group) => (
+            <div className="footerLinks" key={group.title}>
+              <h3>{group.title}</h3>
+              {group.links.map((link) => (
+                link.external ? (
+                  <a key={link.label} href={link.href} target="_blank" rel="noreferrer">{link.label}</a>
+                ) : (
+                  <Link key={link.label} href={link.href}>{link.label}</Link>
+                )
+              ))}
+            </div>
+          ))}
+          <div className="footerSocial">
+            <h3>公式SNS</h3>
+            <div aria-label="公式SNS">
+              <a
+                href="https://x.com/doujin_info_jp"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Doujin Info 公式Xを開く"
+                title="Doujin Info 公式X"
+              >
+                𝕏
+              </a>
+            </div>
           </div>
         </div>
-      </div>
-      <small className="copyright">© 2026 Doujin Info</small>
-    </footer>
+        <small className="copyright">© 2026 Doujin Info</small>
+      </footer>
+      <MobileBottomNav />
+    </>
   );
 }

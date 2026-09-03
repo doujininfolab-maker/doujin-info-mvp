@@ -80,25 +80,13 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const hasNext = offsetCount + products.length < totalCount;
 
   return (
-    <div className="listPage listPage--wide listPage--mobileProductList listPage--searchResults">
+    <div className="listPage listPage--wide listPage--mobileProductList listPage--rankingFormat listPage--searchResults">
       <section className="contentSection listSection searchResultSection">
         <SectionHeader
           title="検索結果"
           description={hasSearched ? `「${keyword}」の検索結果 ${formatNumber(totalCount)}件` : "作品名・サークル名・ジャンルで検索できます。"}
           icon={<SearchIcon />}
-        >
-          <WorkTypeTabs
-            basePath="/search"
-            currentWorkType={workType}
-            currentParams={{
-              q: keyword || undefined,
-              contentType: contentTypeParam,
-              limit: String(limitCount),
-              page: "1",
-              searchTarget: searchTargetParam,
-            }}
-          />
-        </SectionHeader>
+        />
 
         <SearchPageForm
           keyword={keyword}
@@ -106,6 +94,20 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           contentTypeParam={contentTypeParam}
           workType={workType}
           limitCount={limitCount}
+        />
+
+        <p className="searchPageFormHint">検索対象：作品名 / サークル名 / ジャンル</p>
+
+        <WorkTypeTabs
+          basePath="/search"
+          currentWorkType={workType}
+          currentParams={{
+            q: keyword || undefined,
+            contentType: contentTypeParam,
+            limit: String(limitCount),
+            page: "1",
+            searchTarget: searchTargetParam,
+          }}
         />
 
         {hasSearched ? (

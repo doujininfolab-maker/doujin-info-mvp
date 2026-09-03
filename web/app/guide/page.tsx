@@ -2,68 +2,46 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "使い方",
+  title: "ご利用ガイド",
   alternates: { canonical: "/guide" },
 };
 
+const guideSections = [
+  ["同人インフォについて", "同人インフォは、同人作品のランキングや売上予測、レビューなどをまとめて閲覧できる非公式の情報サイトです。"],
+  ["掲載データについて", "本サイトに掲載されているデータは、各販売サイトの公開情報をもとに自動収集・集計したものです。そのため、実際の販売状況やデータと異なる場合があります。"],
+  ["ランキングについて", "ランキングは、推定売上や販売数、レビュー評価などを総合的に集計し、独自のアルゴリズムで算出しています。集計タイミングや指標の重みにより、順位は変動します。"],
+  ["推定売上について", "推定売上は、販売サイトの公開ランキングや価格、レビュー数などから独自に算出した目安です。実際の売上額とは異なる場合があります。"],
+  ["作品・サークル・ジャンルの探し方", "画面上部の検索アイコンからキーワード検索ができます。また、ジャンル（TL / BL / すべて）やランキング、新着作品からも作品を探すことができます。"],
+  ["外部販売サイトへの移動", "作品詳細ページの「販売サイトで見る」ボタンをタップすると、外部の販売サイト（DLsite・FANZA・Ci-enなど）に移動します。購入や閲覧は各サイトで行ってください。"],
+  ["注意事項", "本サイトは非公式の情報サイトであり、各販売サイトや運営者とは一切関係ありません。内容の正確性を保証するものではありませんので、あらかじめご了承ください。"],
+] as const;
+
 export default function GuidePage() {
   return (
-    <main className="staticPage">
+    <main className="staticPage staticPage--guide">
       <section className="staticPage__card">
-        <p className="staticPage__eyebrow">GUIDE</p>
-        <h1>使い方</h1>
-        <p>
-          Doujin Infoは、DLsite女性向け同人作品を、検索・ランキング・新着・ジャンル・サークルから探しやすくするための情報サイトです。
-          掲載情報は取得時点の参考情報です。購入前には、必ずDLsite公式の商品ページで最新情報をご確認ください。
-        </p>
+        <h1>ご利用ガイド</h1>
+        <p className="staticPage__lead">同人インフォの使い方やデータの見方についてご案内します。</p>
 
-        <div className="staticPage__grid">
-          <div>
-            <h2>作品を探す</h2>
-            <p>
-              TOPページやランキング、新着、セール、ジャンル、サークル一覧から作品を探せます。
-              TL・BLの切り替えや、作品形式タブを使って表示対象を絞り込めます。
-            </p>
-          </div>
-          <div>
-            <h2>キーワード検索</h2>
-            <p>
-              検索結果ページでは、作品名・サークル名・ジャンルなどを対象にキーワード検索できます。
-              検索対象は「全て」「作品名」「サークル名」「ジャンル」から選択できます。
-            </p>
-          </div>
-          <div>
-            <h2>ランキング・注目作品</h2>
-            <p>
-              ランキング、最近追加された作品、注目サークルなどから、人気作品や新しい作品を確認できます。
-              推定売上や順位は、取得時点のデータをもとにした参考情報です。
-            </p>
-          </div>
-          <div>
-            <h2>作品詳細・サークル詳細</h2>
-            <p>
-              作品詳細ページでは価格、販売数、評価、発売日、ジャンル、販売推移などを確認できます。
-              サークル詳細ページでは、同じサークルの作品や販売傾向を確認できます。
-            </p>
-          </div>
-          <div>
-            <h2>グラフについて</h2>
-            <p>
-              グラフは、直近の販売データがある作品・サークルのみ表示されます。
-              新着で取得された作品でも、継続取得対象にならない場合は、販売推移が表示されないことがあります。
-            </p>
-          </div>
-          <div>
-            <h2>DLsiteで確認</h2>
-            <p>
-              作品詳細の「DLsiteで詳細を見る（PR）」からDLsiteの商品ページへ移動できます。
-              価格、割引、販売状況、年齢制限などの最新情報は、DLsite公式ページをご確認ください。
-            </p>
-          </div>
+        <nav className="guideToc" aria-label="目次">
+          <strong>目次</strong>
+          <ol>
+            {guideSections.map(([title], index) => <li key={title}><a href={`#guide-${index + 1}`}>{title}</a></li>)}
+          </ol>
+          <Link href="/">トップへ戻る ›</Link>
+        </nav>
+
+        <div className="staticPage__grid guideSections">
+          {guideSections.map(([title, description], index) => (
+            <section id={`guide-${index + 1}`} key={title}>
+              <h2>{title}</h2>
+              <p>{description}</p>
+            </section>
+          ))}
         </div>
 
         <div className="staticPage__actions">
-          <Link href="/">TOPへ戻る</Link>
+          <Link href="/">トップへ戻る</Link>
           <Link href="/faq">よくある質問を見る</Link>
         </div>
       </section>

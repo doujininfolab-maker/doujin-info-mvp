@@ -204,6 +204,7 @@ export function HomeDashboard({
                     contentType: contentTypeParam,
                   }}
                   paramName="rankingWorkType"
+                  scrollControls
                 />
               </div>
             </SectionHeader>
@@ -225,6 +226,7 @@ export function HomeDashboard({
                     contentType: contentTypeParam,
                   }}
                   paramName="newWorkType"
+                  scrollControls
                 />
               </div>
             </SectionHeader>

@@ -54,6 +54,16 @@ export function SearchIcon() {
   );
 }
 
+export function HomeNavIcon() {
+  return (
+    <NavIcon>
+      <SvgIcon>
+        <path d="M4.5 10.5 12 4l7.5 6.5V20h-5v-5.5h-5V20h-5v-9.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      </SvgIcon>
+    </NavIcon>
+  );
+}
+
 export function CrownIcon({ rank }: { rank?: number }) {
   const tone = rank === 1 ? "gold" : rank === 2 ? "muted" : rank === 3 ? "orange" : "purple";
   return (

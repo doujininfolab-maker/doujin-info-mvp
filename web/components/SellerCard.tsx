@@ -28,7 +28,7 @@ function buildGenreHref(seller: SellerCardDisplayItem, genreName: string, conten
 
 export function SellerCard({ seller, contentTypeParam }: { seller: SellerCardDisplayItem; contentTypeParam?: string }) {
   const href = buildCircleHref(seller, contentTypeParam);
-  const tags = seller.tags.slice(0, 8);
+  const tags = seller.tags;
 
   return (
     <article className="sellerCard">

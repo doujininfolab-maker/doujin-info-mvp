@@ -29,7 +29,7 @@ export default function ContactPage() {
   const contactFormUrl = getContactFormUrl();
 
   return (
-    <main className="staticPage">
+    <main className="staticPage staticPage--contact">
       <section className="staticPage__card">
         <p className="staticPage__eyebrow">CONTACT</p>
         <h1>お問い合わせ</h1>
@@ -52,6 +52,17 @@ export default function ContactPage() {
             <span className="contactFormCallout__pending">お問い合わせフォームは現在準備中です。</span>
           )}
         </div>
+
+        <p className="contactExternalNote">※外部のサービス（新しいページ）が開きます</p>
+        <section className="contactChecklist">
+          <h2>お問い合わせの際は、以下の情報をご記入ください。</h2>
+          <ul>
+            <li>対象ページURL</li>
+            <li>RJ番号</li>
+            <li>問い合わせ内容</li>
+            <li>返信先</li>
+          </ul>
+        </section>
 
         <div className="staticPage__grid">
           <div>

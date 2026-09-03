@@ -133,6 +133,7 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
     return a.productId.localeCompare(b.productId);
   });
   const graphPrice = summary.averagePrice || sellerProducts.find((product) => product.priceCurrent)?.priceCurrent || 1000;
+  const estimatedRevenue = Math.round(summary.totalSalesCount * graphPrice);
   const circleSalesCount = sellerProducts.reduce((sum, product) => sum + (product.salesCount ?? 0), 0) || summary.totalSalesCount;
   const snapshotTrendPoints = getAggregateTrendPointsFromProductSnapshots(sellerProducts, 35);
   const useSnapshotTrend = hasRecentProductTrendData(snapshotTrendPoints);
@@ -158,14 +159,17 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
         <span>{summary.sellerName}</span>
       </nav>
 
+      <h1 className="circlePageTitle">サークル詳細</h1>
+
       <header className="circleHeader">
         <img src={imageUrl} alt="" />
         <div>
           <div className="circleHeader__line">
             <span>サークル</span>
-            <h1>{summary.sellerName}</h1>
+            <h2>{summary.sellerName}</h2>
           </div>
           {summary.newestProductTitle ? <p><strong>最新作</strong> {summary.newestProductTitle}</p> : null}
+          <p className="circleHeader__period"><strong>配信期間</strong> {formatPeriod(summary.firstReleaseDate, summary.latestReleaseDate)}</p>
         </div>
       </header>
 
@@ -184,10 +188,11 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
         <div className="circleOverview__tableWrap">
           <dl className="circleInfoTable">
             <div><dt>作品数</dt><dd>{formatNumber(summary.productCount)}</dd></div>
-            <div><dt>平均発売間隔</dt><dd>{averageReleaseInterval}</dd></div>
             <div><dt>合計販売数</dt><dd>{formatNumber(summary.totalSalesCount)}</dd></div>
+            <div><dt>推定累計売上</dt><dd>{formatNumber(estimatedRevenue)}円</dd></div>
             <div><dt>平均販売数</dt><dd>{formatNumber(summary.averageSalesCount)}</dd></div>
-            <div className="circleInfoTable__wide"><dt>配信期間</dt><dd>{formatPeriod(summary.firstReleaseDate, summary.latestReleaseDate)}</dd></div>
+            <div><dt>最新作日</dt><dd>{formatDate(summary.latestReleaseDate)}</dd></div>
+            <div><dt>平均発売間隔</dt><dd>{averageReleaseInterval}</dd></div>
             <div className="circleInfoTable__wide circleInfoTable__tags">
               <dt>ジャンル</dt>
               <dd>
@@ -219,7 +224,9 @@ export default async function CircleDetailPage({ params, searchParams }: PagePro
       <section className="detailSection sameSellerSection circleWorksSection">
         <h2>「{summary.sellerName}」のサークル作品</h2>
         <p className="circleWorksSection__lead">発売日が新しい順で表示しています。</p>
-        <ProductGrid products={products} variant="list" contentTypeParam={contentTypeParam} />
+        <div className="listPage listPage--rankingFormat embeddedProductList">
+          <ProductGrid products={products} variant="list" contentTypeParam={contentTypeParam} />
+        </div>
       </section>
     </div>
   );

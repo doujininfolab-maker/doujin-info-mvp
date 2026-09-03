@@ -54,7 +54,7 @@ export default async function NewPage({ params, searchParams }: PageProps) {
   const visibleRange = products.length ? `${offsetCount + 1}〜${offsetCount + products.length}件` : "0件";
 
   return (
-    <div className="listPage listPage--wide listPage--mobileProductList">
+    <div className="listPage listPage--wide listPage--mobileProductList listPage--rankingFormat listPage--new">
       <section className="contentSection listSection">
         <SectionHeader title="新着作品" description={`${segment.label}の新着`} icon={<NewSectionIcon />}>
           <WorkTypeTabs

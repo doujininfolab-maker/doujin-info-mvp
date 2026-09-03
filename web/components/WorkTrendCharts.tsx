@@ -401,15 +401,16 @@ function XAxis({
 
 function SalesRevenueChart({
   data,
+  width,
   height,
   inlineLegend = false,
 }: {
   data: TrendPoint[];
+  width: number;
   height: number;
   inlineLegend?: boolean;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const width = SALES_REVENUE_WIDTH;
   const bottomPadding = inlineLegend ? INLINE_LEGEND_BOTTOM_PADDING : PAD.bottom;
   const maxSales = roundUpNice(Math.max(...data.map((point) => point.sales), 1));
   const maxRevenue = roundUpNice(Math.max(...data.map((point) => point.revenue), 1));
@@ -503,15 +504,16 @@ function SalesRevenueChart({
 
 function PriceChart({
   data,
+  width,
   height,
   inlineLegend = false,
 }: {
   data: TrendPoint[];
+  width: number;
   height: number;
   inlineLegend?: boolean;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const width = PRICE_WIDTH;
   const bottomPadding = inlineLegend ? INLINE_LEGEND_BOTTOM_PADDING : PAD.bottom;
   const rawMin = Math.min(...data.map((point) => point.price), 0);
   const rawMax = Math.max(...data.map((point) => point.price), 1);
@@ -597,6 +599,15 @@ export function WorkTrendCharts({
   const [loadedTrendDays, setLoadedTrendDays] = useState(Math.max(1, initialTrendDays));
   const [isTrendLoading, setIsTrendLoading] = useState(false);
   const [trendLoadFailed, setTrendLoadFailed] = useState(false);
+  const [useMobileChartSize, setUseMobileChartSize] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 760px)");
+    const updateChartSize = () => setUseMobileChartSize(mediaQuery.matches);
+    updateChartSize();
+    mediaQuery.addEventListener("change", updateChartSize);
+    return () => mediaQuery.removeEventListener("change", updateChartSize);
+  }, []);
 
   useEffect(() => {
     setLoadedTrendPoints(trendPoints);
@@ -655,7 +666,8 @@ export function WorkTrendCharts({
   const totalSales = data.reduce((sum, point) => sum + point.sales, 0);
   const totalRevenue = data.reduce((sum, point) => sum + point.revenue, 0);
   const latestPrice = data[data.length - 1]?.price ?? priceCurrent ?? 0;
-  const chartHeight = SHARED_CHART_HEIGHT;
+  const chartWidth = useMobileChartSize ? 640 : SALES_REVENUE_WIDTH;
+  const chartHeight = useMobileChartSize ? 340 : SHARED_CHART_HEIGHT;
 
   return (
     <section
@@ -688,6 +700,20 @@ export function WorkTrendCharts({
         </label>
       </div>
 
+      <div className="workTrendRangeTabs" aria-label="表示範囲">
+        {RANGE_OPTIONS.map((option) => (
+          <button
+            className={range === option.value ? "isActive" : undefined}
+            type="button"
+            key={option.value}
+            onClick={() => setRange(option.value)}
+            aria-pressed={range === option.value}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
       {!compactPrimaryHeader ? (
         <div className="workTrendSummary">
           <span className="workTrendSummary__range">{RANGE_OPTIONS.find((option) => option.value === range)?.label ?? "過去30日"}</span>
@@ -696,7 +722,7 @@ export function WorkTrendCharts({
         </div>
       ) : null}
 
-      <SalesRevenueChart data={data} height={chartHeight} inlineLegend />
+      <SalesRevenueChart data={data} width={chartWidth} height={chartHeight} inlineLegend />
       <p className="workChartNote">
         {isTrendLoading
           ? "※選択期間のデータを読み込んでいます。"
@@ -714,7 +740,7 @@ export function WorkTrendCharts({
         </div>
         <div className="workTrendCurrentPrice">現在価格 <strong>{formatCurrency(latestPrice)}</strong></div>
       </div>
-      <PriceChart data={data} height={chartHeight} inlineLegend />
+      <PriceChart data={data} width={useMobileChartSize ? 640 : PRICE_WIDTH} height={chartHeight} inlineLegend />
     </section>
   );
 }

@@ -1975,7 +1975,7 @@ function buildGenreRankingItems(products: Product[], rankingMode: ProductRanking
       current.productCount += 1;
       current.totalSalesCount += product.salesCount ?? 0;
       current.estimatedRevenue += getEstimatedRevenueValue(product);
-      current.topProducts = sortProductsBySales([...(current.topProducts as Product[]), product]).slice(0, 3);
+      current.topProducts = sortProductsBySales([...(current.topProducts as Product[]), product]).slice(0, 5);
       groups.set(key, current);
     });
   }
@@ -2007,7 +2007,7 @@ export async function getGenreRankingItems(
         : rankingMode === "cumulative"
           ? "cumulative"
           : "daily";
-    const items = await Promise.all(indexed.entries.map(async (entry) => {
+    const items = indexed.entries.map((entry) => {
       const metrics = entry[period];
       return {
         rank: 0,
@@ -2016,12 +2016,44 @@ export async function getGenreRankingItems(
         productCount: metrics.productCount,
         totalSalesCount: metrics.salesCount,
         estimatedRevenue: metrics.revenue,
-        topProducts: await filterPublicProductReferences(entry.topProducts[period]),
+        topProducts: entry.topProducts[period],
       } satisfies GenreRankingItem;
-    }));
+    });
     const sorted = sortGenreRankingItems(items, rankingMode, sortMode);
     const offset = filter.offsetCount ?? 0;
-    return sorted.slice(offset, offset + (filter.limitCount ?? 30));
+    const visibleItems = sorted.slice(offset, offset + (filter.limitCount ?? 30));
+    const visibleWithPublicProducts = await Promise.all(visibleItems.map(async (item) => ({
+      ...item,
+      topProducts: await filterPublicProductReferences(item.topProducts),
+    })));
+    if (visibleWithPublicProducts.every((item) => item.topProducts.length >= 5)) {
+      return visibleWithPublicProducts.map((item) => ({ ...item, topProducts: item.topProducts.slice(0, 5) }));
+    }
+
+    // Older genre indexes contain three representatives. One shared candidate read
+    // fills the remaining slots without issuing a separate Firestore query per genre.
+    const supplementalProducts = await getPopularProducts({
+      ...filter,
+      limitCount: 120,
+      offsetCount: 0,
+    });
+    const supplementalByGenre = new Map<string, Product[]>();
+    for (const product of supplementalProducts) {
+      const genreIds = new Set(product.genreIds ?? []);
+      (product.genres ?? []).forEach((name, index) => genreIds.add(buildGenreId(name, product, index)));
+      for (const genreId of genreIds) {
+        const candidates = supplementalByGenre.get(genreId) ?? [];
+        candidates.push(product);
+        supplementalByGenre.set(genreId, candidates);
+      }
+    }
+
+    return visibleWithPublicProducts.map((item) => {
+      const mergedProducts = [...item.topProducts, ...(supplementalByGenre.get(item.genreId) ?? [])]
+        .filter((product, index, products) => products.findIndex((candidate) => candidate.productId === product.productId) === index)
+        .slice(0, 5);
+      return { ...item, topProducts: mergedProducts };
+    });
   }
 
   const maxProducts = filter.maxProducts ?? Math.max((filter.offsetCount ?? 0) + (filter.limitCount ?? 30) * 12, 500);

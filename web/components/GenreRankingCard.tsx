@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { GenreRankingItem, GenreSortMode, ProductRankingMode, SiteSegment } from "@/lib/types";
 import { formatNumber } from "@/lib/format";
 import { buildFilterHref } from "@/lib/workTypes";
+import { ScrollRail } from "@/components/ScrollRail";
 
 function genreHref(segment: SiteSegment, genreId: string): string {
   if (genreId.startsWith("dlsite:")) {
@@ -44,8 +45,8 @@ export function GenreRankingCard({
 
   return (
     <article className="genreRankingCard">
-      <div className="genreRankingCard__rank" aria-label={`${item.rank}位`}>
-        <span>♛</span>
+      <div className={`genreRankingCard__rank${item.rank > 3 ? " genreRankingCard__rank--plain" : ""}`} aria-label={`${item.rank}位`}>
+        {item.rank <= 3 ? <span>♛</span> : null}
         <strong>{item.rank}</strong>
       </div>
       <div className="genreRankingCard__body">
@@ -56,14 +57,19 @@ export function GenreRankingCard({
           {sortMode === "revenue" ? <span>{label}推定売上：{formatCurrency(item.estimatedRevenue)}</span> : null}
         </div>
         {item.topProducts.length ? (
-          <div className="genreRankingCard__products" aria-label="代表作品">
-            {item.topProducts.map((product) => (
+          <ScrollRail
+            className="genreRankingCard__productsRail"
+            railClassName="genreRankingCard__products"
+            ariaLabel={`${item.name}の代表作品`}
+            resetKey={`${item.genreId}:${rankingMode}:${item.topProducts.map((product) => product.productId).join("|")}`}
+          >
+            {item.topProducts.slice(0, 5).map((product) => (
               <Link href={buildFilterHref(`/work/${product.productId}`, {}, { contentType: contentTypeParam })} key={product.productId} prefetch={false} title={product.title}>
                 <img src={productImage(product)} alt="" loading="lazy" />
                 <span>{product.title}</span>
               </Link>
             ))}
-          </div>
+          </ScrollRail>
         ) : null}
       </div>
       <Link className="genreRankingCard__action" href={href} prefetch={false}>作品を見る</Link>

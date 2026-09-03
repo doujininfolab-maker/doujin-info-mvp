@@ -116,7 +116,8 @@ export function ProductCard({
         ) : null}
         <Link className="productCard__title" href={productHref} prefetch={false}>{product.title}</Link>
         <p className="productCard__seller">
-          サークル：{sellerHref ? <Link href={sellerHref} prefetch={false}>{sellerName}</Link> : sellerName}
+          <span className="productCard__sellerLabel">サークル：</span>
+          {sellerHref ? <Link href={sellerHref} prefetch={false}>{sellerName}</Link> : sellerName}
         </p>
         <PriceLabel
           priceCurrent={product.priceCurrent}
@@ -135,6 +136,11 @@ export function ProductCard({
             {tags.map((tag) => <Link href={tag.href} key={`${tag.label}_${tag.href}`} prefetch={false}>{tag.label}</Link>)}
           </div>
         ) : null}
+        {isList ? (
+          <div className="rankingCardTags">
+            {tags.slice(0, 4).map((tag) => <Link href={tag.href} key={`ranking_${tag.label}_${tag.href}`} prefetch={false}>{tag.label}</Link>)}
+          </div>
+        ) : null}
       </div>
       {isRankingList ? (
         <div
@@ -145,20 +151,40 @@ export function ProductCard({
               : `${rank}位 推定売上額 ${formatCurrencyValue(estimatedRevenue)} 販売数 ${formatNumber(rankingSalesCount)}本`
           }
         >
-          <div className="listRankBadge__rank">
-            <span>♛</span>
+          <div className={`listRankBadge__rank${(rank ?? 0) > 3 ? " listRankBadge__rank--plain" : ""}`}>
+            {(rank ?? 0) <= 3 ? <span>♛</span> : null}
             <strong>{rank}</strong>
           </div>
           <div className="listRankBadge__metrics">
             {listRankMetric === "sales" ? (
-              <strong>{formatNumber(rankingSalesCount)}本</strong>
+              <>
+                <span className="listRankBadge__metricLabel">販売数</span>
+                <strong>{formatNumber(rankingSalesCount)}本</strong>
+              </>
             ) : (
               <>
+                <span className="listRankBadge__metricLabel">推定売上</span>
                 <strong>{formatCurrencyValue(estimatedRevenue)}</strong>
-                <small>{formatNumber(rankingSalesCount)}本</small>
+                <small><span>販売</span> {formatNumber(rankingSalesCount)}本</small>
               </>
             )}
           </div>
+        </div>
+      ) : null}
+      {isList ? (
+        <div className="rankingCardMeta">
+          <span><b>発売</b> <em>{formatDate(product.releaseDate)}</em></span>
+          <PriceLabel
+            priceCurrent={product.priceCurrent}
+            priceOriginal={product.priceOriginal}
+            discountRate={product.discountRate}
+            isDiscounted={product.isDiscounted}
+            compact
+          />
+          {isList ? (
+            <span className="rankingCardMeta__sales"><b>総DL数</b> <em>{formatNumber(product.salesCount)}本</em></span>
+          ) : null}
+          <span className="rankingCardMeta__rating"><b>★</b> <em>{formatRating(product.rating ?? product.ratingAverage)}</em></span>
         </div>
       ) : null}
     </article>

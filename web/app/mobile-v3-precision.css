@@ -1,0 +1,2666 @@
+/* Final mobile-only geometry overrides measured against mockups-v3 at 390px. */
+.workTrendRangeTabs { display: none; }
+
+/* Keep the shared scroll-control wrapper transparent to desktop layouts. */
+.filterTabsScroll { display: contents; }
+.filterTabsScroll__button { display: none; }
+
+.embeddedProductList {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+@media (max-width: 760px) {
+  /* Compact mobile header; the existing logo, toggles, and icons are preserved. */
+  .siteHeader__top > .brand {
+    min-height: 55px;
+    margin-left: 12px;
+    padding: 7px 0;
+  }
+
+  .siteHeader__top .logoIcon { width: 164px; }
+
+  .mobileSearchToggle {
+    top: 8px;
+    right: 11px;
+    width: 39px;
+    height: 39px;
+  }
+
+  .mobileSearchToggle svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .siteHeader__bottom {
+    min-height: 44px;
+    padding: 6px 11px;
+  }
+
+  .siteHeader .headerSwitches { gap: 7px; }
+
+  .siteHeader .headerSwitches .toggleGroup--audience {
+    top: 10px;
+    right: 57px;
+  }
+
+  .siteHeader .headerSwitches .toggleGroup--audience .toggleGroup__item {
+    min-width: 70px;
+    height: 29px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+
+  .siteHeader .headerSwitches > .toggleGroup:not(.toggleGroup--audience) {
+    flex-basis: 86px;
+    width: 86px;
+  }
+
+  .siteHeader .headerSwitches > .toggleGroup:not(.toggleGroup--audience) .toggleGroup__item,
+  .siteHeader .headerSwitches .contentScopeSwitch a {
+    height: 29px;
+    font-size: 12px;
+  }
+
+  .dashboardPage .contentSection,
+  .dashboardPage .sidebarCard { padding-top: 0; }
+
+  .dashboardPage { padding-top: 14px; }
+
+  .dashboardPage .mainColumn {
+    display: grid;
+    gap: 12px;
+  }
+
+  .dashboardPage .mainColumn .contentSection + .contentSection { border-top: 0; }
+
+  .dashboardPage .contentSection { padding-bottom: 0; }
+
+  .dashboardPage .sectionHeader { row-gap: 7px; margin-bottom: 11px; }
+
+  .dashboardPage .mainColumn > .contentSection .sectionHeader h2 {
+    font-size: 19px;
+    line-height: 24px;
+    letter-spacing: -0.02em;
+  }
+
+  .dashboardPage .mainColumn > .contentSection .sectionHeader__icon {
+    width: 19px;
+    height: 19px;
+    flex-basis: 19px;
+  }
+
+  .dashboardPage .mainColumn > .contentSection .sectionHeader__icon:has(.newLabelIcon) {
+    width: auto;
+    flex-basis: auto;
+    margin-left: 3px;
+    margin-right: 2px;
+  }
+
+  .dashboardPage .filterTabsScroll {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    height: 30px;
+    overflow: hidden;
+  }
+
+  .dashboardPage .homeSectionControls .filterTabs {
+    height: 30px;
+    max-width: 100%;
+    gap: 5px;
+    justify-content: flex-start;
+    padding: 1px 23px 1px 0;
+    scroll-padding-inline: 0 23px;
+    scrollbar-width: none;
+  }
+
+  .dashboardPage .homeSectionControls .filterTabs::-webkit-scrollbar { display: none; }
+
+  .dashboardPage .homeSectionControls .filterTabs a {
+    flex: 0 0 auto;
+    min-width: 46px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0 9px;
+    font-size: 9.5px;
+  }
+
+  .dashboardPage .homeSectionControls .filterTabs::after { content: none; }
+
+  .dashboardPage .filterTabsScroll__button {
+    position: absolute;
+    top: 1px;
+    z-index: 3;
+    display: grid;
+    width: 23px;
+    height: 28px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: #fff;
+    color: var(--v3-navy);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .dashboardPage .filterTabsScroll__button--left {
+    left: 0;
+    background: linear-gradient(90deg, #fff 62%, rgba(255,255,255,0.74));
+  }
+
+  .dashboardPage .filterTabsScroll__button--right {
+    right: 0;
+    background: linear-gradient(90deg, rgba(255,255,255,0.74), #fff 38%);
+  }
+
+  .dashboardPage .filterTabsScroll.canScrollLeft .filterTabs { padding-left: 23px; }
+
+  .dashboardPage .scrollRail {
+    gap: 10px;
+  }
+
+  .dashboardPage .productCard--ranking,
+  .dashboardPage .productCard--new,
+  .dashboardPage .productCard--compact,
+  .dashboardPage .productCard--sale {
+    display: block;
+    flex: 0 0 162px;
+    width: 162px;
+    min-width: 162px;
+    height: 222px;
+  }
+
+  .dashboardPage .productCard--ranking .productCard__imageLink,
+  .dashboardPage .productCard--new .productCard__imageLink,
+  .dashboardPage .productCard--compact .productCard__imageLink,
+  .dashboardPage .productCard--sale .productCard__imageLink {
+    width: 100%;
+    height: 91px;
+    aspect-ratio: 16 / 9;
+    align-self: auto;
+  }
+
+  .dashboardPage .productCard--ranking .productCard__body,
+  .dashboardPage .productCard--new .productCard__body,
+  .dashboardPage .productCard--compact .productCard__body,
+  .dashboardPage .productCard--sale .productCard__body {
+    height: 129px;
+    min-height: 0;
+    padding: 6px 8px;
+    grid-template-rows: 28px 22px auto 11px 15px;
+  }
+
+  .dashboardPage .productCard--ranking .productCard__title,
+  .dashboardPage .productCard--new .productCard__title,
+  .dashboardPage .productCard--compact .productCard__title,
+  .dashboardPage .productCard--sale .productCard__title {
+    height: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    overflow: hidden;
+    font-size: 10.5px;
+    line-height: 14px;
+  }
+
+  .dashboardPage .productCard__seller {
+    margin-top: 2px;
+    height: 22px;
+    max-height: 22px;
+    -webkit-line-clamp: 2;
+    font-size: 8.5px;
+    line-height: 11px;
+  }
+
+  .dashboardPage .priceLine {
+    gap: 5px;
+    margin-top: 3px;
+    line-height: 18px;
+  }
+
+  .dashboardPage .priceLine strong { font-size: 15px; }
+  .dashboardPage .priceLine del { font-size: 9px; }
+  .dashboardPage .priceLine span { padding: 1px 5px; font-size: 8px; }
+
+  .dashboardPage .productCard__meta {
+    gap: 5px;
+    margin-top: 2px;
+    font-size: 8.5px;
+    line-height: 11px;
+  }
+
+  .dashboardPage .tagRow {
+    gap: 3px;
+    height: 15px;
+    max-height: 15px;
+    margin-top: 3px;
+  }
+
+  .dashboardPage .tagRow a,
+  .dashboardPage .tagRow span {
+    height: 15px;
+    padding: 0 6px;
+    font-size: 8px;
+  }
+
+  .dashboardPage .sideMetricsPanel { height: 117px; }
+
+  .dashboardPage .sideMetricsPanel .statCard--side {
+    min-height: 58px;
+    height: 58px;
+    padding: 7px 10px;
+  }
+
+  .dashboardPage .sideMetricsPanel .statCard__icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .dashboardPage .sideMetricsPanel .statCard__label { font-size: 9.5px; }
+  .dashboardPage .sideMetricsPanel .statCard__value { font-size: 18px; }
+
+  .dashboardPage .dashboardSidebar .sidebarCard {
+    padding-bottom: 12px;
+  }
+
+  .dashboardPage .trendTagGrid {
+    gap: 4px;
+    margin-top: 8px;
+  }
+
+  .dashboardPage .trendTag {
+    min-height: 23px;
+    padding: 2px 7px;
+  }
+
+  .dashboardPage .recentList { margin-top: 8px; }
+
+  .dashboardPage .recentItem {
+    min-height: 46px;
+    height: 46px;
+    grid-template-columns: 100px minmax(0, 1fr);
+    padding: 3px;
+  }
+
+  .dashboardPage .recentItem img {
+    width: 100px;
+    height: 40px;
+  }
+
+  .dashboardPage .recentItem strong {
+    font-size: 10px;
+    line-height: 13px;
+  }
+
+  .dashboardPage .recentItem small { font-size: 8px; }
+
+  .dashboardPage .recentItem:nth-child(n + 5) { display: none; }
+
+  .dashboardPage .dashboardSidebar .sidebarCard {
+    position: relative;
+  }
+
+  .dashboardPage .dashboardSidebar .sidebarMore {
+    position: absolute;
+    top: 5px;
+    right: 12px;
+    width: auto;
+    margin: 0;
+  }
+
+  .dashboardPage .sidebarCard__title,
+  .dashboardPage .dashboardFullWidthSection .sectionHeader h2 {
+    font-size: 19px;
+    line-height: 24px;
+    letter-spacing: -0.02em;
+  }
+
+  .dashboardPage .dashboardCategorySection .genreCard {
+    display: flex;
+    align-items: center;
+    align-content: normal;
+    gap: 12px;
+    flex: 0 0 auto;
+    width: max-content;
+    min-width: 0;
+    max-width: min(82vw, 320px);
+    min-height: 0;
+    height: auto;
+    padding: 13px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: #fff;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .dashboardPage .dashboardCategorySection .genreIcon {
+    display: inline-grid;
+    width: 48px;
+    min-width: 48px;
+    height: 48px;
+    place-items: center;
+  }
+
+  .dashboardPage .dashboardCategorySection .genreCard span {
+    width: max-content;
+    max-width: 58vw;
+  }
+
+  .dashboardPage .dashboardCategorySection .genreCard strong {
+    font-size: 13px;
+  }
+
+  .dashboardPage .dashboardCategorySection .genreCard small {
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .dashboardPage .dashboardCircleSection {
+    margin-top: 20px;
+  }
+
+  .dashboardPage .dashboardCircleSection .circleCard {
+    flex-basis: 87px;
+    width: 87px;
+    min-width: 87px;
+    min-height: 141px;
+    height: 141px;
+    place-items: center;
+    align-content: start;
+    padding-inline: 0;
+  }
+
+  .dashboardPage .dashboardCircleSection .circleCard img,
+  .dashboardPage .dashboardCircleSection .circleCard span,
+  .dashboardPage .dashboardCircleSection .circleCard em {
+    margin-inline: auto;
+  }
+
+  .dashboardPage .dashboardCircleSection .circleCard span {
+    width: 100%;
+    max-width: 100%;
+    justify-items: center;
+    padding-inline: 3px;
+  }
+
+  .listPage .listSection { padding-top: 14px; }
+
+  .listPage .sectionHeader h2 {
+    font-size: 19px;
+    line-height: 24px;
+    letter-spacing: -0.02em;
+  }
+
+  .listPage .sectionHeader p { display: none; }
+
+  .listPage .sectionHeader__aside {
+    margin-top: 2px;
+  }
+
+  .listPage .listHeaderFilters { gap: 10px; }
+
+  .listPage .filterTabs,
+  .listPage .rankingModeTabs {
+    height: 28px;
+  }
+
+  .listPage .filterTabs a,
+  .listPage .rankingModeTabs a {
+    height: 27px;
+    font-size: 9.5px;
+  }
+
+  .listPage .filterTabs--discount a {
+    height: 27px;
+    font-size: 8px;
+  }
+
+  .listPage .listToolbar,
+  .listPage .listToolbar--below {
+    min-height: 34px;
+    height: 34px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+  }
+
+  .listToolbar__select {
+    height: 34px;
+    padding-left: 9px;
+    font-size: 10px;
+  }
+
+  .listToolbar__selectLabel { font-size: 10px; }
+
+  .listPagination__button,
+  .listPagination__current {
+    min-width: 42px;
+    height: 34px;
+    padding-inline: 8px;
+    font-size: 10px;
+  }
+
+  .listPagination__current {
+    min-width: 38px;
+    font-size: 13px;
+  }
+
+  .listPage .productCard--list {
+    grid-template-columns: 134px minmax(0, 1fr);
+    gap: 7px;
+    min-height: 0;
+    padding: 3px;
+  }
+
+  .listPage .productCard--list:first-child,
+  .listPage .productCard--list:last-child { padding: 3px; }
+
+  .listPage .productCard--list .productCard__imageLink {
+    width: 134px;
+    height: 101px;
+    aspect-ratio: 4 / 3;
+    border-radius: 6px;
+  }
+
+  .listPage .productCard--list .productCard__body { padding-top: 1px; }
+
+  .listPage .productCard--list .productCard__type--body {
+    min-height: 17px;
+    margin-bottom: 3px;
+    padding-inline: 5px;
+    font-size: 8px;
+  }
+
+  .listPage .productCard--list .productCard__title {
+    height: 30px;
+    max-height: 30px;
+    font-size: 11px;
+    line-height: 15px;
+  }
+
+  .listPage .productCard--list .productCard__seller {
+    margin-top: 2px;
+    font-size: 8.5px;
+    line-height: 11px;
+  }
+
+  .listPage .productCard--list .priceLine {
+    margin-top: 3px;
+  }
+
+  .listPage .productCard--list .priceLine strong { font-size: 15px; }
+
+  .listPage .productCard--list .productCard__meta {
+    gap: 4px 6px;
+    margin-top: 3px;
+    font-size: 8px;
+    line-height: 10px;
+  }
+
+  .listPage .productCard--list .tagRow {
+    gap: 3px;
+    max-height: 17px;
+    margin-top: 3px;
+  }
+
+  .listPage .productCard--list .tagRow a,
+  .listPage .productCard--list .tagRow span {
+    height: 16px;
+    padding-inline: 5px;
+    font-size: 7.5px;
+  }
+
+  .listPage--ranking .productCard--list .tagRow { display: none; }
+
+  .listPage--ranking .productCard--list .listRankBadge {
+    min-height: 27px;
+    height: 27px;
+    padding: 2px 7px;
+  }
+
+  .listPage--ranking .listRankBadge__metrics strong { font-size: 11px; }
+  .listPage--ranking .listRankBadge__metrics small { font-size: 9px; }
+
+  .listPage--mobileProductList .productCard--list,
+  .listPage--searchResults .productCard--list {
+    grid-template-columns: 160px minmax(0, 1fr);
+    min-height: 174px;
+    height: 174px;
+  }
+
+  .listPage--mobileProductList .productCard--list .productCard__imageLink,
+  .listPage--searchResults .productCard--list .productCard__imageLink {
+    width: 160px;
+    height: 120px;
+    aspect-ratio: 4 / 3;
+  }
+
+  .listPage--sale .productCard--list { height: 132px; min-height: 132px; }
+
+  .listPage--sale .listToolbar {
+    grid-template-columns: 118px 92px minmax(0, 1fr);
+    gap: 5px;
+    margin-bottom: 17px;
+  }
+
+  .listPage--sale .listToolbar > .listToolbar__selectLabel { min-width: 0; width: auto; }
+  .listPage--sale .listToolbar > .listToolbar__selectLabel:first-child span { display: none; }
+  .listPage--sale .listToolbar > .listToolbar__selectLabel:first-child .listToolbar__select {
+    width: 118px;
+    min-width: 0;
+  }
+  .listPage--sale .listToolbar > .listToolbar__selectLabel:nth-child(2) {
+    display: grid;
+    grid-template-columns: 36px 51px;
+    gap: 5px;
+  }
+  .listPage--sale .listToolbar > .listToolbar__selectLabel:nth-child(2) .listToolbar__select {
+    width: 51px;
+    min-width: 0;
+    padding-right: 17px;
+  }
+  .listPage--sale .listToolbar .listPagination {
+    grid-column: 3;
+    margin-left: auto;
+    justify-self: end;
+  }
+
+  .listPage--searchResults .sectionHeader p {
+    display: block;
+    margin-top: 3px;
+    font-size: 11px;
+    line-height: 15px;
+  }
+
+  .listPage--searchResults .searchPageForm--withTarget {
+    grid-template-columns: minmax(0, 191px) minmax(0, 167px);
+    height: 34px;
+    margin-top: 8px;
+    margin-bottom: 0;
+  }
+
+  .listPage--searchResults .searchPageForm__keyword,
+  .listPage--searchResults .searchPageForm__targetSelect {
+    height: 34px;
+  }
+
+  .listPage--searchResults .searchPageForm__keyword button {
+    width: 30px;
+    height: 30px;
+  }
+
+  .searchPageFormHint {
+    margin: 7px 12px 9px;
+    color: var(--v3-muted);
+    font-size: 9.5px;
+    line-height: 14px;
+  }
+
+  .listPage--searchResults .listToolbar { margin-top: 13px; }
+
+  .listPage--searchResults .productCard--list {
+    grid-template-columns: 128px minmax(0, 1fr);
+    min-height: 120px;
+    height: 120px;
+  }
+
+  .listPage--searchResults .productCard--list .productCard__imageLink {
+    width: 128px;
+    height: 96px;
+  }
+
+  .listPage--searchResults .productCard--list .productCard__body {
+    height: 114px;
+    overflow: hidden;
+  }
+
+  .listPage--genreDetail .sectionHeader h2,
+  .listPage--genreDetail .sectionHeader p { text-align: center; }
+
+  .listPage--genreDetail .sectionHeader p {
+    display: block;
+    margin-top: 3px;
+    font-size: 10px;
+    line-height: 15px;
+  }
+
+  .listPage--genreDetail .sectionHeader__aside { margin-top: 9px; }
+
+  .listPage--genreDetail .productCard--list {
+    grid-template-columns: 144px minmax(0, 1fr);
+    min-height: 140px;
+    height: 140px;
+  }
+
+  .listPage--genreDetail .productCard--list .productCard__imageLink {
+    width: 144px;
+    height: 108px;
+  }
+
+  .listPage--genreDetail .productCard--list .productCard__body {
+    height: 134px;
+    overflow: hidden;
+  }
+
+  .listPage--mobileGenreList .listHeaderFilters { gap: 6px; }
+
+  .listPage--mobileGenreList .filterTabs,
+  .listPage--mobileGenreList .rankingModeTabs { height: 24px; }
+
+  .listPage--mobileGenreList .filterTabs a,
+  .listPage--mobileGenreList .rankingModeTabs a {
+    height: 23px;
+    font-size: 9px;
+  }
+
+  .listPage--mobileGenreList .listToolbar { margin-top: 4px; }
+
+  .listPage--mobileGenreList .genreRankingCard,
+  .listPage--mobileGenreList .genreRankingCard:first-child,
+  .listPage--mobileGenreList .genreRankingCard:last-child {
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 6px;
+    height: 174px;
+    min-height: 174px;
+    padding: 8px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__rank {
+    width: 34px;
+    min-height: 46px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__title {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__meta { margin-top: 4px; }
+
+  .listPage--mobileGenreList .genreRankingCard__products {
+    grid-template-columns: repeat(3, 84px);
+    justify-content: space-between;
+    gap: 5px;
+    margin-top: 5px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__products img {
+    width: 84px;
+    height: 84px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__action {
+    position: absolute;
+    right: 10px;
+    bottom: 5px;
+    min-height: 18px;
+    font-size: 10px;
+  }
+
+  .listPage--mobileGenreList .listToolbar {
+    grid-template-columns: 92px 70px minmax(0, 1fr);
+    gap: 6px;
+    height: 24px;
+    min-height: 24px;
+  }
+
+  .listPage--mobileGenreList .listToolbar__select,
+  .listPage--mobileGenreList .listPagination__button,
+  .listPage--mobileGenreList .listPagination__current { height: 24px; }
+
+  .listPage--mobileGenreList .listToolbar > .listToolbar__selectLabel {
+    min-width: 0;
+    width: auto;
+  }
+  .listPage--mobileGenreList .listToolbar > .listToolbar__selectLabel span { display: none; }
+  .listPage--mobileGenreList .listToolbar > .listToolbar__selectLabel .listToolbar__select {
+    width: 100%;
+    min-width: 0;
+    padding-right: 18px;
+  }
+
+  .listPage--mobileGenreList .listPagination__button,
+  .listPage--mobileGenreList .listPagination__current {
+    min-width: 30px;
+    padding-inline: 5px;
+  }
+
+  .listPage--mobileGenreList .listToolbar .listPagination {
+    grid-column: 3;
+    margin-left: auto;
+    justify-self: end;
+  }
+
+  .listPage--mobileSellerList .circleSearchBox {
+    width: 366px;
+    height: 30px;
+    margin-left: 12px;
+  }
+
+  .listPage--mobileSellerList .circleSearchBox input {
+    height: 30px;
+    padding-left: 10px;
+    font-size: 10px;
+  }
+
+  .listPage--mobileSellerList .circleSearchBox button {
+    flex-basis: 47px;
+    width: 47px;
+    min-height: 30px;
+    height: 30px;
+    border-radius: 5px;
+  }
+
+  /* The circle mockup keeps filters and the top pager on separate rows. */
+  .listPage--mobileSellerList .sellerListToolbar {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: 30px 30px;
+    height: 64px;
+    margin-top: 8px;
+    margin-bottom: 1px;
+    row-gap: 4px;
+  }
+
+  .listPage--mobileSellerList .sellerListToolbar .listToolbar__select,
+  .listPage--mobileSellerList .sellerListToolbar .listPagination__button,
+  .listPage--mobileSellerList .sellerListToolbar .listPagination__current {
+    height: 30px;
+  }
+
+  .listPage--mobileSellerList .sellerListToolbar .listPagination {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-left: auto;
+    justify-self: end;
+  }
+
+  .listPage--mobileSellerList .sellerCard,
+  .listPage--mobileSellerList .sellerCard:first-child,
+  .listPage--mobileSellerList .sellerCard:last-child {
+    position: relative;
+    grid-template-columns: 148px minmax(0, 1fr);
+    gap: 8px;
+    height: 146px;
+    min-height: 146px;
+    padding: 7px;
+  }
+
+  .listPage--mobileSellerList .sellerCard__imageLink {
+    width: 148px;
+    height: 111px;
+  }
+
+  .listPage--mobileSellerList .sellerCard__body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 88px;
+    grid-template-rows: 15px 20px minmax(0, 1fr);
+    column-gap: 7px;
+    height: 111px;
+  }
+
+  .listPage--mobileSellerList .sellerCard__type,
+  .listPage--mobileSellerList .sellerCard__title,
+  .listPage--mobileSellerList .sellerCard__latest { grid-column: 1; }
+
+  .listPage--mobileSellerList .sellerCard__type { font-size: 9px; }
+  .listPage--mobileSellerList .sellerCard__title {
+    font-size: 12px;
+    line-height: 16px;
+    white-space: nowrap;
+  }
+
+  .listPage--mobileSellerList .sellerCard__latest {
+    max-height: 46px;
+    margin-top: 3px;
+    font-size: 9px;
+    line-height: 13px;
+  }
+
+  .listPage--mobileSellerList .sellerCard__meta {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    grid-template-columns: 1fr;
+    align-content: start;
+    gap: 5px;
+    margin: 0;
+    padding-left: 7px;
+    border-left: 1px solid var(--v3-border);
+    font-size: 9px;
+    line-height: 15px;
+  }
+
+  .listPage--mobileSellerList .sellerCard__tags {
+    position: absolute;
+    right: 7px;
+    bottom: 6px;
+    left: 7px;
+    height: 18px;
+    max-height: 18px;
+    margin: 0;
+    overflow: hidden;
+    flex-wrap: nowrap;
+  }
+
+  .listPage--mobileSellerList .sellerCard__tagLink {
+    min-height: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    font-size: 8px;
+  }
+
+  /* Work detail: sizes are normalized from the 956px mockup to the 390px viewport. */
+  .detailPage .detailBreadcrumb {
+    min-height: 22px;
+    height: 22px;
+    padding: 5px 12px;
+    font-size: 9px;
+  }
+
+  .detailPage .detailHeader,
+  .detailPage--withDataRail .detailHeader {
+    padding: 10px 12px 8px;
+  }
+
+  .detailPage .detailHeader__metaLine { margin-bottom: 4px; }
+  .detailPage .detailHeader__genrePill {
+    height: 20px;
+    min-height: 20px;
+    font-size: 10px;
+  }
+
+  .detailPage .detailHeader__badges .badge { min-height: 20px; font-size: 9px; }
+
+  .detailPage .detailTitle--compact {
+    margin: 4px 0;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 22px;
+    letter-spacing: -0.02em;
+  }
+
+  .detailPage .detailHeader__seller { font-size: 11px; line-height: 15px; }
+
+  .detailPage .detailRankBadge {
+    display: flex;
+    width: max-content;
+    min-width: 0;
+    min-height: 24px;
+    margin-top: 7px;
+    padding: 0;
+    align-items: center;
+    gap: 5px;
+    border-radius: 0;
+    background: transparent;
+    color: var(--v3-navy);
+    box-shadow: none;
+  }
+
+  .detailPage .detailRankBadge span { color: var(--v3-pink); font-size: 15px; }
+  .detailPage .detailRankBadge strong { margin: 0; color: var(--v3-navy); font-size: 11px; }
+  .detailPage .detailRankBadge small { margin: 0; color: #766d8d; font-size: 9px; }
+
+  .detailPage .gallery { padding: 8px 12px 0; }
+  .detailPage .gallery__mainFrame { height: 156px; }
+  .detailPage .gallery__main {
+    width: 100%;
+    height: 156px;
+    object-fit: contain;
+  }
+
+  .detailPage .gallery__thumbStrip {
+    grid-template-columns: 22px minmax(0, 1fr) 22px;
+    min-height: 72px;
+    height: 72px;
+    padding: 5px 0;
+  }
+
+  .detailPage .gallery__thumbs { height: 62px; gap: 10px; }
+  .detailPage .gallery__thumbNav { width: 22px; height: 62px; font-size: 22px; }
+  .detailPage .gallery__thumbButton { width: 82px; height: 62px; }
+
+  .detailPage .detailSide { padding-top: 8px; }
+  .detailPage .detailSide > .priceLine strong { font-size: 24px; }
+
+  .detailPage .detailDataRail { gap: 8px; padding: 10px 12px 14px; }
+  .detailPage .detailDataCard { padding: 10px 12px; }
+  .detailPage .detailDataCard__heading { margin-bottom: 8px; font-size: 16px; }
+  .detailPage .ratingBreakdown__row { min-height: 28px; height: 28px; }
+  .detailPage .detailDataList__row { min-height: 20px; height: 20px; }
+  .detailPage .detailDataList__row dt,
+  .detailPage .detailDataList__row dd { font-size: 9px; line-height: 12px; }
+
+  .workTrendSection { padding: 10px 12px; }
+  .workTrendHeader,
+  .workTrendSection--compactPrimaryHeader .workTrendHeader {
+    gap: 4px;
+  }
+  .workTrendHeader__title h2 { font-size: 18px; line-height: 24px; }
+  .workTrendHeader__title p { font-size: 9px; line-height: 13px; }
+  .workTrendRange { display: none; }
+  .workTrendRangeTabs {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 5px;
+    margin: 6px 0;
+  }
+  .workTrendRangeTabs button {
+    height: 25px;
+    padding: 0 2px;
+    border: 1px solid #7251c9;
+    border-radius: 6px;
+    background: #fff;
+    color: var(--v3-navy);
+    font-size: 8.5px;
+    font-weight: 700;
+  }
+  .workTrendRangeTabs button.isActive {
+    border-color: var(--v3-pink);
+    background: var(--v3-pink);
+    color: #fff;
+  }
+  .workTrendSection .workTrendSummary,
+  .workTrendSection--compactPrimaryHeader .workTrendSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .workTrendSummary .workTrendSummary__range { display: none; }
+  .workTrendSummary span { min-height: 48px; font-size: 10px; }
+  .workTrendSummary span {
+    flex-direction: column;
+    gap: 3px;
+  }
+  .workTrendSummary b {
+    display: block;
+    padding: 0;
+    background: transparent !important;
+    color: var(--v3-navy) !important;
+    font-size: 9px;
+    writing-mode: horizontal-tb;
+  }
+  .workTrendSummary strong { font-size: 15px; }
+  .workTrendSummary span:nth-child(3) strong { color: #dfbd37; }
+  .workTrendSection .workTrendHeader--sub,
+  .workTrendSection--compactPrimaryHeader .workTrendHeader--sub {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    margin-top: 7px;
+  }
+  .workTrendSection .workTrendHeader--sub > div,
+  .workTrendSection--compactPrimaryHeader .workTrendHeader--sub > div { width: auto; }
+  .workTrendHeader--sub h2 { font-size: 15px; line-height: 20px; }
+  .workTrendHeader--sub p { display: none; }
+  .workTrendCurrentPrice { font-size: 9px; }
+  .workTrendCurrentPrice strong { font-size: 12px; }
+
+  /* Circle detail */
+  .circleDetailPage .circlePageTitle {
+    min-height: 43px;
+    padding: 10px 12px 4px;
+    font-size: 20px;
+    line-height: 29px;
+  }
+
+  .circleDetailPage .circleHeader {
+    gap: 14px;
+    padding: 10px 12px;
+  }
+
+  .circleDetailPage .circleHeader img {
+    width: 137px;
+    height: 137px;
+    flex-basis: 137px;
+  }
+
+  .circleDetailPage .circleHeader h2 { font-size: 20px; line-height: 26px; }
+  .circleDetailPage .circleHeader p { margin-top: 7px; font-size: 10px; line-height: 14px; }
+  .circleDetailPage .circleHeader__period { margin-top: 4px !important; font-size: 9px !important; }
+
+  .circleDetailPage .circleInfoTable dd { font-size: 14px; }
+  .circleDetailPage .circleInfoTable__tags dt { font-size: 16px; }
+
+  /* Static pages use the same compact density as the normalized v3 canvases. */
+  .staticPage__card { padding: 14px 12px 18px; }
+  .staticPage h1 {
+    margin-bottom: 8px;
+    font-size: 20px;
+    line-height: 27px;
+  }
+  .staticPage__card > p,
+  .staticPage__grid p { font-size: 10px; line-height: 16px; }
+  .staticPage h2 { font-size: 12px; line-height: 17px; }
+
+  .staticPage--guide .staticPage__lead {
+    margin-bottom: 10px;
+    text-align: center;
+  }
+
+  .guideToc {
+    position: relative;
+    margin: 8px 4px 10px;
+    padding: 10px 12px 24px;
+    border: 1px solid var(--v3-border);
+    border-radius: 8px;
+  }
+  .guideToc > strong { color: var(--v3-pink); font-size: 11px; }
+  .guideToc ol {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px 18px;
+    margin: 6px 0 0;
+    padding-left: 18px;
+    color: var(--v3-pink);
+    font-size: 9.5px;
+    line-height: 14px;
+  }
+  .guideToc a { color: var(--v3-navy); }
+  .guideToc > a {
+    position: absolute;
+    right: 12px;
+    bottom: 6px;
+    color: var(--v3-pink);
+    font-size: 9px;
+  }
+
+  .staticPage--guide .guideSections {
+    margin-top: 0;
+    border: 0;
+  }
+  .staticPage--guide .guideSections > section {
+    position: relative;
+    padding: 9px 4px 9px 29px;
+    border-bottom: 1px solid #e4dfe6;
+  }
+  .staticPage--guide .guideSections > section::before {
+    content: counter(guide-section) ".";
+    position: absolute;
+    left: 3px;
+    top: 9px;
+    color: var(--v3-pink);
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .staticPage--guide .guideSections { counter-reset: guide-section; }
+  .staticPage--guide .guideSections > section { counter-increment: guide-section; }
+
+  .staticPage__faq { gap: 4px; margin-top: 8px; }
+  .staticPage__faq details { border-radius: 7px; }
+  .staticPage__faq summary {
+    min-height: 36px;
+    padding: 7px 10px;
+    grid-template-columns: 16px minmax(0, 1fr) 16px;
+    gap: 5px;
+    font-size: 10.5px;
+    line-height: 14px;
+  }
+  .staticPage__faq details > p {
+    padding: 9px 12px 11px 32px;
+    font-size: 9.5px;
+    line-height: 15px;
+  }
+  .staticPage__actions { margin-top: 10px; }
+  .staticPage__actions a { min-height: 34px; font-size: 10px; }
+
+  .staticPage--contact .contactFormCallout { gap: 7px; margin-top: 8px; }
+  .staticPage--contact .contactFormCallout h2 { font-size: 12px; }
+  .staticPage--contact .contactFormCallout p { font-size: 10px; line-height: 16px; }
+  .staticPage--contact .contactFormCallout .button { min-height: 38px; font-size: 12px; }
+  .contactExternalNote {
+    margin: 5px 0 8px !important;
+    color: #6e6872 !important;
+    text-align: center;
+  }
+  .contactChecklist { margin: 0 0 8px; }
+  .contactChecklist h2 { margin-bottom: 7px; }
+  .contactChecklist ul {
+    margin: 0;
+    padding: 5px 10px;
+    border: 1px solid var(--v3-border);
+    border-radius: 8px;
+    list-style: none;
+  }
+  .contactChecklist li {
+    position: relative;
+    min-height: 25px;
+    padding: 5px 5px 5px 20px;
+    border-bottom: 1px dashed #eadfe3;
+    color: var(--v3-navy);
+    font-size: 10px;
+  }
+  .contactChecklist li:last-child { border-bottom: 0; }
+  .contactChecklist li::before {
+    content: "●";
+    position: absolute;
+    left: 3px;
+    color: var(--v3-pink);
+  }
+
+  .staticPage--about .aboutSections {
+    margin-top: 10px;
+    padding: 0 12px;
+  }
+  .staticPage--about .aboutSections > section {
+    padding: 12px 0 12px 56px;
+    border-bottom: 1px solid var(--v3-border);
+  }
+  .staticPage--about .aboutSections > section:last-child { border-bottom: 0; }
+  .staticPage--about .aboutSections > section::before {
+    content: "●";
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    float: left;
+    margin-left: -50px;
+    border-radius: 50%;
+    background: #fff1f5;
+    color: var(--v3-pink);
+    font-size: 17px;
+  }
+  .staticPage--about .aboutSections ul {
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--v3-navy);
+    font-size: 10px;
+    line-height: 18px;
+  }
+
+  .staticPage--privacy .staticPage__grid {
+    border-inline: 0;
+    border-radius: 0;
+  }
+  .staticPage--privacy .staticPage__grid > div { padding: 10px 4px; }
+
+  .listPage--searchResults .searchEmptyState {
+    position: relative;
+    min-height: 150px;
+    padding: 76px 14px 16px;
+    text-align: center;
+  }
+  .listPage--searchResults .searchEmptyState::before {
+    content: "";
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    width: 42px;
+    height: 42px;
+    border: 7px solid #9c8ac6;
+    border-radius: 50%;
+    transform: translateX(-58%);
+  }
+  .listPage--searchResults .searchEmptyState::after {
+    content: "";
+    position: absolute;
+    top: 56px;
+    left: calc(50% + 15px);
+    width: 24px;
+    height: 7px;
+    border-radius: 8px;
+    background: #9c8ac6;
+    transform: rotate(45deg);
+  }
+
+  .emptyState {
+    display: grid;
+    min-height: calc(100svh - 190px);
+    padding: 20px 12px 90px;
+    place-items: center;
+  }
+  .emptyState__card {
+    display: grid;
+    width: 100%;
+    max-width: 340px;
+    justify-items: center;
+    gap: 12px;
+    text-align: center;
+  }
+  .emptyState__code {
+    position: relative;
+    color: var(--v3-pink);
+    font-size: 66px;
+    font-weight: 800;
+    line-height: 72px;
+  }
+  .emptyState__code::after {
+    content: "♥";
+    display: block;
+    margin-top: -12px;
+    color: #f7bfd0;
+    font-size: 54px;
+    line-height: 44px;
+  }
+  .emptyState__card h1 { margin: 0; font-size: 20px; }
+  .emptyState__card p { margin: 0; font-size: 10px; line-height: 17px; }
+  .emptyState__card .button {
+    min-width: 140px;
+    min-height: 38px;
+    border: 1px solid var(--v3-pink);
+    color: var(--v3-pink);
+  }
+}
+
+/* Shared mobile work-type tabs: TOP is the canonical size and appearance. */
+@media (max-width: 760px) {
+  .listPage .listHeaderFilters > .filterTabsScroll,
+  .listPage .sectionHeader__aside > .filterTabsScroll {
+    width: auto;
+    margin-inline: 12px;
+    justify-self: stretch;
+  }
+
+  .listPage .listHeaderFilters {
+    min-width: 0;
+    justify-items: stretch;
+  }
+
+  .listPage .listHeaderFilters > .filterTabsScroll > .filterTabs,
+  .listPage .sectionHeader__aside > .filterTabsScroll > .filterTabs {
+    display: flex !important;
+    width: 100% !important;
+    margin: 0 !important;
+    grid-template-columns: none !important;
+    overflow-x: auto !important;
+    padding: 1px 23px 1px 0 !important;
+  }
+
+  .filterTabsScroll {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: 30px;
+    overflow: hidden;
+  }
+
+  .filterTabsScroll .filterTabs {
+    display: flex !important;
+    width: 100% !important;
+    max-width: 100%;
+    height: 30px !important;
+    margin: 0 !important;
+    gap: 5px;
+    grid-template-columns: none !important;
+    justify-content: flex-start !important;
+    overflow-x: auto !important;
+    flex-wrap: nowrap;
+    padding: 1px 23px 1px 0 !important;
+    scroll-padding-inline: 0 23px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    scrollbar-width: none;
+  }
+
+  .filterTabsScroll .filterTabs::-webkit-scrollbar { display: none; }
+
+  .filterTabsScroll .filterTabs a {
+    display: inline-flex;
+    flex: 0 0 auto !important;
+    width: auto;
+    min-width: 46px !important;
+    height: 28px !important;
+    min-height: 28px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 9px !important;
+    border: 1px solid var(--v3-border);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--v3-navy);
+    font-size: 9.5px !important;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .filterTabsScroll .filterTabs a.isActive {
+    border-color: var(--v3-pink);
+    background: linear-gradient(135deg, #fb6c96, var(--v3-pink));
+    color: #fff;
+  }
+
+  .filterTabsScroll__button {
+    position: absolute;
+    top: 1px;
+    z-index: 3;
+    display: grid;
+    width: 23px;
+    height: 28px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    color: var(--v3-navy);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .filterTabsScroll__button--left {
+    left: 0;
+    background: linear-gradient(90deg, #fff 62%, rgba(255,255,255,0.74));
+  }
+
+  .filterTabsScroll__button--right {
+    right: 0;
+    background: linear-gradient(90deg, rgba(255,255,255,0.74), #fff 38%);
+  }
+
+  .filterTabsScroll.canScrollLeft .filterTabs {
+    padding-left: 23px !important;
+  }
+}
+
+/* Ranking cards: measured against mockups-v3/04-ranking.png at a 390px viewport. */
+.rankingCardMeta,
+.rankingCardTags,
+.listRankBadge__metricLabel {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .listPage--ranking .productGrid--list {
+    gap: 11px;
+    margin-top: 11px;
+    padding: 0 12px;
+    overflow: hidden;
+  }
+
+  .listPage--ranking .sectionHeader__aside {
+    margin-top: 6px;
+  }
+
+  .listPage--ranking .productCard--list,
+  .listPage--ranking .productCard--list:first-child,
+  .listPage--ranking .productCard--list:last-child {
+    display: grid;
+    grid-template-columns: 134px minmax(0, 1fr) 98px;
+    grid-template-rows: minmax(110px, auto) 39px;
+    grid-template-areas:
+      "image body body"
+      "footer footer footer";
+    column-gap: 9px;
+    row-gap: 0;
+    width: 100%;
+    min-height: 154px;
+    height: auto;
+    margin: 0;
+    padding: 3px 3px 0;
+    overflow: hidden;
+    border: 1px solid #eadfe5;
+    border-radius: 7px;
+    background: #fff;
+    box-shadow: none;
+  }
+
+  .listPage--ranking .productCard--list .productCard__imageLink {
+    grid-area: image;
+    width: 134px;
+    height: 101px;
+    aspect-ratio: 4 / 3;
+    margin: 3px 0 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .listPage--ranking .productCard--list .productCard__image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .listPage--ranking .productCard--list .cornerBadge--sale {
+    display: none;
+  }
+
+  .listPage--ranking .productCard--list .productCard__body {
+    grid-column: 2 / 4;
+    grid-row: 1;
+    display: flex;
+    min-width: 0;
+    height: auto;
+    min-height: 110px;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 3px 3px 3px 0;
+    overflow: hidden;
+  }
+
+  .listPage--ranking .productCard--list .priceLine,
+  .listPage--ranking .productCard--list .productCard__meta {
+    display: none;
+  }
+
+  .listPage--ranking .productCard--list .productCard__type--media {
+    display: none;
+  }
+
+  .listPage--ranking .productCard--list .productCard__type--body {
+    display: inline-flex;
+    width: auto;
+    height: 16px;
+    min-height: 16px;
+    align-items: center;
+    justify-content: center;
+    margin: 0 0 2px;
+    padding: 0 6px;
+    border: 1px solid #ded1e6;
+    border-radius: 4px;
+    background: #fff;
+    color: var(--v3-navy);
+    font-size: 7.5px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+  }
+
+  .listPage--ranking .productCard--list .productCard__title {
+    display: -webkit-box;
+    width: 100%;
+    height: auto;
+    max-height: 34px;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    color: var(--v3-navy);
+    font-size: 11.5px;
+    font-weight: 750;
+    line-height: 17px;
+    letter-spacing: 0;
+  }
+
+  .listPage--ranking .productCard--list .productCard__seller {
+    width: calc(100% - 101px);
+    margin: 2px 0 0;
+    overflow: hidden;
+    color: #5640b7;
+    font-size: 8.5px;
+    line-height: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .listPage--ranking .productCard--list .productCard__sellerLabel {
+    display: none;
+  }
+
+  .listPage--ranking .productCard--list .tagRow {
+    display: none;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardTags {
+    display: flex;
+    width: calc(100% - 101px);
+    max-height: none;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: auto;
+    overflow: hidden;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardTags a {
+    display: inline-flex;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    min-height: 15px;
+    flex: 0 1 auto;
+    align-items: center;
+    padding: 1px 5px;
+    overflow: visible;
+    border: 1px solid #ded1e6;
+    border-radius: 4px;
+    background: #fff;
+    color: var(--v3-navy);
+    font-size: 7px;
+    font-weight: 650;
+    line-height: 10px;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .listPage--ranking .productCard--list .listRankBadge {
+    display: contents;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+  }
+
+  .listPage--ranking .productCard--list .listRankBadge__rank {
+    position: absolute;
+    top: 6px;
+    left: 3px;
+    z-index: 4;
+    display: grid;
+    width: 27px;
+    height: 53px;
+    min-height: 53px;
+    place-content: start center;
+    gap: 1px;
+    padding: 5px 0 0;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%);
+    border: 0;
+    background: #fa4f7c;
+    color: #fff;
+  }
+
+  .listPage--ranking .productCard--list .listRankBadge__rank span {
+    color: #fff;
+    font-size: 10px;
+    line-height: 10px;
+  }
+
+  .listPage--ranking .productCard--list .listRankBadge__rank strong {
+    color: #fff;
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 20px;
+  }
+
+  .listPage--ranking .productCard--list .listRankBadge__rank--plain {
+    place-content: start center;
+    padding-top: 12px;
+  }
+
+  .listPage--ranking .productCard--list .listRankBadge__metrics {
+    position: absolute;
+    top: 61px;
+    right: 7px;
+    bottom: auto;
+    display: flex;
+    width: 94px;
+    min-width: 94px;
+    height: 45px;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: flex-end;
+    gap: 1px;
+    padding: 0;
+    color: var(--v3-navy);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .listPage--ranking .productCard--list .listRankBadge__metricLabel {
+    display: block;
+    color: var(--v3-pink);
+    font-size: 8.5px;
+    font-weight: 600;
+    line-height: 10px;
+  }
+
+  .listPage--ranking .productCard--list .listRankBadge__metrics strong {
+    max-width: none;
+    overflow: visible;
+    color: var(--v3-pink);
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 18px;
+    text-overflow: clip;
+  }
+
+  .listPage--ranking .productCard--list .listRankBadge__metrics small {
+    max-width: none;
+    margin-top: 2px;
+    overflow: visible;
+    color: var(--v3-navy);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 10px;
+    text-overflow: clip;
+  }
+
+  .listPage--ranking .productCard--list .listRankBadge__metrics small span {
+    grid-area: auto;
+    margin-right: 2px;
+    color: var(--v3-navy);
+    font-size: inherit;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta {
+    grid-area: footer;
+    display: grid;
+    width: calc(100% + 6px);
+    height: 38px;
+    grid-template-columns: 27.5% 34.5% 25.5% 12.5%;
+    align-items: center;
+    margin-left: -3px;
+    border-top: 1px solid #eadfe5;
+    color: var(--v3-navy);
+    font-size: 8.3px;
+    font-weight: 600;
+    line-height: 12px;
+    white-space: nowrap;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta > span {
+    grid-area: auto;
+    display: flex;
+    min-width: 0;
+    height: 18px;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 0 4px;
+    overflow: hidden;
+    color: var(--v3-navy);
+    font-size: 8.3px;
+    line-height: 12px;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta > * + * {
+    border-left: 1px solid #eee4e9;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta b {
+    color: var(--v3-navy);
+    font-size: 8px;
+    font-weight: 600;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta em {
+    min-width: 0;
+    overflow: hidden;
+    font-style: normal;
+    text-overflow: clip;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta > span:first-child em {
+    color: var(--v3-pink);
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta__rating b {
+    color: var(--v3-pink);
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta .priceLine {
+    display: flex;
+    height: 18px;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    margin: 0;
+    padding: 0 1px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta .priceLine strong {
+    grid-area: auto;
+    color: var(--v3-pink);
+    font-size: 12px;
+    font-weight: 750;
+    line-height: 16px;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta .priceLine del {
+    color: #8b8794;
+    font-size: 8px;
+    line-height: 12px;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta .priceLine span {
+    grid-area: auto;
+    flex: 0 0 auto;
+    padding: 1px 4px;
+    border: 1px solid var(--v3-pink);
+    border-radius: 4px;
+    color: var(--v3-pink);
+    font-size: 7px;
+    line-height: 10px;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta > .rankingCardMeta__rating {
+    font-size: 12px;
+    line-height: 16px;
+    gap: 2px;
+    padding-right: 1px;
+    padding-left: 1px;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta > .rankingCardMeta__rating em {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta > .rankingCardMeta__sales em {
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta > .rankingCardMeta__sales {
+    gap: 2px;
+    padding-right: 1px;
+    padding-left: 1px;
+  }
+
+  .listPage--ranking .productCard--list .rankingCardMeta__rating b {
+    font-size: 13px;
+  }
+
+  .listPage--ranking .listHeaderFilters > .filterTabsScroll {
+    height: 30px;
+  }
+
+  .listPage--ranking .listHeaderFilters > .filterTabsScroll > .filterTabs {
+    height: 30px !important;
+    padding-top: 1px !important;
+    padding-bottom: 1px !important;
+  }
+
+  .listPage--ranking .listHeaderFilters > .filterTabsScroll .filterTabsScroll__button {
+    top: 1px;
+  }
+
+  .listPage--ranking .rankingModeTabs {
+    border-color: #ded1e6;
+  }
+
+  .listPage--ranking .rankingModeTabs a {
+    height: 28px !important;
+    min-height: 28px !important;
+    max-height: 28px !important;
+    align-items: center;
+    justify-content: center;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    line-height: 1;
+    border-right-color: #ded1e6;
+    text-align: center;
+  }
+
+  .listPage--ranking .listToolbar {
+    height: 42px;
+    min-height: 42px;
+    padding-bottom: 8px;
+  }
+}
+
+/* Mobile width containment: page-level horizontal scrolling is never allowed. */
+@media (max-width: 760px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+  }
+
+  body,
+  .pageContainer {
+    position: relative;
+  }
+
+  .pageContainer,
+  .siteHeader,
+  .siteHeader__inner,
+  main,
+  .dashboardPage,
+  .listPage,
+  .workDetailPage,
+  .circleDetailPage,
+  .staticPage,
+  .listSection,
+  .contentSection,
+  .productGrid,
+  .sellerList,
+  .genreRankingList {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100%;
+  }
+
+  .listPage--mobileSellerList .circleSearchBox {
+    width: calc(100% - 24px);
+    max-width: calc(100% - 24px);
+    margin-right: 12px;
+  }
+
+  .filterTabsScroll,
+  .tableScroll,
+  .chartScroll,
+  .scrollRail {
+    max-width: 100%;
+  }
+
+  .filterTabsScroll .filterTabs,
+  .scrollRail {
+    overscroll-behavior-x: contain;
+  }
+
+  .workChartWrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .workChart {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .listPage .filterTabsScroll .filterTabs a {
+    height: 28px !important;
+    min-height: 28px !important;
+    max-height: 28px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  /* Shared list-page refinements adopted from the ranking screen. TOP is excluded. */
+  .listPage .rankingModeTabs a {
+    height: 28px !important;
+    min-height: 28px !important;
+    max-height: 28px !important;
+    align-items: center;
+    justify-content: center;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    line-height: 1;
+    text-align: center;
+  }
+
+  .listPage:not(.listPage--ranking) .productCard--list .productCard__imageLink {
+    border-radius: 0;
+  }
+
+  .listPage:not(.listPage--ranking) .productCard--list .tagRow {
+    display: flex;
+    max-height: none;
+    flex-wrap: wrap;
+    gap: 3px;
+    overflow: visible;
+  }
+
+  .listPage:not(.listPage--ranking) .productCard--list .tagRow > :nth-child(n + 5) {
+    display: none;
+  }
+
+  .listPage:not(.listPage--ranking) .productCard--list .tagRow a,
+  .listPage:not(.listPage--ranking) .productCard--list .tagRow span {
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    min-height: 15px;
+    padding: 1px 5px;
+    overflow: visible;
+    font-size: 7px;
+    line-height: 10px;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .listPage--mobileProductList:not(.listPage--sale) .productCard--list {
+    height: auto;
+    min-height: 174px;
+  }
+
+  .listPage--sale .productCard--list,
+  .listPage--searchResults .productCard--list,
+  .listPage--genreDetail .productCard--list {
+    height: auto;
+    min-height: 150px;
+  }
+}
+
+/* New, sale and search results use the approved ranking-list card proportions. */
+@media (max-width: 760px) {
+  .listPage.listPage--searchResults .searchResultSection > .filterTabsScroll {
+    width: calc(100% - 24px);
+    margin: 0 12px 8px;
+  }
+
+  .listPage.listPage--searchResults .searchResultSection > .searchEmptyState {
+    width: calc(100% - 24px);
+    margin-right: 12px;
+    margin-left: 12px;
+  }
+
+  .listPage.listPage--rankingFormat .sectionHeader__aside {
+    margin-top: 6px;
+  }
+
+  .listPage.listPage--rankingFormat .listToolbar,
+  .listPage.listPage--rankingFormat .listToolbar--below {
+    height: 42px;
+    min-height: 42px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+  }
+
+  .listPage.listPage--rankingFormat .productGrid--list {
+    gap: 11px;
+    margin-top: 11px;
+    padding: 0 12px;
+    overflow: hidden;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list,
+  .listPage.listPage--rankingFormat .productCard--list:first-child,
+  .listPage.listPage--rankingFormat .productCard--list:last-child {
+    position: relative;
+    display: grid;
+    grid-template-columns: 134px minmax(0, 1fr);
+    grid-template-rows: minmax(110px, auto) 39px;
+    grid-template-areas:
+      "image body"
+      "footer footer";
+    column-gap: 9px;
+    row-gap: 0;
+    width: 100%;
+    min-height: 154px;
+    height: auto;
+    margin: 0;
+    padding: 3px 3px 0;
+    overflow: hidden;
+    border: 1px solid #eadfe5;
+    border-radius: 7px;
+    background: #fff;
+    box-shadow: none;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .productCard__imageLink {
+    grid-area: image;
+    width: 134px;
+    height: 101px;
+    aspect-ratio: 4 / 3;
+    margin: 3px 0 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .productCard__image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .productCard__body {
+    grid-area: body;
+    display: flex;
+    min-width: 0;
+    height: auto;
+    min-height: 110px;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 3px 3px 3px 0;
+    overflow: hidden;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .productCard__body > .priceLine,
+  .listPage.listPage--rankingFormat .productCard--list .productCard__meta,
+  .listPage.listPage--rankingFormat .productCard--list .tagRow,
+  .listPage.listPage--rankingFormat .productCard--list .productCard__type--media {
+    display: none;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .productCard__type--body {
+    display: inline-flex;
+    width: auto;
+    height: 16px;
+    min-height: 16px;
+    align-items: center;
+    justify-content: center;
+    margin: 0 0 2px;
+    padding: 0 6px;
+    border: 1px solid #ded1e6;
+    border-radius: 4px;
+    background: #fff;
+    color: var(--v3-navy);
+    font-size: 7.5px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .productCard__title {
+    display: -webkit-box;
+    width: 100%;
+    height: auto;
+    max-height: 34px;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    color: var(--v3-navy);
+    font-size: 11.5px;
+    font-weight: 750;
+    line-height: 17px;
+    letter-spacing: 0;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .productCard__seller {
+    width: 100%;
+    margin: 2px 0 0;
+    overflow: hidden;
+    color: #5640b7;
+    font-size: 8.5px;
+    line-height: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .productCard__sellerLabel {
+    display: none;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardTags {
+    display: flex;
+    width: 100%;
+    max-height: 33px;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 5px;
+    overflow: hidden;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardTags a {
+    display: inline-flex;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    min-height: 15px;
+    flex: 0 1 auto;
+    align-items: center;
+    padding: 1px 5px;
+    overflow: visible;
+    border: 1px solid #ded1e6;
+    border-radius: 4px;
+    background: #fff;
+    color: var(--v3-navy);
+    font-size: 7px;
+    font-weight: 650;
+    line-height: 10px;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta {
+    grid-area: footer;
+    display: grid;
+    width: calc(100% + 6px);
+    height: 38px;
+    grid-template-columns: 27.5% 34.5% 25.5% 12.5%;
+    align-items: center;
+    margin-left: -3px;
+    border-top: 1px solid #eadfe5;
+    color: var(--v3-navy);
+    font-size: 8.3px;
+    font-weight: 600;
+    line-height: 12px;
+    white-space: nowrap;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta > span {
+    display: flex;
+    min-width: 0;
+    height: 18px;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 0 4px;
+    overflow: hidden;
+    color: var(--v3-navy);
+    font-size: 8.3px;
+    line-height: 12px;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta > * + * {
+    border-left: 1px solid #eee4e9;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta b {
+    color: var(--v3-navy);
+    font-size: 8px;
+    font-weight: 600;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta em {
+    min-width: 0;
+    overflow: hidden;
+    font-style: normal;
+    text-overflow: clip;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta > span:first-child em,
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta > .rankingCardMeta__rating em {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta > span:first-child em,
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta__rating b {
+    color: var(--v3-pink);
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta .priceLine {
+    display: flex;
+    height: 18px;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    margin: 0;
+    padding: 0 1px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta .priceLine strong {
+    color: var(--v3-pink);
+    font-size: 12px;
+    font-weight: 750;
+    line-height: 16px;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta .priceLine del {
+    color: #8b8794;
+    font-size: 8px;
+    line-height: 12px;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta .priceLine span {
+    flex: 0 0 auto;
+    padding: 1px 4px;
+    border: 1px solid var(--v3-pink);
+    border-radius: 4px;
+    color: var(--v3-pink);
+    font-size: 7px;
+    line-height: 10px;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta > .rankingCardMeta__rating {
+    font-size: 12px;
+    line-height: 16px;
+    gap: 2px;
+    padding-right: 1px;
+    padding-left: 1px;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta > .rankingCardMeta__sales {
+    gap: 2px;
+    padding-right: 1px;
+    padding-left: 1px;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta > .rankingCardMeta__sales em {
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .listPage.listPage--rankingFormat .productCard--list .rankingCardMeta__rating b {
+    font-size: 13px;
+  }
+
+  .listPage.listPage--rankingFormat.listPage--sale .listFilterRow .filterTabs--discount {
+    display: grid !important;
+    width: calc(100% - 24px);
+    height: 28px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: center;
+    margin-inline: 12px;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-left: 1px solid #ded1e6;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .listPage.listPage--rankingFormat.listPage--sale .listFilterRow .filterTabs--discount a {
+    display: flex;
+    width: auto;
+    min-width: 0;
+    height: 28px !important;
+    min-height: 28px !important;
+    max-height: 28px !important;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px !important;
+    border: 1px solid #ded1e6;
+    border-left: 0;
+    border-radius: 0;
+    background: #fff;
+    color: var(--v3-navy);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .listPage.listPage--rankingFormat.listPage--sale .listFilterRow .filterTabs--discount a:first-child {
+    border-radius: 8px 0 0 8px;
+  }
+
+  .listPage.listPage--rankingFormat.listPage--sale .listFilterRow .filterTabs--discount a:last-child {
+    border-radius: 0 8px 8px 0;
+  }
+
+  .listPage.listPage--rankingFormat.listPage--sale .listFilterRow .filterTabs--discount a.isActive {
+    border-color: var(--v3-pink);
+    background: var(--v3-pink);
+    color: #fff;
+  }
+
+  .listPage.listPage--rankingFormat.listPage--sale .listToolbar {
+    display: grid;
+    height: 84px;
+    min-height: 84px;
+    grid-template-columns: 133px minmax(0, 1fr);
+    grid-template-rows: 34px 34px;
+    column-gap: 10px;
+    row-gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  .listPage.listPage--rankingFormat.listPage--sale .listToolbar > .listToolbar__selectLabel:first-child {
+    grid-column: 1 / 3;
+    grid-row: 1;
+    width: 140px;
+    justify-self: start;
+  }
+
+  .listPage.listPage--rankingFormat.listPage--sale .listToolbar > .listToolbar__selectLabel:first-child .listToolbar__select {
+    width: 140px;
+    font-size: 10px;
+  }
+
+  .listPage.listPage--rankingFormat.listPage--sale .listToolbar > .listToolbar__selectLabel:nth-child(2) {
+    grid-column: 1;
+    grid-row: 2;
+    grid-template-columns: 41px 85px;
+    gap: 7px;
+  }
+
+  .listPage.listPage--rankingFormat.listPage--sale .listToolbar > .listToolbar__selectLabel:nth-child(2) .listToolbar__select {
+    width: 85px;
+    font-size: 10px;
+  }
+
+  .listPage.listPage--rankingFormat.listPage--sale .listToolbar .listPagination {
+    grid-column: 2;
+    grid-row: 2;
+    width: 137px;
+    margin-left: 0;
+    justify-self: end;
+  }
+
+  .listPage.listPage--rankingFormat.listPage--sale .listFilterRow {
+    margin-bottom: 8px;
+  }
+}
+
+/* Genre search: align its controls and ranking cards with the approved ranking list. */
+@media (max-width: 760px) {
+  .workTrendSection {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .workTrendHeader,
+  .workTrendSection--compactPrimaryHeader .workTrendHeader {
+    grid-template-columns: minmax(0, 1fr) 124px;
+    align-items: start;
+    column-gap: 8px;
+    row-gap: 8px;
+  }
+
+  .workTrendHeader__title,
+  .workTrendSection--compactPrimaryHeader .workTrendHeader__title {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  .workTrendHeader__title h2,
+  .workTrendSection--compactPrimaryHeader .workTrendHeader__title h2 {
+    font-size: 19px;
+    line-height: 30px;
+  }
+
+  .workTrendRange,
+  .workTrendSection--compactPrimaryHeader .workTrendRange {
+    display: flex;
+    grid-column: 2;
+    grid-row: 1;
+    width: 124px;
+    justify-self: end;
+    justify-content: flex-end;
+    gap: 0;
+  }
+
+  .workTrendRange > span {
+    display: none;
+  }
+
+  .workTrendRange select {
+    width: 124px;
+    min-width: 0;
+    height: 30px;
+    flex: 0 0 124px;
+    padding: 0 28px 0 10px;
+    font-size: 11px;
+  }
+
+  .workTrendRangeTabs {
+    display: none;
+  }
+
+  .workTrendSection--compactPrimaryHeader .workTrendSummary {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+  }
+
+  .workChart__unit {
+    font-size: 18px;
+  }
+
+  .workChart__yLabel {
+    font-size: 17px;
+  }
+
+  .workChart__xAxis text,
+  .workChart__inlineLegend text {
+    font-size: 18px;
+  }
+
+  .workChartTooltip text {
+    font-size: 17px;
+  }
+
+  .workChartTooltip__title {
+    font-size: 20px !important;
+  }
+
+  .detailPage .detailDataList__row:has(.detailDataList__value--ranking) {
+    height: auto;
+    min-height: 38px;
+    grid-template-columns: minmax(0, 1fr) 68px;
+    gap: 8px;
+  }
+
+  .detailPage .detailDataList__row:has(.detailDataList__value--ranking) dt {
+    font-size: 10px;
+    line-height: 14px;
+  }
+
+  .detailPage .detailDataList__value--ranking {
+    grid-template-rows: 14px 12px;
+    align-content: center;
+    justify-items: end;
+    gap: 2px;
+  }
+
+  .detailPage .detailDataList__rank {
+    font-size: 11px;
+    line-height: 14px;
+  }
+
+  .detailPage .detailDataList__date {
+    font-size: 9px;
+    line-height: 12px;
+  }
+
+  .embeddedProductList.listPage.listPage--rankingFormat .productGrid--list {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .listPage--genreDetail.listPage--rankingFormat .sectionHeader h2 {
+    text-align: left;
+  }
+
+  .listPage--genreDetail.listPage--rankingFormat .sectionHeader p {
+    display: none;
+    text-align: left;
+  }
+
+  .listPage--mobileGenreList .listHeaderFilters .rankingModeTabs {
+    height: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    border-color: #ded1e6;
+  }
+
+  .listPage--mobileGenreList .listHeaderFilters .rankingModeTabs a {
+    height: 28px !important;
+    min-height: 28px !important;
+    max-height: 28px !important;
+    border-right-color: #ded1e6;
+  }
+
+  .listPage--mobileGenreList .listToolbar,
+  .listPage--mobileGenreList .listToolbar--below {
+    height: 33px;
+    min-height: 33px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__rank {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 10px 20px;
+    justify-items: center;
+    width: 27px;
+    height: 53px;
+    min-height: 53px;
+    place-content: start center;
+    gap: 1px;
+    padding: 5px 0 0;
+    overflow: hidden;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%);
+    border: 0;
+    border-radius: 0;
+    background: #fa4f7c;
+    box-shadow: none;
+    color: #fff;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__rank span {
+    width: auto;
+    justify-self: center;
+    color: #fff;
+    font-size: 10px;
+    line-height: 10px;
+    text-align: center;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__rank strong {
+    width: auto;
+    justify-self: center;
+    color: #fff;
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 20px;
+    text-align: center;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__rank--plain {
+    grid-template-rows: 20px;
+    place-content: start center;
+    padding-top: 12px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__title {
+    max-width: calc(100% - 84px);
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__meta {
+    grid-template-columns: repeat(2, max-content);
+    justify-content: start;
+    column-gap: 8px;
+    margin-top: 10px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__meta:has(span:nth-child(3)) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 6px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__meta span {
+    width: max-content;
+    justify-content: flex-start;
+    padding-right: 5px;
+    padding-left: 5px;
+    border-right: 1px solid var(--v3-border);
+    text-align: left;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__meta span:last-child {
+    border-right: 1px solid var(--v3-border);
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__meta:has(span:nth-child(3)) span {
+    width: auto;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__productsRail {
+    min-width: 0;
+    margin-top: 5px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__productsRail::after {
+    width: 28px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__productsRail .genreRankingCard__products {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    height: 101px;
+    max-height: 101px;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 5px;
+    margin-top: 0;
+    padding: 0 32px 0 0;
+    scroll-padding: 0 32px 0 0;
+    grid-template-columns: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__productsRail .genreRankingCard__products a {
+    flex: 0 0 84px;
+    width: 84px;
+    min-width: 84px;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__productsRail .railButton--left {
+    left: 0;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__productsRail .railButton--right {
+    right: 0;
+  }
+
+  .listPage--mobileGenreList .genreRankingCard__action {
+    top: 8px;
+    right: 8px;
+    bottom: auto;
+  }
+}
+
+/* Circle list: use the full mobile width and keep every genre reachable. */
+@media (max-width: 760px) {
+  .listPage--mobileSellerList .sectionHeader__aside {
+    margin-top: 8px;
+    overflow: visible;
+  }
+
+  .listPage--mobileGenreList .sectionHeader__aside {
+    margin-top: 8px;
+  }
+
+  .listPage--mobileSellerList .circleSearchBox {
+    width: 100%;
+    max-width: none;
+    flex: 0 0 100%;
+    margin-right: 12px;
+    margin-left: 12px;
+  }
+
+  .listPage--mobileSellerList .circleSearchBox button {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    min-height: 30px;
+    flex: 0 0 30px;
+  }
+
+  .listPage--mobileSellerList .circleSearchBox button svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .listPage--mobileSellerList .sellerListToolbar {
+    height: 72px;
+    margin-bottom: 9px;
+    padding-bottom: 8px;
+  }
+
+  .listPage--mobileSellerList .sellerCard__body {
+    grid-template-rows: 22px 18px minmax(0, 1fr);
+    row-gap: 3px;
+  }
+
+  .listPage--mobileSellerList .sellerCard__type {
+    width: auto;
+    height: 22px;
+    margin: 0;
+    justify-self: start;
+  }
+
+  .listPage--mobileSellerList .sellerCard__title {
+    height: 18px;
+    line-height: 18px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .listPage--mobileSellerList .sellerCard__latest {
+    display: -webkit-box;
+    max-height: none;
+    margin: 0;
+    line-height: 13px;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+  }
+
+  .listPage--mobileSellerList .sellerCard__tags {
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .listPage--mobileSellerList .sellerCard__tags::-webkit-scrollbar {
+    display: none;
+  }
+}

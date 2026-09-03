@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <main className="staticPage">
+    <main className="staticPage staticPage--terms">
       <section className="staticPage__card">
         <p className="staticPage__eyebrow">TERMS</p>
         <h1>利用規約</h1>

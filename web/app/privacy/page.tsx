@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <main className="staticPage">
+    <main className="staticPage staticPage--privacy">
       <section className="staticPage__card">
         <p className="staticPage__eyebrow">PRIVACY</p>
         <h1>プライバシーポリシー</h1>

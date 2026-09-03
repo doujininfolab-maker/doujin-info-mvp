@@ -71,7 +71,7 @@ export default async function GenrePage({ params, searchParams }: PageProps) {
   const visibleRange = products.length ? `${offsetCount + 1}〜${offsetCount + products.length}件` : "0件";
 
   return (
-    <div className="listPage listPage--wide">
+    <div className="listPage listPage--wide listPage--mobileProductList listPage--rankingFormat listPage--genreDetail">
       <section className="contentSection listSection">
         <SectionHeader title={`${genreName} の作品`} description={`${segment.label}のジャンル別作品`} icon="♟">
           <WorkTypeTabs

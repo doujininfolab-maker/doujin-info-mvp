@@ -5,11 +5,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export function ScrollRail({
   children,
   className = "",
+  railClassName = "",
   ariaLabel,
   resetKey,
 }: {
   children: React.ReactNode;
   className?: string;
+  railClassName?: string;
   ariaLabel: string;
   resetKey?: string;
 }) {
@@ -86,7 +88,7 @@ export function ScrollRail({
           ‹
         </button>
       ) : null}
-      <div ref={railRef} className="scrollRail" onWheel={handleWheel} aria-label={ariaLabel} tabIndex={0}>
+      <div ref={railRef} className={`scrollRail${railClassName ? ` ${railClassName}` : ""}`} onWheel={handleWheel} aria-label={ariaLabel} tabIndex={0}>
         {children}
       </div>
       {canScrollRight ? (

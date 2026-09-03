@@ -431,6 +431,13 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
 
   return (
     <div className={`detailPage${showDetailDataRail ? " detailPage--withDataRail" : ""}`}>
+      <nav className="detailBreadcrumb" aria-label="パンくず">
+        <Link href={segmentPath} prefetch={false}>{contentScopeLabel}</Link>
+        <span>›</span>
+        <Link href={workTypeHref} prefetch={false}>{primaryGenreLabel}</Link>
+        <span>›</span>
+        <span>{product.title}</span>
+      </nav>
       <header className="detailHeader detailHeader--compact">
         <div className="detailHeader__workThumb">
           <img src={headerImage} alt="" />
@@ -596,11 +603,13 @@ export default async function WorkDetailPage({ params, searchParams }: PageProps
         {sameSellerProducts.length > 0 ? (
           <section className="detailSection sameSellerSection">
             <h2>同じサークルの作品</h2>
-            <ProductGrid
-              products={sameSellerProducts}
-              variant="list"
-              contentTypeParam={contentTypeParam}
-            />
+            <div className="listPage listPage--rankingFormat embeddedProductList">
+              <ProductGrid
+                products={sameSellerProducts}
+                variant="list"
+                contentTypeParam={contentTypeParam}
+              />
+            </div>
           </section>
         ) : null}
 

@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProductRankingMode, ProductWorkType } from "@/lib/types";
 import { WORK_TYPE_OPTIONS, buildWorkTypeHref, buildFilterHref } from "@/lib/workTypes";
 import { RANKING_MODE_OPTIONS } from "@/lib/rankingModes";
@@ -9,6 +12,7 @@ type WorkTypeTabsProps = {
   currentParams?: Record<string, string | undefined>;
   paramName?: string;
   className?: string;
+  scrollControls?: boolean;
 };
 
 export function WorkTypeTabs({
@@ -17,9 +21,47 @@ export function WorkTypeTabs({
   currentParams = {},
   paramName = "workType",
   className,
+  scrollControls = true,
 }: WorkTypeTabsProps) {
-  return (
-    <nav className={`filterTabs${className ? ` ${className}` : ""}`} aria-label="作品形式">
+  const tabsRef = useRef<HTMLElement | null>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(scrollControls);
+
+  const updateScrollState = useCallback(() => {
+    const element = tabsRef.current;
+    if (!element || !scrollControls) return;
+
+    const maxScrollLeft = Math.max(0, element.scrollWidth - element.clientWidth);
+    setCanScrollLeft(element.scrollLeft > 2);
+    setCanScrollRight(element.scrollLeft < maxScrollLeft - 2);
+  }, [scrollControls]);
+
+  useEffect(() => {
+    const element = tabsRef.current;
+    if (!element || !scrollControls) return;
+
+    updateScrollState();
+    const frame = requestAnimationFrame(updateScrollState);
+    element.addEventListener("scroll", updateScrollState, { passive: true });
+    const resizeObserver = new ResizeObserver(updateScrollState);
+    resizeObserver.observe(element);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      element.removeEventListener("scroll", updateScrollState);
+      resizeObserver.disconnect();
+    };
+  }, [scrollControls, updateScrollState]);
+
+  const scrollBy = (direction: -1 | 1) => {
+    const element = tabsRef.current;
+    if (!element) return;
+    element.scrollBy({ left: Math.round(element.clientWidth * 0.72) * direction, behavior: "smooth" });
+    window.setTimeout(updateScrollState, 260);
+  };
+
+  const tabs = (
+    <nav ref={tabsRef} className={`filterTabs${className ? ` ${className}` : ""}`} aria-label="作品形式">
       {WORK_TYPE_OPTIONS.map((option) => {
         const isActive = option.value === "all" ? !currentWorkType : currentWorkType === option.value;
         const href = buildWorkTypeHref(basePath, currentParams, option.value, paramName);
@@ -31,6 +73,24 @@ export function WorkTypeTabs({
         );
       })}
     </nav>
+  );
+
+  if (!scrollControls) return tabs;
+
+  return (
+    <div className={`filterTabsScroll${canScrollLeft ? " canScrollLeft" : ""}${canScrollRight ? " canScrollRight" : ""}`}>
+      {canScrollLeft ? (
+        <button type="button" className="filterTabsScroll__button filterTabsScroll__button--left" aria-label="前の作品形式を表示" onClick={() => scrollBy(-1)}>
+          ‹
+        </button>
+      ) : null}
+      {tabs}
+      {canScrollRight ? (
+        <button type="button" className="filterTabsScroll__button filterTabsScroll__button--right" aria-label="次の作品形式を表示" onClick={() => scrollBy(1)}>
+          ›
+        </button>
+      ) : null}
+    </div>
   );
 }
 

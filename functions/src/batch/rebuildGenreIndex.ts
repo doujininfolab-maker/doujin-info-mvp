@@ -205,7 +205,7 @@ function buildEntries(products: Product[], sourceDate: string | undefined): Genr
           period,
           group.topCandidates[period]
             .sort((a, b) => b.sales - a.sales || b.revenue - a.revenue || a.product.productId.localeCompare(b.product.productId))
-            .slice(0, 3)
+            .slice(0, 5)
             .map((candidate) => compactProduct(candidate.product)),
         ]),
       ) as GenreIndexEntry["topProducts"];

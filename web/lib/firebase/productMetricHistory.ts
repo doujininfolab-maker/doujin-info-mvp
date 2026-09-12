@@ -149,6 +149,9 @@ function comparableMetric(metric: ProductDailyMetric | undefined): string {
     salesCount: metric.salesCount,
     dailySalesCount: metric.dailySalesCount,
     dailySalesStatus: metric.dailySalesStatus,
+    dailySalesBasis: metric.dailySalesBasis,
+    dailySalesDefinitionVersion: metric.dailySalesDefinitionVersion,
+    dailySalesObservedAt: metric.dailySalesObservedAt,
     periodSalesCount: metric.periodSalesCount,
   });
 }

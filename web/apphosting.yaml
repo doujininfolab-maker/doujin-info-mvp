@@ -69,12 +69,17 @@ env:
     availability:
       - RUNTIME
   # metricYears migration and point-by-point production verification completed.
-  # Set this back to legacy for an immediate read-side rollback.
+  # After year-only writes begin, legacy reads require backfilling the gap.
   - variable: METRIC_HISTORY_READ_MODE
     value: "year"
     availability:
       - RUNTIME
   - variable: METRIC_HISTORY_DEBUG
     value: "false"
+    availability:
+      - RUNTIME
+  # Enable prefer only after all product writers and initial views are deployed.
+  - variable: GENRE_DETAIL_READ_MODE
+    value: "legacy"
     availability:
       - RUNTIME

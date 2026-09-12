@@ -3,11 +3,14 @@ import { getAbsoluteSiteUrl, getSiteUrl } from "@/lib/siteUrl";
 
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: {
+    rules: [{
       userAgent: "*",
       allow: "/",
       disallow: ["/api/", "/search"],
-    },
+    }, {
+      userAgent: ["Meta-ExternalAgent", "Amazonbot"],
+      disallow: "/",
+    }],
     sitemap: getAbsoluteSiteUrl("/sitemap.xml"),
     host: getSiteUrl().origin,
   };

@@ -1,3 +1,4 @@
+import { getGenreDetailCandidates } from "./genreDetailView";
 import { FieldPath } from "firebase-admin/firestore";
 import { getAdminDb } from "./admin";
 import { getSearchIndexCandidates } from "./searchIndex";
@@ -1056,6 +1057,11 @@ export async function getProductsByGenre(
 ): Promise<Product[]> {
   const db = getAdminDb();
   const needsPostFilter = shouldPostFilter(filter);
+  const candidates = await getGenreDetailCandidates(filter, needsPostFilter ? 0 : filter.offsetCount ?? 0, queryLimitForFilter(filter, filter.limitCount ?? 24));
+  if (candidates !== undefined) {
+    const publicProducts = await filterPublicProducts(candidates);
+    return needsPostFilter ? postFilterProducts(publicProducts, filter) : publicProducts;
+  }
 
   let query = db
     .collection(PRODUCTS_COLLECTION)
@@ -1256,6 +1262,12 @@ export function getProductTrendPointsFromSnapshots(product: Product, days = 35):
       revenue: sales * current.price,
       price: current.price,
     });
+  }
+
+  const initial = product.releaseDaySales;
+  const initialDate = normalizeMetricDate(initial?.date);
+  if (initial && initialDate && isFiniteNumber(initial.count) && initial.count >= 0 && isFiniteNumber(initial.priceCurrent)) {
+    pointsByDate.set(initialDate, { date: initialDate, sales: initial.count, revenue: initial.count * initial.priceCurrent, price: initial.priceCurrent });
   }
 
   const rankingMetrics = product.rankingMetrics;

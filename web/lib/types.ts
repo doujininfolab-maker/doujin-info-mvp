@@ -553,6 +553,7 @@ export type Product = {
   salesEditionGroupId?: string | null;
   salesEditions?: ProductSalesEdition[];
   wishlistCount?: number;
+  releaseDaySales?: { date: string; count: number; priceCurrent: number; observedAt: FirestoreTimestampLike | string; definitionVersion: 1 };
   recentSalesSnapshots?: ProductSalesSnapshot[];
   rankingMetrics?: ProductRankingMetrics;
   currentDailyRevenueRankings?: Partial<
@@ -720,6 +721,9 @@ export type ProductDailyMetric = {
   salesEditionCounts?: ProductDailySalesEdition[];
   wishlistCount?: number;
 
+  dailySalesBasis?: "release_day_cumulative";
+  dailySalesObservedAt?: FirestoreTimestampLike | string;
+  dailySalesDefinitionVersion?: 1;
   dailySalesCount?: number | null;
   dailySalesStatus?:
     | "pending"
@@ -760,6 +764,9 @@ export type ProductMetricYearPoint = {
   priceOriginal?: number;
   salesCount?: number;
 
+  dailySalesBasis?: "release_day_cumulative";
+  dailySalesObservedAt?: FirestoreTimestampLike | string;
+  dailySalesDefinitionVersion?: 1;
   dailySalesCount?: number | null;
   dailySalesStatus?: ProductDailyMetric["dailySalesStatus"];
   dailySalesBaseDate?: string;

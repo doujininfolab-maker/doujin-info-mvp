@@ -1,3 +1,5 @@
+import { withGenreSourceMutation } from "./genreDetailView";
+import { buildReleaseDaySalesPatch, preserveReleaseDayMetric } from "./releaseDaySales";
 import { logger } from "firebase-functions";
 import { db } from "../firebaseAdmin";
 import {
@@ -57,6 +59,7 @@ const WORK_TYPE_POPULAR_CATEGORIES: DlsiteDailyPriorityWorkTypeCategory[] = [
 ];
 
 type TargetReason =
+  | "releaseDayConfirmation"
   | "newRelease"
   | "popular"
   | "salesCount"
@@ -69,6 +72,7 @@ type WorkTypePopularCounts = Record<
 
 type DailyPriorityProductSourceWithPrefetch = DlsiteDailyPriorityProductSource & {
   prefetchedProduct?: Product;
+  existingProduct?: Product;
 };
 
 type DailyPriorityTarget = DailyPriorityProductSourceWithPrefetch & {
@@ -299,7 +303,7 @@ function buildMetric(
     discountRate: product.discountRate,
     isDiscounted: product.isDiscounted,
     isOnSale: product.isOnSale,
-    salesCount: product.salesCount,
+    salesCount: isFiniteNumber(product.salesCount) && product.salesCount >= 0 ? product.salesCount : undefined,
     totalSalesCount: product.totalSalesCount,
     currentEditionSalesCount: product.currentEditionSalesCount,
     salesEditionCounts:
@@ -331,7 +335,7 @@ function buildMetric(
 
 function buildProductForSave(product: Product): Product {
   const productForSave = { ...product };
-  if (!isFiniteNumber(productForSave.salesCount)) {
+  if (!isFiniteNumber(productForSave.salesCount) || productForSave.salesCount < 0) {
     delete productForSave.salesCount;
   }
   return productForSave;
@@ -342,10 +346,14 @@ export function buildDailySalesPatch(params: {
   metricDate: string;
   existingProduct?: Product;
   calculatedAt: FirebaseFirestore.Timestamp;
+  batchDate?: string;
+  observedAt?: FirebaseFirestore.Timestamp;
 }): {
   metricPatch: Partial<ProductDailyMetric>;
   productPatch: Partial<Product>;
 } {
+  const releaseDay = buildReleaseDaySalesPatch(params);
+  if (releaseDay) return releaseDay;
   const currentSalesCount = params.product.salesCount;
   const productPatch: Partial<Product> = {};
 
@@ -364,9 +372,10 @@ export function buildDailySalesPatch(params: {
   const previousSnapshotCount =
     params.existingProduct?.lastDailySalesSnapshotCount;
 
+  productPatch.dailySalesSnapshotBasis = "priority_metric_date";
   productPatch.lastDailySalesSnapshotDate = params.metricDate;
   productPatch.lastDailySalesSnapshotCount = currentSalesCount;
-  productPatch.lastDailySalesSnapshotFetchedAt = params.calculatedAt;
+  productPatch.lastDailySalesSnapshotFetchedAt = params.observedAt ?? params.calculatedAt;
 
   if (!previousSnapshotDate || !isFiniteNumber(previousSnapshotCount)) {
     return {
@@ -392,10 +401,14 @@ export function buildDailySalesPatch(params: {
     };
   }
 
-  const periodDays = daysBetweenYyyyMMdd(
-    previousSnapshotDate,
-    params.metricDate,
-  );
+  let periodDays = daysBetweenYyyyMMdd(previousSnapshotDate, params.metricDate);
+  const releaseDate = dateLikeToYyyyMMdd(params.product.releaseDate);
+  const previousObservedAt = params.existingProduct?.lastDailySalesSnapshotFetchedAt;
+  if (!params.existingProduct?.releaseDaySales && releaseDate === previousSnapshotDate &&
+      previousObservedAt && toYyyyMMdd(previousObservedAt.toDate()) === releaseDate && params.batchDate) {
+    const observedGap = daysBetweenYyyyMMdd(releaseDate, params.batchDate);
+    if (observedGap !== undefined && observedGap > 1) periodDays = observedGap;
+  }
   const rawDelta = currentSalesCount - previousSnapshotCount;
   const basePatch = {
     dailySalesBaseDate: previousSnapshotDate,
@@ -454,7 +467,7 @@ export function buildDailySalesPatch(params: {
   };
 }
 
-class FirestoreWriteBuffer {
+export class FirestoreWriteBuffer {
   private batch = db.batch();
   private pendingWriteCount = 0;
 
@@ -462,6 +475,10 @@ class FirestoreWriteBuffer {
   writeOperationCount = 0;
 
   constructor(private readonly maxWritesPerCommit = FIRESTORE_BATCH_WRITE_LIMIT) {}
+
+  async reserve(writeCount: number): Promise<void> {
+    if (this.pendingWriteCount + writeCount > this.maxWritesPerCommit) await this.flush();
+  }
 
   async set(
     ref: FirebaseFirestore.DocumentReference,
@@ -483,6 +500,19 @@ class FirestoreWriteBuffer {
     this.pendingWriteCount = 0;
     this.commitCount += 1;
   }
+}
+
+export function releaseConfirmationContentType(product: Product): ProductContentType | undefined {
+  const scalar = (product as Product & { contentType?: string }).contentType;
+  const labels = [...(product.contentTypes ?? []), ...(product.contentTypeIds ?? []), ...(scalar ? [scalar] : [])].map((v) => v.replace(/^dlsite:/, "").trim().toLowerCase());
+  if (labels.some((v) => ["tl", "otm", "乙女向け", "ティーンズラブ"].includes(v))) return "tl";
+  if (labels.some((v) => ["bl", "bl1", "ボーイズラブ"].includes(v))) return "bl";
+  try {
+    const path = new URL(product.sourceUrl).pathname;
+    if (path.startsWith("/girls/")) return "tl";
+    if (path.startsWith("/bl/")) return "bl";
+  } catch { /* Invalid source URL is reported as an unclassified candidate. */ }
+  return undefined;
 }
 
 function buildDailyRankingTarget(
@@ -599,7 +629,8 @@ async function loadExistingProductsById(
   target: FetchTarget,
 ): Promise<Map<string, Product>> {
   const productsById = new Map<string, Product>();
-  const productIds = targets.map((product) =>
+  for (const target of targets) if (target.existingProduct) productsById.set(target.existingProduct.productId, target.existingProduct);
+  const productIds = targets.filter((product) => !product.existingProduct).map((product) =>
     buildProductIdForTarget(target, product.sourceProductId),
   );
 
@@ -649,10 +680,12 @@ function mergeTargetsByProductId(
   return [...map.values()];
 }
 
-async function saveProductAndMetric(params: {
+export async function saveProductAndMetric(params: {
   writeBuffer: FirestoreWriteBuffer;
   product: Product;
   metricDate: string;
+  batchDate: string;
+  observedAt: FirebaseFirestore.Timestamp;
   existingProduct?: Product;
 }): Promise<{ product: Product; writeCount: number; dailyMetricWriteCount: number }> {
   const productRef = db.collection("products").doc(params.product.productId);
@@ -662,14 +695,15 @@ async function saveProductAndMetric(params: {
     metricDate: params.metricDate,
     existingProduct: params.existingProduct,
     calculatedAt,
+    batchDate: params.batchDate,
+    observedAt: params.observedAt,
   });
-  const priceCurrent = isFiniteNumber(params.product.priceCurrent)
-    ? params.product.priceCurrent
-    : 0;
-  const sourceSalesCount = isFiniteNumber(params.product.salesCount)
-    ? params.product.salesCount
-    : undefined;
-  const rankingState = sourceSalesCount === undefined
+  const confirmed = params.existingProduct?.releaseDaySales?.date === params.metricDate ? params.existingProduct.releaseDaySales : undefined;
+  const skipReleaseMetric = !confirmed && dateLikeToYyyyMMdd(params.product.releaseDate) === params.metricDate &&
+    params.batchDate > params.metricDate && delta.metricPatch.dailySalesStatus !== "calculated";
+  const priceCurrent = confirmed?.priceCurrent ?? (isFiniteNumber(params.product.priceCurrent) ? params.product.priceCurrent : 0);
+  const sourceSalesCount = confirmed?.count ?? (isFiniteNumber(params.product.salesCount) && params.product.salesCount >= 0 ? params.product.salesCount : undefined);
+  const rankingState = skipReleaseMetric || sourceSalesCount === undefined
     ? undefined
     : buildRankingState({
         product: params.existingProduct
@@ -685,21 +719,30 @@ async function saveProductAndMetric(params: {
         sourceSalesCount,
         priceCurrent,
         dailySalesCount:
-          delta.metricPatch.dailySalesStatus === "calculated" &&
+          confirmed ? confirmed.count : delta.metricPatch.dailySalesStatus === "calculated" &&
           isFiniteNumber(delta.metricPatch.dailySalesCount)
             ? delta.metricPatch.dailySalesCount
             : undefined,
         calculatedAt,
       });
   const productToSave = await applyContentVisibility(buildProductForSave({
+    ...(params.existingProduct?.releaseDaySales ? { releaseDaySales: params.existingProduct.releaseDaySales } : {}),
     ...params.product,
     ...delta.productPatch,
     ...(rankingState ?? {}),
   }));
 
-  await params.writeBuffer.set(productRef, productToSave, { merge: true });
-  const metric = buildMetric(params.product, params.metricDate, delta.metricPatch);
+  if (skipReleaseMetric) {
+    await params.writeBuffer.reserve(1);
+    await params.writeBuffer.set(productRef, productToSave, { merge: true });
+    logger.warn("Release-day metric not saved: invalid or late observation", { productId: params.product.productId, metricDate: params.metricDate, status: delta.metricPatch.dailySalesStatus });
+    return { product: productToSave, writeCount: 1, dailyMetricWriteCount: 0 };
+  }
+  const metric = preserveReleaseDayMetric(params.existingProduct, params.metricDate, buildMetric(params.product, params.metricDate, delta.metricPatch));
   const historyMode = getMetricHistoryWriteMode();
+  const yearMutations = writesMetricYears(historyMode) ? buildMetricYearMutations(params.product, [{ date: params.metricDate, metric }]) : [];
+  await params.writeBuffer.reserve(1 + Number(writesLegacyMetrics(historyMode)) + yearMutations.length);
+  await params.writeBuffer.set(productRef, productToSave, { merge: true });
   let dailyMetricWriteCount = 0;
   if (writesLegacyMetrics(historyMode)) {
     await params.writeBuffer.set(
@@ -710,10 +753,7 @@ async function saveProductAndMetric(params: {
     dailyMetricWriteCount += 1;
   }
   if (writesMetricYears(historyMode)) {
-    for (const mutation of buildMetricYearMutations(params.product, [{
-      date: params.metricDate,
-      metric,
-    }])) {
+    for (const mutation of yearMutations) {
       await params.writeBuffer.set(
         metricYearRef(productRef, mutation.year),
         mutation.data,
@@ -799,6 +839,8 @@ async function fetchAndSaveTarget(params: {
     writeBuffer: params.writeBuffer,
     product,
     metricDate,
+    batchDate: addDaysToYyyyMMdd(params.previousDate, 1),
+    observedAt: product.fetchedAt ?? product.lastFetchedAt ?? nowTimestamp(),
     existingProduct: params.existingProduct,
   });
   performance.saveEnqueueMs += Date.now() - saveStartedAt;
@@ -1260,7 +1302,7 @@ async function retryFailedTargets(params: {
 }> {
   let retrySuccessCount = 0;
   let retryFailedCount = 0;
-  let remainingTargets = params.failedTargets;
+  let remainingTargets = params.failedTargets.map(({ existingProduct: _cached, ...target }) => target);
   const failedProductIds: string[] = [];
   const productsByContentType = new Map<
     ProductContentType,
@@ -1339,7 +1381,7 @@ function resolveOptions(
   };
 }
 
-export async function fetchDailyPriorityProducts(
+async function fetchDailyPriorityProductsInternal(
   options: FetchDailyPriorityProductsOptions,
 ): Promise<FetchDailyPriorityProductsResult> {
   const resolved = resolveOptions(options);
@@ -1422,6 +1464,14 @@ export async function fetchDailyPriorityProducts(
   };
 
   try {
+    const releaseDateIso = `${previousDate.slice(0, 4)}-${previousDate.slice(4, 6)}-${previousDate.slice(6, 8)}`;
+    const yesterday = await db.collection("products")
+      .where("platform", "==", "dlsite").where("audience", "==", "female").where("category", "==", "doujin")
+      .where("releaseDate", ">=", releaseDateIso).where("releaseDate", "<", `${releaseDateIso}\uf8ff`).get();
+    const confirmationProducts = yesterday.docs.map((doc) => ({ ...doc.data(), productId: doc.id }) as Product);
+    const assignedConfirmations = new Set<string>();
+    logger.info("Release-day confirmation candidates", { count: confirmationProducts.length, unclassifiedProductIds: confirmationProducts.filter((product) => !releaseConfirmationContentType(product)).map((product) => product.productId), requestedReads: Math.max(1, yesterday.size) });
+
     for (const [index, contentType] of resolved.contentTypes.entries()) {
       if (index > 0 && resolved.contentTypeSleepMs > 0) {
         logger.info("DLsite daily priority sleep before next contentType", {
@@ -1442,12 +1492,23 @@ export async function fetchDailyPriorityProducts(
         salesCountLimit: resolved.salesCountLimit,
         parseMode: resolved.parseMode,
       });
+      discovered.merged = discovered.merged.filter((item) => !assignedConfirmations.has(buildProductIdForTarget(buildTarget(contentType), item.sourceProductId)));
+      for (const product of confirmationProducts) {
+        if (assignedConfirmations.has(product.productId)) continue;
+        const matches = releaseConfirmationContentType(product) === contentType;
+        const found = discovered.merged.find((item) => item.sourceProductId === product.sourceProductId);
+        if (found) { found.existingProduct = product; assignedConfirmations.add(product.productId); }
+        else if (!assignedConfirmations.has(product.productId) && matches) {
+          discovered.merged.push({ sourceProductId: product.sourceProductId, sourceUrl: product.sourceUrl, orderType: "release_d", contentType, reasons: ["releaseDayConfirmation"], existingProduct: product });
+          assignedConfirmations.add(product.productId);
+        }
+      }
       const duplicateRemovedCount =
         discovered.newRelease.length +
         discovered.popular.length +
         discovered.workTypePopular.length +
         discovered.salesCountOrder.length -
-        discovered.merged.length;
+        discovered.merged.filter((item) => !item.reasons.includes("releaseDayConfirmation")).length;
       // The main rankingIndexes job reads all saved products from Firestore.
       // This set is only for the existing top-300 rankingSnapshots output.
       const rankingSnapshotCandidateIds = new Set(
@@ -1740,4 +1801,9 @@ export async function fetchDailyPriorityProducts(
     });
     throw error;
   }
+}
+
+export async function fetchDailyPriorityProducts(...args: Parameters<typeof fetchDailyPriorityProductsInternal>): ReturnType<typeof fetchDailyPriorityProductsInternal> {
+  if (args[0].dryRun) return fetchDailyPriorityProductsInternal(...args);
+  return withGenreSourceMutation(() => fetchDailyPriorityProductsInternal(...args));
 }

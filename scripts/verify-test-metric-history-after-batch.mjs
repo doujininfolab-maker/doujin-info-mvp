@@ -25,12 +25,12 @@ const POINT_FIELDS = [
   "priceCurrent", "priceOriginal", "salesCount", "dailySalesCount",
   "dailySalesStatus", "dailySalesBaseDate", "dailySalesNextDate",
   "dailySalesBaseCount", "dailySalesNextCount", "dailySalesRawDelta",
-  "dailySalesPeriodDays", "periodSalesCount", "dailySalesCalculatedAt", "fetchedAt",
+  "dailySalesPeriodDays", "periodSalesCount", "dailySalesCalculatedAt", "dailySalesBasis", "dailySalesObservedAt", "dailySalesDefinitionVersion", "fetchedAt",
 ];
 const DAILY_DELTA_FIELDS = [
   "dailySalesCount", "dailySalesStatus", "dailySalesBaseDate", "dailySalesNextDate",
   "dailySalesBaseCount", "dailySalesNextCount", "dailySalesRawDelta",
-  "dailySalesPeriodDays", "periodSalesCount", "dailySalesCalculatedAt",
+  "dailySalesPeriodDays", "periodSalesCount", "dailySalesCalculatedAt", "dailySalesBasis", "dailySalesObservedAt", "dailySalesDefinitionVersion",
 ];
 
 function findFirebaseToolsRoot() {

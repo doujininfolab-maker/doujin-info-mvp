@@ -1,3 +1,4 @@
+import { withGenreSourceMutation } from "../batch/genreDetailView";
 import { createHash, randomUUID } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../firebaseAdmin";
@@ -382,24 +383,59 @@ export async function executeVisibilityChange(params: {
   if (JSON.stringify(actualProductIds) !== JSON.stringify(plan.affectedProductIds)) {
     throw new Error("target products changed after preview; run preview again");
   }
-  const operationId = `visibility_${Date.now()}_${randomUUID().slice(0, 8)}`;
-  let materialized = false;
-  try {
-    const revision = await updateControlAndRuntime({
-      plan,
-      caseId,
-      performedBy,
-      operationId,
-    });
-    await materializeProducts(documents);
-    materialized = true;
-    await db.collection(EVENTS_COLLECTION).doc(operationId).set({
-      status: "materialized",
-      materializedAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    }, { merge: true });
+  return withGenreSourceMutation(async () => {
+    const operationId = `visibility_${Date.now()}_${randomUUID().slice(0, 8)}`;
+    let materialized = false;
+    try {
+      const revision = await updateControlAndRuntime({
+        plan,
+        caseId,
+        performedBy,
+        operationId,
+      });
+      await materializeProducts(documents);
+      materialized = true;
+      await db.collection(EVENTS_COLLECTION).doc(operationId).set({
+        status: "materialized",
+        materializedAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
 
-    if (params.skipRebuild) {
+      if (params.skipRebuild) {
+        return {
+          operationId,
+          controlId: plan.controlId,
+          action: params.action,
+          revision,
+          affectedProductCount: plan.affectedProductCount,
+          affectedSegments: plan.affectedSegments,
+          status: "materialized",
+          rebuildSkipped: true,
+        };
+      }
+
+      const targets = targetsFromProducts(documents.map((item) => item.product));
+      const statsResult = await rebuildSiteStatsForTargetsDetailed(targets);
+      if (!rebuildSucceeded(statsResult)) {
+        throw new Error("One or more site/index rebuild components failed");
+      }
+      const listResult = await rebuildAllListViewsForTargets(targets, {
+        triggerType: "manual",
+        triggerId: operationId,
+      });
+      if (listResult.status !== "success") {
+        throw new Error(`List-view rebuild did not complete: ${listResult.status}`);
+      }
+      await db.collection(EVENTS_COLLECTION).doc(operationId).set({
+        status: "rebuilt",
+        rebuiltAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        rebuildSummary: {
+          siteStats: statsResult.status,
+          listViews: listResult.status,
+          listViewRunId: listResult.runId,
+        },
+      }, { merge: true });
       return {
         operationId,
         controlId: plan.controlId,
@@ -407,51 +443,18 @@ export async function executeVisibilityChange(params: {
         revision,
         affectedProductCount: plan.affectedProductCount,
         affectedSegments: plan.affectedSegments,
-        status: "materialized",
-        rebuildSkipped: true,
+        status: "rebuilt",
+        rebuildSkipped: false,
       };
+    } catch (error) {
+      await db.collection(EVENTS_COLLECTION).doc(operationId).set({
+        status: materialized ? "partial" : "failed",
+        errorSummary: error instanceof Error ? error.message.slice(0, 1000) : String(error).slice(0, 1000),
+        updatedAt: Timestamp.now(),
+      }, { merge: true }).catch(() => undefined);
+      throw error;
     }
-
-    const targets = targetsFromProducts(documents.map((item) => item.product));
-    const statsResult = await rebuildSiteStatsForTargetsDetailed(targets);
-    if (!rebuildSucceeded(statsResult)) {
-      throw new Error("One or more site/index rebuild components failed");
-    }
-    const listResult = await rebuildAllListViewsForTargets(targets, {
-      triggerType: "manual",
-      triggerId: operationId,
-    });
-    if (listResult.status !== "success") {
-      throw new Error(`List-view rebuild did not complete: ${listResult.status}`);
-    }
-    await db.collection(EVENTS_COLLECTION).doc(operationId).set({
-      status: "rebuilt",
-      rebuiltAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-      rebuildSummary: {
-        siteStats: statsResult.status,
-        listViews: listResult.status,
-        listViewRunId: listResult.runId,
-      },
-    }, { merge: true });
-    return {
-      operationId,
-      controlId: plan.controlId,
-      action: params.action,
-      revision,
-      affectedProductCount: plan.affectedProductCount,
-      affectedSegments: plan.affectedSegments,
-      status: "rebuilt",
-      rebuildSkipped: false,
-    };
-  } catch (error) {
-    await db.collection(EVENTS_COLLECTION).doc(operationId).set({
-      status: materialized ? "partial" : "failed",
-      errorSummary: error instanceof Error ? error.message.slice(0, 1000) : String(error).slice(0, 1000),
-      updatedAt: Timestamp.now(),
-    }, { merge: true }).catch(() => undefined);
-    throw error;
-  }
+  });
 }
 
 export async function getVisibilityOperation(operationId: string): Promise<Record<string, unknown> | null> {

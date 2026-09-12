@@ -1,3 +1,4 @@
+import { genreDetailEnabled, captureGenreSourceRevision, queueGenreDetailView } from "./genreDetailView";
 import { createHash } from "node:crypto";
 import { FieldPath, type QueryDocumentSnapshot, type Timestamp } from "firebase-admin/firestore";
 import { db } from "../firebaseAdmin";
@@ -90,6 +91,7 @@ type ContentStatsScope = "all" | "tl" | "bl";
 const CONTENT_STATS_SCOPES: ContentStatsScope[] = ["all", "tl", "bl"];
 
 type StoredProduct = Product & {
+  genreSortDocumentId?: string;
   isOnSale?: boolean;
   fetchedAt?: Timestamp;
   seller?: Product["seller"] & { sellerUrl?: string };
@@ -696,7 +698,9 @@ export async function getProductsForSiteStats(segment: SiteSegmentKey): Promise<
 
     for (const doc of snapshot.docs) {
       const data = doc.data() as StoredProduct;
-      products.push({ ...data, productId: (data as Product).productId ?? doc.id });
+      const product = { ...data, productId: (data as Product).productId ?? doc.id };
+      Object.defineProperty(product, "genreSortDocumentId", { value: doc.id, enumerable: false });
+      products.push(product);
     }
 
     lastDoc = snapshot.docs[snapshot.docs.length - 1];
@@ -748,6 +752,7 @@ async function rebuildSiteStatsFromProducts(
 }
 
 export async function rebuildSiteStats(segment: SiteSegmentKey, contentScope: ContentStatsScope = "all"): Promise<string> {
+  const genreRevision = genreDetailEnabled() ? await captureGenreSourceRevision() : 0;
   const allProducts = await getProductsForSiteStats(segment);
   const generatedAt = nowTimestamp();
   const statId = await rebuildSiteStatsFromProducts(segment, contentScope, allProducts, generatedAt);
@@ -782,6 +787,7 @@ export async function rebuildSiteStats(segment: SiteSegmentKey, contentScope: Co
 
   try {
     await rebuildGenreIndex(segment, allProducts, generatedAt);
+    await queueGenreDetailView({ segment, products: allProducts, revision: genreRevision });
   } catch (error) {
     console.error("Failed to rebuild genre index; keeping the previous active version", {
       segment,
@@ -873,6 +879,7 @@ export async function rebuildSiteStatsForTargetsDetailed(
 
   for (const segment of uniqueSegments.values()) {
     const segmentId = buildSiteStatsId(segment);
+    const genreRevision = genreDetailEnabled() ? await captureGenreSourceRevision() : 0;
     const allProducts = await getProductsForSiteStats(segment);
     const generatedAt = nowTimestamp();
     const segmentStatIds: string[] = [];
@@ -933,6 +940,8 @@ export async function rebuildSiteStatsForTargetsDetailed(
         () => rebuildSellerIndex(segment, allProducts, generatedAt),
       ),
     };
+
+    await queueGenreDetailView({ segment, products: allProducts, revision: genreRevision });
 
     segments.push({
       segmentId,

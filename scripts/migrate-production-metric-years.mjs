@@ -31,7 +31,7 @@ const POINT_FIELDS = [
   "dailySalesRawDelta",
   "dailySalesPeriodDays",
   "periodSalesCount",
-  "dailySalesCalculatedAt",
+  "dailySalesCalculatedAt", "dailySalesBasis", "dailySalesObservedAt", "dailySalesDefinitionVersion",
   "fetchedAt",
 ];
 

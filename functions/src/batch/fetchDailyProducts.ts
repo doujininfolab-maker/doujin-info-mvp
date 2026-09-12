@@ -1,3 +1,5 @@
+import { preserveReleaseDayMetric } from "./releaseDaySales";
+import { withGenreSourceMutation } from "./genreDetailView";
 import { logger } from "firebase-functions";
 import { db } from "../firebaseAdmin";
 import type {
@@ -109,20 +111,22 @@ function buildMetric(product: Product, date: string): ProductDailyMetric {
   };
 }
 
-async function saveProductAndMetric(product: Product, date: string): Promise<void> {
+async function saveProductAndMetric(product: Product, date: string, existingProduct?: Product): Promise<void> {
   const productRef = db.collection("products").doc(product.productId);
   const productToSave = await applyContentVisibility(product);
-  await productRef.set(productToSave, { merge: true });
-  const metric = buildMetric(product, date);
+  const batch = db.batch();
+  batch.set(productRef, productToSave, { merge: true });
+  const metric = preserveReleaseDayMetric(existingProduct, date, buildMetric(product, date));
   const historyMode = getMetricHistoryWriteMode();
   if (writesLegacyMetrics(historyMode)) {
-    await productRef.collection("dailyMetrics").doc(date).set(metric, { merge: true });
+    batch.set(productRef.collection("dailyMetrics").doc(date), metric, { merge: true });
   }
   if (writesMetricYears(historyMode)) {
     for (const mutation of buildMetricYearMutations(product, [{ date, metric }])) {
-      await metricYearRef(productRef, mutation.year).set(mutation.data, { merge: true });
+      batch.set(metricYearRef(productRef, mutation.year), mutation.data, { merge: true });
     }
   }
+  await batch.commit();
 }
 
 async function saveRankingSnapshot(params: {
@@ -259,7 +263,7 @@ function addDiscoveredProduct(params: {
   });
 }
 
-export async function fetchDailyProducts(options: FetchDailyProductsOptions): Promise<BatchRun> {
+async function fetchDailyProductsInternal(options: FetchDailyProductsOptions): Promise<BatchRun> {
   const runId = createRunId("daily_products");
   const startedAt = nowTimestamp();
   const date = toYyyyMMdd();
@@ -407,7 +411,7 @@ export async function fetchDailyProducts(options: FetchDailyProductsOptions): Pr
 
         const raw = await adapter.fetchProductDetail(discovered.sourceProductId, { sourceUrl: discovered.sourceUrl });
         const product = adapter.normalizeProduct(raw, discovered.primaryTarget);
-        await saveProductAndMetric(product, date);
+        await saveProductAndMetric(product, date, existingProduct);
         productBySourceProductId.set(discovered.sourceProductId, product);
         fetchedProductCount += 1;
         updatedProductCount += 1;
@@ -510,4 +514,9 @@ export async function fetchDailyProducts(options: FetchDailyProductsOptions): Pr
     await runRef.set(result, { merge: true });
     return result;
   }
+}
+
+export async function fetchDailyProducts(...args: Parameters<typeof fetchDailyProductsInternal>): ReturnType<typeof fetchDailyProductsInternal> {
+  if (args[0].listOnly || args[0].detailLimit === 0) return fetchDailyProductsInternal(...args);
+  return withGenreSourceMutation(() => fetchDailyProductsInternal(...args));
 }

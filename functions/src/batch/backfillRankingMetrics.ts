@@ -1,3 +1,4 @@
+import { withGenreSourceMutation } from "./genreDetailView";
 import { FieldPath, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { db } from "../firebaseAdmin";
 import type {
@@ -106,7 +107,7 @@ async function writeProductPatches(
   }
 }
 
-export async function backfillRankingMetrics(
+async function backfillRankingMetricsInternal(
   segment: SiteSegmentKey,
   options: BackfillRankingMetricsOptions,
 ): Promise<BackfillRankingMetricsResult> {
@@ -219,4 +220,8 @@ export async function backfillRankingMetrics(
     nextCursor: complete ? undefined : cursor,
     complete,
   };
+}
+
+export async function backfillRankingMetrics(...args: Parameters<typeof backfillRankingMetricsInternal>): ReturnType<typeof backfillRankingMetricsInternal> {
+  return withGenreSourceMutation(() => backfillRankingMetricsInternal(...args));
 }

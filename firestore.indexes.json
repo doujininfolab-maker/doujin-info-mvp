@@ -430,6 +430,28 @@
         }
       ],
       "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "products",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "platform",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "audience",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "releaseDate",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -635,6 +657,36 @@
     },
     {
       "collectionGroup": "compactSearchIndexes",
+      "fieldPath": "blocks",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "blocks",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "products",
+      "fieldPath": "releaseDaySales",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "genreDetailViews",
+      "fieldPath": "genreKeys",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "products",
+      "fieldPath": "dailySalesSnapshotBasis",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "genreDetailControl",
+      "fieldPath": "*",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "genres",
       "fieldPath": "blocks",
       "indexes": []
     }

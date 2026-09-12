@@ -42,7 +42,7 @@ const YEAR_POINT_FIELDS = [
   "dailySalesRawDelta",
   "dailySalesPeriodDays",
   "periodSalesCount",
-  "dailySalesCalculatedAt",
+  "dailySalesCalculatedAt", "dailySalesBasis", "dailySalesObservedAt", "dailySalesDefinitionVersion",
   "fetchedAt",
 ] as const satisfies readonly (keyof ProductMetricYearPoint)[];
 
@@ -274,6 +274,9 @@ function comparableMetric(metric: ProductDailyMetric | undefined): string {
     salesCount: metric.salesCount,
     dailySalesCount: metric.dailySalesCount,
     dailySalesStatus: metric.dailySalesStatus,
+    dailySalesBasis: metric.dailySalesBasis,
+    dailySalesDefinitionVersion: metric.dailySalesDefinitionVersion,
+    dailySalesObservedAt: metric.dailySalesObservedAt,
     periodSalesCount: metric.periodSalesCount,
   });
 }

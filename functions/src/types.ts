@@ -561,6 +561,8 @@ export type Product = {
    * JST日次バッチで販売数差分を計算するための直近日次スナップショット。
    * 通常のproducts.salesCountは最新表示用として維持し、差分計算ではこちらを使う。
    */
+  releaseDaySales?: { date: string; count: number; priceCurrent: number; observedAt: Timestamp; definitionVersion: 1 };
+  dailySalesSnapshotBasis?: "priority_metric_date";
   lastDailySalesSnapshotDate?: string;
   lastDailySalesSnapshotCount?: number;
   lastDailySalesSnapshotFetchedAt?: Timestamp;
@@ -1000,6 +1002,9 @@ export type ProductDailyMetric = {
   salesEditionCounts?: ProductDailySalesEdition[];
   wishlistCount?: number;
 
+  dailySalesBasis?: "release_day_cumulative";
+  dailySalesObservedAt?: Timestamp;
+  dailySalesDefinitionVersion?: 1;
   dailySalesCount?: number | null;
   dailySalesStatus?:
     | "pending"
@@ -1044,6 +1049,9 @@ export type ProductMetricYearPoint = {
   priceOriginal?: number;
   salesCount?: number;
 
+  dailySalesBasis?: "release_day_cumulative";
+  dailySalesObservedAt?: Timestamp;
+  dailySalesDefinitionVersion?: 1;
   dailySalesCount?: number | null;
   dailySalesStatus?: ProductDailyMetric["dailySalesStatus"];
   dailySalesBaseDate?: string;

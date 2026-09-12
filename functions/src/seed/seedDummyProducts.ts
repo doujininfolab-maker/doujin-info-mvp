@@ -1,3 +1,4 @@
+import { withGenreSourceMutation } from "../batch/genreDetailView";
 import { onRequest } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { db } from "../firebaseAdmin";
@@ -125,7 +126,7 @@ export const seedDummyProducts = onRequest(
       batch.set(snapshotRef.collection("items").doc(buildRankItemId(rank, product.productId)), item, { merge: true });
     });
 
-    await batch.commit();
+    await withGenreSourceMutation(() => batch.commit());
 
     logger.info("dummy products seeded", {
       productCount: products.length,

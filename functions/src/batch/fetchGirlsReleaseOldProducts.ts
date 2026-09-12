@@ -1,3 +1,5 @@
+import { preserveReleaseDayMetric } from "./releaseDaySales";
+import { withGenreSourceMutation } from "./genreDetailView";
 import { logger } from "firebase-functions";
 import { db } from "../firebaseAdmin";
 import {
@@ -504,7 +506,7 @@ function buildPreviousMetricPatch(params: {
   };
 }
 
-function buildDailySalesDeltaUpdate(params: {
+export function buildDailySalesDeltaUpdate(params: {
   product: Product;
   currentDate: string;
   salesDate: string;
@@ -513,6 +515,9 @@ function buildDailySalesDeltaUpdate(params: {
 }): DailySalesDeltaUpdate {
   const stats = createEmptyDailySalesDeltaStats();
   const currentSalesCount = params.product.salesCount;
+  if (params.existingProduct?.dailySalesSnapshotBasis === "priority_metric_date") {
+    return { currentMetricPatch: buildCurrentMetricPatch("pending"), productPatch: {}, stats };
+  }
 
   if (!isFiniteNumber(currentSalesCount)) {
     stats.salesCountMissingCount += 1;
@@ -722,6 +727,10 @@ class FirestoreWriteBuffer {
     return this.pendingWriteCount;
   }
 
+  async reserve(count: number): Promise<{ flushed: boolean; elapsedMs: number }> {
+    return this.pendingWriteCount + count > this.maxWritesPerCommit ? this.flush() : { flushed: false, elapsedMs: 0 };
+  }
+
   async set(
     ref: FirebaseFirestore.DocumentReference,
     data: FirebaseFirestore.WithFieldValue<FirebaseFirestore.DocumentData>,
@@ -776,6 +785,7 @@ async function enqueueProductAndMetricWrites(
   };
 
   if (!options.saveDailyMetrics) {
+    addAutoFlushResult(await writeBuffer.reserve(1));
     const productToSave = await applyContentVisibility(buildProductForSave(product));
     addAutoFlushResult(
       await writeBuffer.set(productRef, productToSave, {
@@ -811,11 +821,6 @@ async function enqueueProductAndMetricWrites(
     dailySalesDelta ? { ...product, ...dailySalesDelta.productPatch } : product,
   ));
 
-  addAutoFlushResult(
-    await writeBuffer.set(productRef, productToSave, {
-      merge: true,
-    }),
-  );
   const currentMetric = buildMetric(product, date, dailySalesDelta?.currentMetricPatch);
   const historyEntries = [
     { date, metric: currentMetric },
@@ -825,8 +830,15 @@ async function enqueueProductAndMetricWrites(
           metric: dailySalesDelta.previousMetricPatch,
         }]
       : []),
-  ];
+  ].map((entry) => ({ ...entry, metric: preserveReleaseDayMetric(options.dailySalesDelta?.existingProduct, entry.date, entry.metric) }));
   const historyMode = getMetricHistoryWriteMode();
+  const yearMutations = writesMetricYears(historyMode) ? buildMetricYearMutations(product, historyEntries) : [];
+  addAutoFlushResult(await writeBuffer.reserve(1 + (writesLegacyMetrics(historyMode) ? historyEntries.length : 0) + yearMutations.length));
+  addAutoFlushResult(
+    await writeBuffer.set(productRef, productToSave, {
+      merge: true,
+    }),
+  );
   let historyWriteCount = 0;
   if (writesLegacyMetrics(historyMode)) {
     for (const entry of historyEntries) {
@@ -842,7 +854,7 @@ async function enqueueProductAndMetricWrites(
   }
   if (writesMetricYears(historyMode)) {
     // 当日と前日が同一年なら、同一ドキュメントへの更新を1 Writeへ統合する。
-    for (const mutation of buildMetricYearMutations(product, historyEntries)) {
+    for (const mutation of yearMutations) {
       addAutoFlushResult(
         await writeBuffer.set(
           metricYearRef(productRef, mutation.year),
@@ -1497,7 +1509,7 @@ function buildRunOptions(
   };
 }
 
-export async function fetchGirlsReleaseOldProducts(
+async function fetchGirlsReleaseOldProductsInternal(
   options: FetchGirlsReleaseOldProductsOptions,
 ): Promise<FetchGirlsReleaseOldProductsResult> {
   const contentType = resolveFetchContentType(options.contentType);
@@ -2120,4 +2132,9 @@ export async function fetchGirlsReleaseOldProducts(
       performance: buildPerformanceSummary(perf, processedDetailCount),
     };
   }
+}
+
+export async function fetchGirlsReleaseOldProducts(...args: Parameters<typeof fetchGirlsReleaseOldProductsInternal>): ReturnType<typeof fetchGirlsReleaseOldProductsInternal> {
+  if (args[0].dryRun || args[0].detailLimit === 0) return fetchGirlsReleaseOldProductsInternal(...args);
+  return withGenreSourceMutation(() => fetchGirlsReleaseOldProductsInternal(...args));
 }

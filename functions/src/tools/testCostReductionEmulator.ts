@@ -1,6 +1,7 @@
 import { executeVisibilityChange } from "../visibility/contentVisibilityAdmin";
 import { planReleaseDayBackfill } from "../batch/backfillReleaseDaySales";
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../firebaseAdmin";
 import { releaseConfirmationContentType, buildDailySalesPatch, FirestoreWriteBuffer, saveProductAndMetric } from "../batch/fetchDailyPriorityProducts";
@@ -177,6 +178,32 @@ async function run() {
   assert.equal((await publishGenreDetailView({ segment, products, revision: before.revision })).published, false, "older captured source cannot publish");
   const oversize = [{ productId: "large", title: "x".repeat(5 * 1024 * 1024) }];
   assert.throws(() => packGenreRows(oversize), /size limit/);
+  // Each document is valid, but the compressed genre blocks exceed one
+  // Firestore commit. Exercise actual multi-commit publication on the emulator.
+  const largeProducts = Array.from({ length: 300 }, (_, i) => ({
+    ...product, productId: `budget_${i}`, title: randomBytes(2048).toString("base64"),
+    genreIds: Array.from({ length: 20 }, (_, genre) => `budget:${genre}`),
+  }));
+  const batchSizes: number[] = [];
+  const originalBatch = db.batch.bind(db);
+  db.batch = (() => {
+    const batch = originalBatch(); let wireBytes = 0;
+    const originalSet = batch.set.bind(batch);
+    batch.set = ((ref: FirebaseFirestore.DocumentReference, data: Record<string, unknown>, ...args: unknown[]) => {
+      const { payload, ...metadata } = data;
+      wireBytes += Buffer.byteLength(JSON.stringify(metadata)) + (Buffer.isBuffer(payload) ? payload.length : 0) + 1024;
+      return originalSet(ref, data, ...(args as [FirebaseFirestore.SetOptions]));
+    }) as typeof batch.set;
+    const originalCommit = batch.commit.bind(batch);
+    batch.commit = async () => { assert.ok(wireBytes < 10 * 1024 * 1024, `commit bytes: ${wireBytes}`); batchSizes.push(wireBytes); return originalCommit(); };
+    return batch;
+  }) as typeof db.batch;
+  try {
+    assert.equal((await publishGenreDetailView({ segment, products: largeProducts, revision: await captureGenreSourceRevision() })).published, true);
+    assert.ok(batchSizes.length >= 2, "large genre generation must split commits by bytes");
+    console.log(JSON.stringify({ largeGenreCommitBytes: batchSizes }));
+  } finally { db.batch = originalBatch; }
+  await publishGenreDetailView({ segment, products, revision: await captureGenreSourceRevision() });
   console.log(JSON.stringify({ status: "passed", metricWrites: buffer.writeOperationCount, dailyMetricWrites: 0, initialSales: 120, followingSales: [80, 60], genreProducts: products.length, genreBlocks: published.blocks, source: await readGenreSource() }));
 }
 run().then(() => db.terminate()).catch((error) => { console.error(error); process.exitCode = 1; });

@@ -130,9 +130,18 @@ export async function publishGenreDetailView(input: BuildInput): Promise<{ publi
   let blockCount = 0;
   let batch = db.batch();
   let pending = 0;
+  let pendingBytes = 0;
   const put = async (ref: FirebaseFirestore.DocumentReference, data: Record<string, unknown>) => {
-    if (pending >= 350) { await batch.commit(); batch = db.batch(); pending = 0; }
-    batch.set(ref, data); pending += 1;
+    // A valid document can still overflow Firestore's 10 MiB commit request
+    // when many compressed blocks are grouped. Base64-sized payload accounting
+    // plus per-write overhead keeps the wire request comfortably below the cap.
+    const { payload, ...metadata } = data;
+    const bytes = Buffer.byteLength(JSON.stringify(metadata)) + Buffer.byteLength(ref.path) +
+      (Buffer.isBuffer(payload) ? Math.ceil(payload.length * 4 / 3) : 0) + 1024;
+    if (pending && (pending >= 350 || pendingBytes + bytes > 7 * 1024 * 1024)) {
+      await batch.commit(); batch = db.batch(); pending = 0; pendingBytes = 0;
+    }
+    batch.set(ref, data); pending += 1; pendingBytes += bytes;
   };
   await version.set({ createdAt: Timestamp.now(), revision: input.revision, status: "building" });
   for (const [genreId, rows] of lists) {

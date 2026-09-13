@@ -78,8 +78,8 @@ env:
     value: "false"
     availability:
       - RUNTIME
-  # Enable prefer only after all product writers and initial views are deployed.
+  # Production writers and all 406 initial genre views were verified.
   - variable: GENRE_DETAIL_READ_MODE
-    value: "legacy"
+    value: "prefer"
     availability:
       - RUNTIME
